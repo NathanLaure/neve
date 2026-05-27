@@ -1,19 +1,9 @@
-# 🏔️ Névé — Éco-Aventures en train 🚆
+# 🏔️ Névé | Éco-Aventures en train 🚆
 
-> **Partenaire de vos randonnées écoresponsables depuis l'Île-de-France.**
+> **Partenaire de vos randonnées écoresponsables.**
 
-Névé est une application mobile haut de gamme développée avec **Expo (SDK 56) & React Native**. Elle permet aux amateurs de grand air d'explorer et de filtrer des itinéraires de randonnée d'exception accessibles directement et uniquement en train (TER, Transilien) au départ de Paris.
+Névé est une application mobile haut de gamme développée avec **Expo (SDK 56) & React Native**. Elle permet aux amateurs de grand air d'explorer et de filtrer des itinéraires de randonnée d'exception accessibles directement et uniquement en transports en commun.
 
----
-
-## ✨ Fonctionnalités Clés
-
-* 🚆 **100% Rail & Zéro Carbone** : Les points de départ et d'arrivée sont calculés à partir de gares pour garantir un impact environnemental minimal.
-* 🎨 **Mode Sombre & Clair Dynamique** : Une gestion de thème instantanée et stable intégrée directement dans un panneau de navigation tiroir ergonomique.
-* 🔍 **Filtres de Difficulté Intelligents** : Recherche temps réel et tri par niveaux de difficulté (Facile 🟢, Modéré 🟡, Difficile 🔴) avec décompte dynamique des parcours.
-* 📱 **Ergonomie Mobile Premium** : Alignements géométriques rigoureux à $24\text{px}$, aucun décalage visuel (zéro layout shift) et transitions fluides.
-
----
 
 ## ⚙️ Guide d'Installation Rapide
 
@@ -67,4 +57,4 @@ bun run format
 
 ---
 
-Développé avec 🍃 par **Névé & Antigravity**
+Développé avec 🍃 par **Nathan (& gémini aussi, un peu ;)**
