@@ -14,17 +14,20 @@ export const EditScreenInfo: React.FC<EditScreenInfoProps> = ({ path }) => {
       <View className={styles.getStartedContainer}>
         <Text className={styles.getStartedText}>{title}</Text>
         <View className={`${styles.codeHighlightContainer} ${styles.homeScreenFilename}`}>
-          <Text>{path}</Text>
+          <Text className={styles.codeText}>{path}</Text>
         </View>
-        <Text className={styles.getStartedText}>{description}</Text>
+        <Text style={{ marginTop: 8 }} className={styles.getStartedText}>
+          {description}
+        </Text>
       </View>
     </View>
   );
 };
 
 const styles = {
-  codeHighlightContainer: `rounded-md px-1`,
+  codeHighlightContainer: `rounded-md px-2 py-1 bg-slate-100 dark:bg-slate-800`,
+  codeText: `text-sm font-mono text-slate-800 dark:text-slate-200`,
   getStartedContainer: `items-center mx-12`,
-  getStartedText: `text-lg leading-6 text-center`,
+  getStartedText: `text-base leading-6 text-center text-slate-600 dark:text-slate-400`,
   homeScreenFilename: `my-2`,
 };
