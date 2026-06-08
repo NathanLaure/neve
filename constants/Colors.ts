@@ -1,39 +1,39 @@
-const tintColorLight = '#1F5F3E'; // Vert forêt profond / moderne
-const tintColorDark = '#4CAF50'; // Vert forêt clair pour le mode sombre
+const tintColorLight = '#386641'; // Vert sapin moderne (Brand)
+const tintColorDark = '#4CAF50'; // Vert forêt clair lisible
 
 export default {
   light: {
     text: '#1A251E', // Pine Black (très foncé avec une touche de vert)
-    background: '#E3EAE4', // Eco grey-green, slightly darker to let white cards pop beautifully
+    background: '#F8FAFC', // Fond de canevas clair très doux
     tint: tintColorLight,
     tabIconDefault: '#A3B5AA', // Vert grisâtre atténué
     tabIconSelected: tintColorLight,
-    primary: '#1B4332', // Vert forêt profond
+    primary: '#386641', // Vert sapin
     primaryLight: '#2D6A4F', // Vert forêt intermédiaire
-    secondary: '#00507B', // Bleu SNCF pour les transports
-    warning: '#E65100', // Orange doux pour alertes météo/train
-    card: '#FFFFFF', // Pure white cards float beautifully on light background
+    secondary: '#457B9D', // Bleu lac de montagne
+    warning: '#B07D06', // Ocre terreux
+    card: '#FFFFFF', // Cartes blanches flottant magnifiquement
     border: '#E0E6E2', // Bordure très douce
     textMuted: '#62756A', // Texte secondaire doux
-    greenBadge: '#E8F5E9', // Fond badge vert
-    blueBadge: '#E3EFFA', // Fond badge bleu
-    orangeBadge: '#FFF3E0', // Fond badge orange
+    greenBadge: '#F2F6F3', // Fond badge vert sapin subtil (succès)
+    blueBadge: '#F1F5F7', // Fond badge bleu lac (info)
+    orangeBadge: '#FDFAF2', // Fond badge ocre (attention)
   },
   dark: {
     text: '#F4F6F3', // Blanc cassé
-    background: '#070A08', // Deeper, ultra-dark green-black background
+    background: '#070A08', // Vert-noir ultra profond
     tint: tintColorDark,
     tabIconDefault: '#55685C',
     tabIconSelected: tintColorDark,
     primary: '#4CAF50', // Vert forêt vif lisible
     primaryLight: '#81C784',
-    secondary: '#3399FF', // Bleu SNCF adapté au sombre
-    warning: '#FF9800', // Orange doux adapté
-    card: '#16221A', // Lighter deep pine green to pop beautifully against background
+    secondary: '#98C1D9', // Bleu brumeux adapté au mode sombre
+    warning: '#E9C46A', // Jaune moutarde doux
+    card: '#16221A', // Vert pin profond légèrement plus clair pour faire ressortir les cartes
     border: '#16221A',
     textMuted: '#A3B5AA',
-    greenBadge: '#1A2F22',
-    blueBadge: '#11273C',
-    orangeBadge: '#3C2411',
+    greenBadge: '#0D1F11', // Vert sapin sombre
+    blueBadge: '#0A192F', // Bleu sombre
+    orangeBadge: '#241800', // Ocre sombre
   },
 };
