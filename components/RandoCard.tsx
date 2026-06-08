@@ -1,6 +1,6 @@
 import React from 'react';
 import { Image, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SymbolView } from 'expo-symbols';
+import { Ionicons } from '@expo/vector-icons';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -54,7 +54,7 @@ export default function RandoCard({
   return (
     <Pressable
       onPress={onPress}
-      style={({ pressed }) => [styles.pressableWrapper, pressed && styles.cardPressed]}>
+      style={({ pressed }) => [styles.pressableWrapper, pressed ? styles.cardPressed : null]}>
       <View
         style={[
           styles.card,
@@ -82,15 +82,7 @@ export default function RandoCard({
 
             {/* Train Duration Badge - Blue SNCF style */}
             <View style={[styles.overlayBadge, { backgroundColor: theme.secondary }]}>
-              <SymbolView
-                name={{
-                  ios: 'tram.fill',
-                  android: 'directions-transit',
-                  web: 'train',
-                }}
-                size={12}
-                tintColor="#FFFFFF"
-              />
+              <Ionicons name="train" size={12} color="#FFFFFF" />
               <Text style={styles.trainText}>
                 {trainDuration} ({trainType})
               </Text>
@@ -120,15 +112,7 @@ export default function RandoCard({
           {/* Departure Station Row */}
           <View style={styles.infoRow}>
             <View style={[styles.iconWrapper, { backgroundColor: theme.blueBadge }]}>
-              <SymbolView
-                name={{
-                  ios: 'train.side.front.car',
-                  android: 'train',
-                  web: 'train',
-                }}
-                size={16}
-                tintColor={theme.secondary}
-              />
+              <Ionicons name="train-outline" size={16} color={theme.secondary} />
             </View>
             <Text style={[styles.infoText, { color: theme.text }]} numberOfLines={1}>
               {departureStation}
@@ -138,15 +122,7 @@ export default function RandoCard({
           {/* Distance / Walking Row */}
           <View style={[styles.infoRow, { marginTop: 10 }]}>
             <View style={[styles.iconWrapper, { backgroundColor: theme.greenBadge }]}>
-              <SymbolView
-                name={{
-                  ios: 'figure.walk',
-                  android: 'directions-walk',
-                  web: 'directions-walk',
-                }}
-                size={16}
-                tintColor={theme.tint}
-              />
+              <Ionicons name="walk" size={16} color={theme.tint} />
             </View>
             <Text style={[styles.infoText, { color: theme.textMuted }]}>
               Distance à pied :{' '}

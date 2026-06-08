@@ -6,6 +6,7 @@ import { ThemeProvider, DarkTheme, DefaultTheme } from 'expo-router/react-naviga
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { Stack } from 'expo-router';
 
+import { AdventureProvider } from '@/context/AdventureContext';
 import { useColorScheme, setThemeOverride } from '@/components/useColorScheme';
 
 // Suppress known upstream library deprecation warnings in React Native 0.85+
@@ -30,7 +31,7 @@ if (__DEV__) {
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(drawer)',
+  initialRouteName: '(tabs)',
 };
 
 export default function RootLayout() {
@@ -40,10 +41,12 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-          <Stack>
-            <Stack.Screen name="(drawer)" options={{ headerShown: false }} />
-            <Stack.Screen name="modal" options={{ title: 'Modal', presentation: 'modal' }} />
-          </Stack>
+          <AdventureProvider>
+            <Stack>
+              <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+              <Stack.Screen name="modal" options={{ title: 'Modal', presentation: 'modal' }} />
+            </Stack>
+          </AdventureProvider>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

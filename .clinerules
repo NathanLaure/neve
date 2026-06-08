@@ -1,0 +1,3 @@
+Please read the INSTRUCTIONS.md file in the .agents directory (file:///Users/nathan/neve/.agents/INSTRUCTIONS.md) to understand the design system, folder architecture, styling guidelines, and variable naming conventions of the Neve application before writing any code.
+
+Ensure all new components, routes, and logic fully adhere to these rules.
