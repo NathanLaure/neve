@@ -324,6 +324,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   errorText: {
+    fontFamily: 'Satoshi',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 20,
@@ -334,6 +335,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontWeight: '700',
   },
@@ -364,6 +366,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   difficultyText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '800',
@@ -381,12 +384,14 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   title: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.5,
     marginBottom: 10,
   },
   description: {
+    fontFamily: 'Satoshi',
     fontSize: 14,
     lineHeight: 22,
     fontWeight: '500',
@@ -410,11 +415,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   specLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   specVal: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '800',
     marginTop: 1,
@@ -426,6 +433,7 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 16,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -459,11 +467,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   stationType: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   stationName: {
+    fontFamily: 'Satoshi',
     fontSize: 14,
     fontWeight: '800',
     marginTop: 2,
@@ -486,6 +496,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   metaText: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '600',
   },
@@ -495,6 +506,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   trainBadgeText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
@@ -546,6 +558,7 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   markerLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 9,
     fontWeight: '800',
     backgroundColor: 'rgba(255,255,255,0.85)',
@@ -583,6 +596,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F5F3E',
   },
   planBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',

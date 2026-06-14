@@ -17,6 +17,7 @@ export interface RandoCardProps {
   difficulty?: 'Facile' | 'Modéré' | 'Difficile';
   elevation?: string; // e.g. '+180m'
   onPress?: () => void;
+  horizontal?: boolean;
 }
 
 const DEFAULT_IMAGE =
@@ -34,6 +35,7 @@ export default function RandoCard({
   difficulty = 'Modéré',
   elevation = '+150m',
   onPress,
+  horizontal = false,
 }: RandoCardProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -50,6 +52,64 @@ export default function RandoCard({
         return '#EF6C00';
     }
   };
+
+  if (horizontal) {
+    return (
+      <Pressable
+        onPress={onPress}
+        style={({ pressed }) => [styles.horizontalPressable, pressed ? styles.cardPressed : null]}>
+        <View
+          style={[
+            styles.horizontalCard,
+            {
+              backgroundColor: theme.card,
+              borderColor: theme.border,
+              shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
+            },
+          ]}>
+          <Image source={{ uri: imageUrl }} style={styles.horizontalImage} />
+
+          <View style={styles.horizontalContent}>
+            {/* Header: Title and Rating */}
+            <View style={styles.horizontalHeaderRow}>
+              <Text style={[styles.horizontalTitle, { color: theme.text }]} numberOfLines={1}>
+                {title}
+              </Text>
+              <View style={styles.horizontalRating}>
+                <Ionicons name="star" size={10} color="#FFB300" />
+                <Text style={[styles.horizontalRatingText, { color: theme.text }]}>
+                  {difficulty === 'Facile' ? '4.8' : difficulty === 'Modéré' ? '4.5' : '4.2'}
+                </Text>
+              </View>
+            </View>
+
+            {/* Middle Row: Tag + Distance + Duration */}
+            <View style={styles.horizontalMetaRow}>
+              <View
+                style={[styles.difficultyBadgeCompact, { backgroundColor: getDifficultyColor() }]}>
+                <Text style={styles.difficultyTextCompact}>{difficulty}</Text>
+              </View>
+              <Text style={[styles.horizontalMetaText, { color: theme.textMuted }]}>
+                {distance} • {trainDuration}
+              </Text>
+            </View>
+
+            {/* Station */}
+            <Text
+              style={[styles.horizontalStationText, { color: theme.textMuted }]}
+              numberOfLines={1}>
+              🚆 {departureStation}
+            </Text>
+
+            {/* Action text */}
+            <Text style={[styles.horizontalActionText, { color: theme.tint }]}>
+              Détails de la rando →
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
 
   return (
     <Pressable
@@ -218,11 +278,13 @@ const styles = StyleSheet.create({
     }),
   },
   weatherText: {
+    fontFamily: 'Satoshi',
     color: '#1A251E',
     fontSize: 12,
     fontWeight: '700',
   },
   trainText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',
@@ -240,6 +302,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   difficultyText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '800',
@@ -251,6 +314,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   elevationText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 11,
     fontWeight: '600',
@@ -259,6 +323,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   title: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 18,
     fontWeight: '700',
     lineHeight: 24,
@@ -277,11 +342,98 @@ const styles = StyleSheet.create({
     width: 28,
   },
   infoText: {
+    fontFamily: 'Satoshi',
     fontSize: 14,
     fontWeight: '500',
     flex: 1,
   },
   distanceText: {
+    fontFamily: 'Satoshi',
     fontWeight: '700',
+  },
+  horizontalPressable: {
+    width: 320,
+    marginRight: 12,
+  },
+  horizontalCard: {
+    flexDirection: 'row',
+    height: 105,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.04,
+        shadowRadius: 6,
+      },
+      android: {
+        elevation: 1.5,
+      },
+    }),
+  },
+  horizontalImage: {
+    width: 105,
+    height: '100%',
+  },
+  horizontalContent: {
+    flex: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    justifyContent: 'space-between',
+  },
+  horizontalHeaderRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 8,
+  },
+  horizontalTitle: {
+    fontFamily: 'BricolageGrotesque',
+    fontSize: 14,
+    fontWeight: '700',
+    flex: 1,
+  },
+  horizontalRating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+  },
+  horizontalRatingText: {
+    fontFamily: 'Satoshi',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  horizontalMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  difficultyBadgeCompact: {
+    borderRadius: 4,
+    paddingHorizontal: 5,
+    paddingVertical: 1.5,
+  },
+  difficultyTextCompact: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontFamily: 'Satoshi',
+    fontWeight: '800',
+    textTransform: 'uppercase',
+  },
+  horizontalMetaText: {
+    fontFamily: 'Satoshi',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  horizontalStationText: {
+    fontFamily: 'Satoshi',
+    fontSize: 10,
+    fontWeight: '500',
+  },
+  horizontalActionText: {
+    fontFamily: 'Satoshi',
+    fontSize: 10,
+    fontWeight: '800',
   },
 });

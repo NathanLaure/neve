@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme, setThemeOverride, getThemeOverride } from '@/components/useColorScheme';
@@ -9,6 +10,22 @@ import { useColorScheme, setThemeOverride, getThemeOverride } from '@/components
 export default function ProfileScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const pathname = usePathname();
+  const isFocused = pathname === '/profile';
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (isFocused) {
+      fadeAnim.setValue(0.3);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [isFocused, fadeAnim]);
 
   // Track the override locally to update segmented buttons immediately
   const [activeTheme, setActiveTheme] = useState<'light' | 'dark' | null>(() => getThemeOverride());
@@ -19,197 +36,202 @@ export default function ProfileScreen() {
   };
 
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right']}
-      style={[styles.safeArea, { backgroundColor: theme.background }]}>
-      <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-        {/* Header */}
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Mon Profil</Text>
-          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-            {"Suivez votre impact écologique et gérez vos préférences d'affichage."}
-          </Text>
-        </View>
+    <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        style={[styles.safeArea, { backgroundColor: theme.background }]}>
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Text style={[styles.headerTitle, { color: theme.text }]}>Mon Profil</Text>
+            <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+              {"Suivez votre impact écologique et gérez vos préférences d'affichage."}
+            </Text>
+          </View>
 
-        {/* User Card */}
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <View style={styles.userProfileRow}>
-            <View style={[styles.avatarContainer, { backgroundColor: theme.greenBadge }]}>
-              <Ionicons name="leaf" size={32} color={theme.tint} />
-            </View>
-            <View style={styles.userInfo}>
-              <Text style={[styles.userName, { color: theme.text }]}>Nathan Laure</Text>
-              <View style={[styles.badge, { backgroundColor: theme.tint }]}>
-                <Text style={styles.badgeText}>{"Éco-Explorateur d'Or"}</Text>
+          {/* User Card */}
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <View style={styles.userProfileRow}>
+              <View style={[styles.avatarContainer, { backgroundColor: theme.greenBadge }]}>
+                <Ionicons name="leaf" size={32} color={theme.tint} />
+              </View>
+              <View style={styles.userInfo}>
+                <Text style={[styles.userName, { color: theme.text }]}>Nathan Laure</Text>
+                <View style={[styles.badge, { backgroundColor: theme.tint }]}>
+                  <Text style={styles.badgeText}>{"Éco-Explorateur d'Or"}</Text>
+                </View>
               </View>
             </View>
           </View>
-        </View>
 
-        {/* Eco Stats Title */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Impact Éco-Responsable</Text>
+          {/* Eco Stats Title */}
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Impact Éco-Responsable</Text>
 
-        {/* Eco Stats Grid */}
-        <View style={styles.statsGrid}>
-          {/* Card 1: CO2 */}
-          <View
-            style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="cloud-outline" size={24} color="#2D6A4F" />
-            <Text style={[styles.statValue, { color: theme.text }]}>84 kg</Text>
-            <Text style={[styles.statLabel, { color: theme.textMuted }]}>CO₂ économisé</Text>
+          {/* Eco Stats Grid */}
+          <View style={styles.statsGrid}>
+            {/* Card 1: CO2 */}
+            <View
+              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="cloud-outline" size={24} color="#2D6A4F" />
+              <Text style={[styles.statValue, { color: theme.text }]}>84 kg</Text>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>CO₂ économisé</Text>
+            </View>
+
+            {/* Card 2: Hikes */}
+            <View
+              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="trail-sign-outline" size={24} color={theme.tint} />
+              <Text style={[styles.statValue, { color: theme.text }]}>6</Text>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>Aventures</Text>
+            </View>
+
+            {/* Card 3: Distance */}
+            <View
+              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
+              <Ionicons name="train-outline" size={24} color={theme.secondary} />
+              <Text style={[styles.statValue, { color: theme.text }]}>320 km</Text>
+              <Text style={[styles.statLabel, { color: theme.textMuted }]}>En train</Text>
+            </View>
           </View>
 
-          {/* Card 2: Hikes */}
-          <View
-            style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="trail-sign-outline" size={24} color={theme.tint} />
-            <Text style={[styles.statValue, { color: theme.text }]}>6</Text>
-            <Text style={[styles.statLabel, { color: theme.textMuted }]}>Aventures</Text>
-          </View>
-
-          {/* Card 3: Distance */}
-          <View
-            style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Ionicons name="train-outline" size={24} color={theme.secondary} />
-            <Text style={[styles.statValue, { color: theme.text }]}>320 km</Text>
-            <Text style={[styles.statLabel, { color: theme.textMuted }]}>En train</Text>
-          </View>
-        </View>
-
-        {/* Preferences Section */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>
-          {"Préférences de l'Application"}
-        </Text>
-
-        <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-          <Text style={[styles.cardLabel, { color: theme.text, marginBottom: 12 }]}>
-            {"Thème d'affichage"}
+          {/* Preferences Section */}
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            {"Préférences de l'Application"}
           </Text>
 
-          {/* Segmented Theme Picker */}
+          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
+            <Text style={[styles.cardLabel, { color: theme.text, marginBottom: 12 }]}>
+              {"Thème d'affichage"}
+            </Text>
+
+            {/* Segmented Theme Picker */}
+            <View
+              style={[
+                styles.segmentedControl,
+                { backgroundColor: theme.background, borderColor: theme.border },
+              ]}>
+              {/* Light Option */}
+              <Pressable
+                onPress={() => handleThemeChange('light')}
+                style={styles.segmentBtnWrapper}>
+                <View
+                  style={[
+                    styles.segmentBtn,
+                    activeTheme === 'light'
+                      ? { backgroundColor: theme.card }
+                      : { backgroundColor: 'transparent' },
+                  ]}>
+                  <Ionicons
+                    name="sunny"
+                    size={16}
+                    color={activeTheme === 'light' ? theme.tint : theme.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: activeTheme === 'light' ? theme.text : theme.textMuted },
+                    ]}>
+                    Clair
+                  </Text>
+                </View>
+              </Pressable>
+
+              {/* Dark Option */}
+              <Pressable onPress={() => handleThemeChange('dark')} style={styles.segmentBtnWrapper}>
+                <View
+                  style={[
+                    styles.segmentBtn,
+                    activeTheme === 'dark'
+                      ? { backgroundColor: theme.card }
+                      : { backgroundColor: 'transparent' },
+                  ]}>
+                  <Ionicons
+                    name="moon"
+                    size={16}
+                    color={activeTheme === 'dark' ? theme.tint : theme.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: activeTheme === 'dark' ? theme.text : theme.textMuted },
+                    ]}>
+                    Sombre
+                  </Text>
+                </View>
+              </Pressable>
+
+              {/* System Option */}
+              <Pressable onPress={() => handleThemeChange(null)} style={styles.segmentBtnWrapper}>
+                <View
+                  style={[
+                    styles.segmentBtn,
+                    activeTheme === null
+                      ? { backgroundColor: theme.card }
+                      : { backgroundColor: 'transparent' },
+                  ]}>
+                  <Ionicons
+                    name="options-outline"
+                    size={16}
+                    color={activeTheme === null ? theme.tint : theme.textMuted}
+                  />
+                  <Text
+                    style={[
+                      styles.segmentText,
+                      { color: activeTheme === null ? theme.text : theme.textMuted },
+                    ]}>
+                    Système
+                  </Text>
+                </View>
+              </Pressable>
+            </View>
+          </View>
+
+          {/* Eco-hiker Charter */}
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>
+            {"Charte de l'Éco-Voyageur"}
+          </Text>
+
           <View
             style={[
-              styles.segmentedControl,
-              { backgroundColor: theme.background, borderColor: theme.border },
+              styles.card,
+              { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 40 },
             ]}>
-            {/* Light Option */}
-            <Pressable onPress={() => handleThemeChange('light')} style={styles.segmentBtnWrapper}>
-              <View
-                style={[
-                  styles.segmentBtn,
-                  activeTheme === 'light'
-                    ? { backgroundColor: theme.card }
-                    : { backgroundColor: 'transparent' },
-                ]}>
-                <Ionicons
-                  name="sunny"
-                  size={16}
-                  color={activeTheme === 'light' ? theme.tint : theme.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: activeTheme === 'light' ? theme.text : theme.textMuted },
-                  ]}>
-                  Clair
+            <View style={styles.charterItem}>
+              <Text style={styles.charterIcon}>🚆</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.charterTitle, { color: theme.text }]}>Mobilité Douce</Text>
+                <Text style={[styles.charterText, { color: theme.textMuted }]}>
+                  Privilégier le train et les transports en commun pour se rendre au point de départ
+                  de chaque randonnée.
                 </Text>
               </View>
-            </Pressable>
+            </View>
 
-            {/* Dark Option */}
-            <Pressable onPress={() => handleThemeChange('dark')} style={styles.segmentBtnWrapper}>
-              <View
-                style={[
-                  styles.segmentBtn,
-                  activeTheme === 'dark'
-                    ? { backgroundColor: theme.card }
-                    : { backgroundColor: 'transparent' },
-                ]}>
-                <Ionicons
-                  name="moon"
-                  size={16}
-                  color={activeTheme === 'dark' ? theme.tint : theme.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: activeTheme === 'dark' ? theme.text : theme.textMuted },
-                  ]}>
-                  Sombre
+            <View style={[styles.charterItem, { marginTop: 14 }]}>
+              <Text style={styles.charterIcon}>🚯</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.charterTitle, { color: theme.text }]}>Zéro Déchet</Text>
+                <Text style={[styles.charterText, { color: theme.textMuted }]}>
+                  Ne laisser aucune trace. Emporter ses déchets et trier une fois rentré à la
+                  maison.
                 </Text>
               </View>
-            </Pressable>
+            </View>
 
-            {/* System Option */}
-            <Pressable onPress={() => handleThemeChange(null)} style={styles.segmentBtnWrapper}>
-              <View
-                style={[
-                  styles.segmentBtn,
-                  activeTheme === null
-                    ? { backgroundColor: theme.card }
-                    : { backgroundColor: 'transparent' },
-                ]}>
-                <Ionicons
-                  name="options-outline"
-                  size={16}
-                  color={activeTheme === null ? theme.tint : theme.textMuted}
-                />
-                <Text
-                  style={[
-                    styles.segmentText,
-                    { color: activeTheme === null ? theme.text : theme.textMuted },
-                  ]}>
-                  Système
+            <View style={[styles.charterItem, { marginTop: 14 }]}>
+              <Text style={styles.charterIcon}>🌿</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.charterTitle, { color: theme.text }]}>Respect du Vivant</Text>
+                <Text style={[styles.charterText, { color: theme.textMuted }]}>
+                  Rester sur les sentiers balisés pour ne pas piétiner la flore et ne pas perturber
+                  la faune sauvage.
                 </Text>
               </View>
-            </Pressable>
-          </View>
-        </View>
-
-        {/* Eco-hiker Charter */}
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>
-          {"Charte de l'Éco-Voyageur"}
-        </Text>
-
-        <View
-          style={[
-            styles.card,
-            { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 40 },
-          ]}>
-          <View style={styles.charterItem}>
-            <Text style={styles.charterIcon}>🚆</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.charterTitle, { color: theme.text }]}>Mobilité Douce</Text>
-              <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                Privilégier le train et les transports en commun pour se rendre au point de départ
-                de chaque randonnée.
-              </Text>
             </View>
           </View>
-
-          <View style={[styles.charterItem, { marginTop: 14 }]}>
-            <Text style={styles.charterIcon}>🚯</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.charterTitle, { color: theme.text }]}>Zéro Déchet</Text>
-              <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                Ne laisser aucune trace. Emporter ses déchets et trier une fois rentré à la maison.
-              </Text>
-            </View>
-          </View>
-
-          <View style={[styles.charterItem, { marginTop: 14 }]}>
-            <Text style={styles.charterIcon}>🌿</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.charterTitle, { color: theme.text }]}>Respect du Vivant</Text>
-              <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                Rester sur les sentiers balisés pour ne pas piétiner la flore et ne pas perturber la
-                faune sauvage.
-              </Text>
-            </View>
-          </View>
-        </View>
-      </ScrollView>
-    </SafeAreaView>
+        </ScrollView>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 
@@ -226,11 +248,13 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
   headerSub: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
@@ -270,6 +294,7 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   userName: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 18,
     fontWeight: '850',
   },
@@ -280,11 +305,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 10,
     fontWeight: '800',
   },
   sectionTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -306,15 +333,18 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statValue: {
+    fontFamily: 'Satoshi',
     fontSize: 16,
     fontWeight: '900',
   },
   statLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '700',
     textAlign: 'center',
   },
   cardLabel: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 14,
     fontWeight: '800',
   },
@@ -337,6 +367,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   segmentText: {
+    fontFamily: 'Satoshi',
     fontSize: 11,
     fontWeight: '800',
   },
@@ -350,11 +381,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   charterTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 13,
     fontWeight: '800',
     marginBottom: 2,
   },
   charterText: {
+    fontFamily: 'Satoshi',
     fontSize: 11,
     lineHeight: 16,
     fontWeight: '500',

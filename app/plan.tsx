@@ -553,6 +553,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   errorText: {
+    fontFamily: 'Satoshi',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 20,
@@ -563,6 +564,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontWeight: '700',
   },
@@ -581,17 +583,20 @@ const styles = StyleSheet.create({
     marginVertical: 16,
   },
   hikeSummaryLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   hikeSummaryTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 18,
     fontWeight: '900',
     marginTop: 4,
     marginBottom: 6,
   },
   hikeSummarySpecs: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -613,6 +618,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   stepNumberTextCollapsed: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '800',
   },
@@ -626,10 +632,12 @@ const styles = StyleSheet.create({
     borderColor: 'transparent',
   },
   stepTitleCollapsed: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 15,
     fontWeight: '700',
   },
   collapsedSummaryText: {
+    fontFamily: 'Satoshi',
     fontSize: 13,
     fontWeight: '800',
   },
@@ -650,20 +658,39 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   stepNumberText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '800',
   },
   stepTitleExpanded: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 16,
     fontWeight: '800',
   },
   stepHelperText: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     lineHeight: 18,
     marginBottom: 14,
   },
+  customDateInput: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 14,
+  },
+  customDateInputText: {
+    fontFamily: 'Satoshi',
+    fontSize: 14,
+    fontWeight: '600',
+  },
   inputLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '700',
     textTransform: 'uppercase',
@@ -683,11 +710,13 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   dateCardDay: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '700',
     textTransform: 'uppercase',
   },
   dateCardNum: {
+    fontFamily: 'Satoshi',
     fontSize: 18,
     fontWeight: '850',
   },
@@ -699,6 +728,7 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   stationSelectorText: {
+    fontFamily: 'Satoshi',
     fontSize: 11,
     fontWeight: '700',
   },
@@ -709,6 +739,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   stationPillText: {
+    fontFamily: 'Satoshi',
     fontSize: 10,
     fontWeight: '800',
   },
@@ -728,10 +759,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   trainCardTime: {
+    fontFamily: 'Satoshi',
     fontSize: 16,
     fontWeight: '800',
   },
   trainCardPrice: {
+    fontFamily: 'Satoshi',
     fontSize: 15,
     fontWeight: '850',
   },
@@ -741,10 +774,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   trainCardMeta: {
+    fontFamily: 'Satoshi',
     fontSize: 11,
     fontWeight: '600',
   },
   trainCardDuration: {
+    fontFamily: 'Satoshi',
     fontSize: 11,
     fontWeight: '500',
   },
@@ -759,6 +794,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F5F3E',
   },
   confirmBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 14,
     fontWeight: '800',

@@ -1,3 +1,14 @@
 Please read the INSTRUCTIONS.md file in the .agents directory (file:///Users/nathan/neve/.agents/INSTRUCTIONS.md) to understand the design system, folder architecture, styling guidelines, and variable naming conventions of the Neve application before writing any code.
 
 Ensure all new components, routes, and logic fully adhere to these rules.
+
+---
+### 🦥 MODE PONYTAIL (Lazy Senior Developer)
+# Pour désactiver ce mode, commentez ou supprimez simplement cette section.
+- **YAGNI (You Ain't Gonna Need It)** : Ne créez pas de code ou d'abstraction pour un besoin spéculatif ou futur.
+- **Natif & Stdlib d'abord** : Utilisez les API natives d'Expo (ex. expo-location, expo-symbols) et les fonctionnalités de base de JavaScript/React Native avant d'installer de nouvelles dépendances npm.
+- **Simplicité & Minimalisme** : Visez toujours la solution la plus courte, simple et propre possible. Si un problème peut être résolu de manière simple, évitez les architectures complexes.
+- **Suppression > Ajout** : Privilégiez le nettoyage, la suppression de code inutile ou la simplification à l'ajout de nouvelles couches de code.
+- **Pas d'abstractions inutiles** : Pas d'interfaces à implémentation unique, pas de boilerplate ou de scaffolding "pour plus tard".
+- **Commentaires de simplification** : Marquez les simplifications volontaires avec un commentaire `// ponytail: <explication>`.
+- **Icônes Lucide** : Utilisez exclusivement les icônes de `lucide-react-native` dans toute l'application (sauf rares exceptions justifiées). Évitez `Ionicons` ou `FontAwesome` pour les nouveaux développements.

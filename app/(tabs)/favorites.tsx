@@ -1,8 +1,8 @@
-import React from 'react';
-import { StyleSheet, Text, View, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, Pressable, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -11,40 +11,58 @@ export default function FavoritesScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
+  const pathname = usePathname();
+  const isFocused = pathname === '/favorites';
+  const [fadeAnim] = useState(() => new Animated.Value(0));
+
+  useEffect(() => {
+    if (isFocused) {
+      fadeAnim.setValue(0.3);
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      fadeAnim.setValue(0);
+    }
+  }, [isFocused, fadeAnim]);
 
   return (
-    <SafeAreaView
-      edges={['top', 'left', 'right']}
-      style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.header}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>Mes Favoris</Text>
-        <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-          Retrouvez les randonnées que vous avez aimées pour les planifier plus tard.
-        </Text>
-      </View>
-
-      <View style={styles.emptyContainer}>
-        <View style={[styles.iconWrapper, { backgroundColor: theme.greenBadge }]}>
-          <Ionicons name="heart" size={40} color={theme.tint} />
+    <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
+      <SafeAreaView
+        edges={['top', 'left', 'right']}
+        style={[styles.container, { backgroundColor: theme.background }]}>
+        <View style={styles.header}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>Mes Favoris</Text>
+          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+            Retrouvez les randonnées que vous avez aimées pour les planifier plus tard.
+          </Text>
         </View>
-        <Text style={[styles.emptyTitle, { color: theme.text }]}>
-          {"Aucun favori pour l'instant"}
-        </Text>
-        <Text style={[styles.emptySub, { color: theme.textMuted }]}>
-          {
-            "Ajoutez des randonnées en favoris depuis l'explorateur pour les retrouver rapidement ici."
-          }
-        </Text>
 
-        <Pressable
-          onPress={() => router.push('/')}
-          style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-          <View style={[styles.exploreBtn, { backgroundColor: theme.tint }]}>
-            <Text style={styles.exploreBtnText}>Explorer les randos</Text>
+        <View style={styles.emptyContainer}>
+          <View style={[styles.iconWrapper, { backgroundColor: theme.greenBadge }]}>
+            <Ionicons name="heart" size={40} color={theme.tint} />
           </View>
-        </Pressable>
-      </View>
-    </SafeAreaView>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>
+            {"Aucun favori pour l'instant"}
+          </Text>
+          <Text style={[styles.emptySub, { color: theme.textMuted }]}>
+            {
+              "Ajoutez des randonnées en favoris depuis l'explorateur pour les retrouver rapidement ici."
+            }
+          </Text>
+
+          <Pressable
+            onPress={() => router.push('/')}
+            style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
+            <View style={[styles.exploreBtn, { backgroundColor: theme.tint }]}>
+              <Text style={styles.exploreBtnText}>Explorer les randos</Text>
+            </View>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    </Animated.View>
   );
 }
 
@@ -58,11 +76,13 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   headerTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 22,
     fontWeight: '900',
     letterSpacing: -0.5,
   },
   headerSub: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
@@ -85,10 +105,12 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 18,
     fontWeight: '850',
   },
   emptySub: {
+    fontFamily: 'Satoshi',
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 20,
@@ -100,6 +122,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   exploreBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontWeight: '800',
     fontSize: 14,

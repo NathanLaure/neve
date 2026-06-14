@@ -1,39 +1,41 @@
-const tintColorLight = '#386641'; // Vert sapin moderne (Brand)
-const tintColorDark = '#4CAF50'; // Vert forêt clair lisible
+const tintColorLight = '#EB490B'; // Orange vif sémantique (Primary-600)
+const tintColorDark = '#FA6415'; // Orange clair sémantique (Primary-500)
 
 export default {
   light: {
-    text: '#1A251E', // Pine Black (très foncé avec une touche de vert)
-    background: '#F8FAFC', // Fond de canevas clair très doux
+    text: '#292929', // neutral-900
+    background: '#EFEFEF', // neutral-50
     tint: tintColorLight,
-    tabIconDefault: '#A3B5AA', // Vert grisâtre atténué
+    tabIconDefault: '#7C7C7C', // neutral-400
     tabIconSelected: tintColorLight,
-    primary: '#386641', // Vert sapin
-    primaryLight: '#2D6A4F', // Vert forêt intermédiaire
-    secondary: '#457B9D', // Bleu lac de montagne
-    warning: '#B07D06', // Ocre terreux
-    card: '#FFFFFF', // Cartes blanches flottant magnifiquement
-    border: '#E0E6E2', // Bordure très douce
-    textMuted: '#62756A', // Texte secondaire doux
-    greenBadge: '#F2F6F3', // Fond badge vert sapin subtil (succès)
-    blueBadge: '#F1F5F7', // Fond badge bleu lac (info)
-    orangeBadge: '#FDFAF2', // Fond badge ocre (attention)
+    primary: '#EB490B', // Primary-600
+    primaryLight: '#C3350B', // Primary-700
+    secondary: '#457B9D', // blue-600
+    warning: '#B07D06', // amber-600
+    card: '#FFFFFF', // neutral-0
+    border: '#BDBDBD', // neutral-200
+    borderLight: '#DCDCDC', // neutral-100
+    textMuted: '#525252', // neutral-600
+    greenBadge: '#F2F6F3', // status-bg-success-subtle
+    blueBadge: '#F1F5F7', // status-bg-info-subtle
+    orangeBadge: '#FDFAF2', // status-bg-warning-subtle
   },
   dark: {
-    text: '#F4F6F3', // Blanc cassé
-    background: '#070A08', // Vert-noir ultra profond
+    text: '#EFEFEF', // neutral-50
+    background: '#292929', // neutral-900
     tint: tintColorDark,
-    tabIconDefault: '#55685C',
+    tabIconDefault: '#989898', // neutral-300
     tabIconSelected: tintColorDark,
-    primary: '#4CAF50', // Vert forêt vif lisible
-    primaryLight: '#81C784',
-    secondary: '#98C1D9', // Bleu brumeux adapté au mode sombre
-    warning: '#E9C46A', // Jaune moutarde doux
-    card: '#16221A', // Vert pin profond légèrement plus clair pour faire ressortir les cartes
-    border: '#16221A',
-    textMuted: '#A3B5AA',
-    greenBadge: '#0D1F11', // Vert sapin sombre
-    blueBadge: '#0A192F', // Bleu sombre
-    orangeBadge: '#241800', // Ocre sombre
+    primary: '#FA6415', // Primary-500
+    primaryLight: '#FC863B', // Primary-400
+    secondary: '#98C1D9', // blue-500
+    warning: '#E9C46A', // amber-500
+    card: '#1B1B1B', // neutral-950
+    border: '#3D3D3D', // neutral-800
+    borderLight: '#525252', // neutral-600
+    textMuted: '#989898', // neutral-300
+    greenBadge: '#0D1F11', // status-bg-success-subtle
+    blueBadge: '#0A192F', // status-bg-info-subtle
+    orangeBadge: '#241800', // status-bg-warning-subtle
   },
 };

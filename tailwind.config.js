@@ -25,6 +25,7 @@ module.exports = {
 
         // Bordures
         'border-default': 'var(--border-default)',
+        'border-light': 'var(--border-light)',
         'border-strong': 'var(--border-strong)',
         'border-focus': 'var(--border-focus)',
         'border-disabled': 'var(--border-disabled)',
@@ -42,6 +43,10 @@ module.exports = {
         'status-bg-info': 'var(--status-bg-info)',
         'status-bg-info-subtle': 'var(--status-bg-info-subtle)',
         'status-text-info': 'var(--status-text-info)',
+      },
+      fontFamily: {
+        sans: ['Satoshi', 'sans-serif'],
+        display: ['BricolageGrotesque', 'sans-serif'],
       },
     },
   },

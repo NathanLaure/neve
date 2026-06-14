@@ -4,10 +4,7 @@
     "slug": "neve",
     "version": "1.0.0",
     "scheme": "neve",
-    "platforms": [
-      "ios",
-      "android"
-    ],
+    "platforms": ["ios", "android"],
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -17,7 +14,9 @@
       "expo-router",
       "expo-status-bar",
       "expo-web-browser",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-font",
+      "expo-splash-screen"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -31,9 +30,7 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "assetBundlePatterns": [
-      "**/*"
-    ],
+    "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true
     },

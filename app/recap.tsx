@@ -618,6 +618,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   errorText: {
+    fontFamily: 'Satoshi',
     fontSize: 16,
     fontWeight: '700',
     marginBottom: 20,
@@ -628,6 +629,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontWeight: '700',
   },
@@ -651,11 +653,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   statusTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 14,
     fontWeight: '900',
     marginBottom: 2,
   },
   statusSub: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     lineHeight: 16,
   },
@@ -670,11 +674,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   infoCardTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 14,
     fontWeight: '900',
     marginBottom: 2,
   },
   infoCardSub: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     lineHeight: 16,
   },
@@ -686,6 +692,7 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
   sectionTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 15,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -731,6 +738,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
   },
   markerLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 8,
     fontWeight: '800',
     backgroundColor: 'rgba(255,255,255,0.85)',
@@ -777,11 +785,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   timelineStepLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 9,
     fontWeight: '700',
     letterSpacing: 0.6,
   },
   timelineStepTitle: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 14,
     fontWeight: '800',
     marginTop: 4,
@@ -796,10 +806,12 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
   },
   detailLabel: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '600',
   },
   detailVal: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '700',
   },
@@ -812,6 +824,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   editInlineText: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '850',
   },
@@ -837,6 +850,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
   },
   laterBtnText: {
+    fontFamily: 'Satoshi',
     fontSize: 15,
     fontWeight: '800',
   },
@@ -863,6 +877,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F5F3E',
   },
   bookBtnText: {
+    fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 15,
     fontWeight: '850',
@@ -875,11 +890,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   loadingText: {
+    fontFamily: 'BricolageGrotesque',
     fontSize: 16,
     fontWeight: '800',
     marginTop: 10,
   },
   loadingSubText: {
+    fontFamily: 'Satoshi',
     fontSize: 12,
     textAlign: 'center',
     lineHeight: 18,
