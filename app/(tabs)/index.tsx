@@ -115,8 +115,7 @@ export default function ExplorerScreen() {
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <StatusBar
           barStyle={
-            colorScheme === 'dark' ||
-            (sheetIndex !== 2 && (mapStyle === 'satellite' || showLayerSheet))
+            colorScheme === 'dark' || sheetIndex !== 2
               ? 'light-content'
               : 'dark-content'
           }

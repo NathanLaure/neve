@@ -14,6 +14,7 @@ import {
   Dimensions,
   BackHandler,
   Easing,
+  StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -244,6 +245,13 @@ export default function SearchModal() {
   // Animated value for background fade
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
+  // Interpolated opacity for the search card: it fades out quickly in the first 250 points of the slide down
+  const cardOpacity = slideAnim.interpolate({
+    inputRange: [0, 250],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
   useEffect(() => {
     // Animate content up and fade background in on mount
     Animated.parallel([
@@ -263,18 +271,19 @@ export default function SearchModal() {
   }, [slideAnim, fadeAnim]);
 
   const handleClose = () => {
-    // Animate content down and fade background out on close, then navigate back
+    // Animate content down with an ease-in curve (starts slow, accelerates)
+    // and fade the background overlay out.
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: SCREEN_HEIGHT,
-        duration: 250,
-        easing: Easing.bezier(0.16, 1, 0.3, 1),
+        duration: 280,
+        easing: Easing.bezier(0.3, 0, 0.8, 0.15), // ease-in
         useNativeDriver: true,
       }),
       Animated.timing(fadeAnim, {
         toValue: 0,
-        duration: 250,
-        easing: Easing.bezier(0.16, 1, 0.3, 1),
+        duration: 280,
+        easing: Easing.linear,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -521,6 +530,9 @@ export default function SearchModal() {
 
   return (
     <View style={styles.rootContainer}>
+      <StatusBar
+        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+      />
       <Animated.View
         style={[
           StyleSheet.absoluteFill,
@@ -528,7 +540,9 @@ export default function SearchModal() {
             opacity: fadeAnim,
             backgroundColor:
               Platform.OS === 'ios'
-                ? 'transparent'
+                ? colorScheme === 'dark'
+                  ? 'rgba(15, 15, 15, 0.45)'
+                  : 'rgba(255, 255, 255, 0.45)'
                 : colorScheme === 'dark'
                   ? 'rgba(20, 20, 20, 0.85)'
                   : 'rgba(245, 245, 245, 0.85)',
@@ -536,7 +550,7 @@ export default function SearchModal() {
         ]}>
         {Platform.OS === 'ios' && (
           <BlurView
-            intensity={75}
+            intensity={100}
             tint={colorScheme === 'dark' ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}
           />
@@ -551,7 +565,7 @@ export default function SearchModal() {
             {
               paddingTop: insets.top + 16,
               transform: [{ translateY: slideAnim }],
-              opacity: fadeAnim,
+              opacity: cardOpacity,
             },
           ]}>
           {/* Header */}

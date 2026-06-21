@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Pressable, Animated } from 'react-native';
+import { View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Search, Heart, Compass, UserRound } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
@@ -85,7 +85,16 @@ export default function TabBar({ state, descriptors, navigation }: any) {
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
 
-  const bottomPadding = insets.bottom > 0 ? insets.bottom : 20;
+  const bottomPadding = Platform.select({
+    ios: insets.bottom > 0 ? insets.bottom - 12 : 8,
+    android: 0,
+    default: 0,
+  }) ?? 0;
+  const baseHeight = Platform.select({
+    ios: 56,
+    android: 56,
+    default: 52,
+  }) ?? 52;
 
   return (
     <View
@@ -95,7 +104,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
           backgroundColor: theme.background,
           borderTopColor: theme.border,
           paddingBottom: bottomPadding,
-          height: 61 + bottomPadding,
+          height: baseHeight + bottomPadding,
         },
       ]}>
       {state.routes.map((route: any, index: number) => {
