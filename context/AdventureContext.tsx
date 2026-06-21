@@ -1,4 +1,12 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useMemo,
+  useCallback,
+  ReactNode,
+} from 'react';
 import * as Location from 'expo-location';
 import { RandoData, TrainOption, MOCK_RANDOS } from '@/constants/RandosData';
 import { supabase } from '@/utils/supabase';
@@ -36,6 +44,28 @@ interface AdventureContextType {
     durationText: string;
     distanceKm: number;
   };
+
+  // Search and Filters
+  searchQuery: string;
+  setSearchQuery: (query: string) => void;
+  selectedDifficulties: string[];
+  setSelectedDifficulties: (difficulties: string[]) => void;
+  maxTrainDuration: number | null;
+  setMaxTrainDuration: (duration: number | null) => void;
+  maxDistance: number | null;
+  setMaxDistance: (distance: number | null) => void;
+  maxElevation: number | null;
+  setMaxElevation: (elevation: number | null) => void;
+  dogsAllowed: boolean;
+  setDogsAllowed: (allowed: boolean) => void;
+  kidsFriendly: boolean;
+  setKidsFriendly: (friendly: boolean) => void;
+  selectedActivityTypes: string[];
+  setSelectedActivityTypes: (types: string[]) => void;
+  selectedPointsOfInterest: string[];
+  setSelectedPointsOfInterest: (pois: string[]) => void;
+  clearAllFilters: () => void;
+  filteredHikes: RandoData[];
 }
 
 const AdventureContext = createContext<AdventureContextType | undefined>(undefined);
@@ -66,6 +96,17 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
   const [hikes, setHikes] = useState<RandoData[]>(MOCK_RANDOS);
   const [isLoadingHikes, setIsLoadingHikes] = useState<boolean>(false);
+
+  // Search & Filters State
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
+  const [maxTrainDuration, setMaxTrainDuration] = useState<number | null>(null);
+  const [maxDistance, setMaxDistance] = useState<number | null>(null);
+  const [maxElevation, setMaxElevation] = useState<number | null>(null);
+  const [dogsAllowed, setDogsAllowed] = useState(false);
+  const [kidsFriendly, setKidsFriendly] = useState(false);
+  const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
+  const [selectedPointsOfInterest, setSelectedPointsOfInterest] = useState<string[]>([]);
 
   const loadHikes = async () => {
     setIsLoadingHikes(true);
@@ -156,49 +197,138 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // Helper to calculate transit time dynamically based on distance
-  const getTransitInfo = (rando: RandoData) => {
-    const distanceKm = calculateDistanceKm(
-      userLocation.latitude,
-      userLocation.longitude,
-      rando.startStationCoords.latitude,
-      rando.startStationCoords.longitude
-    );
-
-    // If near Paris (within 15km of Notre-Dame/Châtelet), use the default dataset values
-    const nearParis =
-      calculateDistanceKm(
+  const getTransitInfo = useCallback(
+    (rando: RandoData) => {
+      const distanceKm = calculateDistanceKm(
         userLocation.latitude,
         userLocation.longitude,
-        DEFAULT_COORDS.latitude,
-        DEFAULT_COORDS.longitude
-      ) < 15;
+        rando.startStationCoords.latitude,
+        rando.startStationCoords.longitude
+      );
 
-    if (nearParis) {
+      // If near Paris (within 15km of Notre-Dame/Châtelet), use the default dataset values
+      const nearParis =
+        calculateDistanceKm(
+          userLocation.latitude,
+          userLocation.longitude,
+          DEFAULT_COORDS.latitude,
+          DEFAULT_COORDS.longitude
+        ) < 15;
+
+      if (nearParis) {
+        return {
+          durationMinutes: rando.trainDurationMinutes,
+          durationText: `${rando.trainDurationMinutes} min`,
+          distanceKm,
+        };
+      }
+
+      // Otherwise calculate a dynamic time: ~1.5 mins per kilometer + 10 mins train buffer
+      // Cap at minimum 15 mins and maximum 180 mins
+      const durationMinutes = Math.max(15, Math.min(180, Math.round(distanceKm * 1.4 + 12)));
+
+      // Format duration nicely
+      let durationText = `${durationMinutes} min`;
+      if (durationMinutes >= 60) {
+        const hrs = Math.floor(durationMinutes / 60);
+        const mins = durationMinutes % 60;
+        durationText = mins > 0 ? `${hrs}h${mins < 10 ? '0' : ''}${mins}` : `${hrs}h`;
+      }
+
       return {
-        durationMinutes: rando.trainDurationMinutes,
-        durationText: `${rando.trainDurationMinutes} min`,
+        durationMinutes,
+        durationText,
         distanceKm,
       };
-    }
+    },
+    [userLocation]
+  );
 
-    // Otherwise calculate a dynamic time: ~1.5 mins per kilometer + 10 mins train buffer
-    // Cap at minimum 15 mins and maximum 180 mins
-    const durationMinutes = Math.max(15, Math.min(180, Math.round(distanceKm * 1.4 + 12)));
-
-    // Format duration nicely
-    let durationText = `${durationMinutes} min`;
-    if (durationMinutes >= 60) {
-      const hrs = Math.floor(durationMinutes / 60);
-      const mins = durationMinutes % 60;
-      durationText = mins > 0 ? `${hrs}h${mins < 10 ? '0' : ''}${mins}` : `${hrs}h`;
-    }
-
-    return {
-      durationMinutes,
-      durationText,
-      distanceKm,
-    };
+  const clearAllFilters = () => {
+    setSearchQuery('');
+    setSelectedDifficulties([]);
+    setMaxTrainDuration(null);
+    setMaxDistance(null);
+    setMaxElevation(null);
+    setDogsAllowed(false);
+    setKidsFriendly(false);
+    setSelectedActivityTypes([]);
+    setSelectedPointsOfInterest([]);
   };
+
+  const filteredHikes = useMemo(() => {
+    const filtered = hikes.filter((rando) => {
+      // 1. Text Search query (title, location, startStation, endStation)
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        const matchesText =
+          rando.title?.toLowerCase().includes(query) ||
+          rando.location?.toLowerCase().includes(query) ||
+          rando.startStation?.toLowerCase().includes(query) ||
+          rando.endStation?.toLowerCase().includes(query);
+        if (!matchesText) return false;
+      }
+
+      // 2. Difficulty
+      if (selectedDifficulties.length > 0) {
+        if (!selectedDifficulties.includes(rando.difficulty)) return false;
+      }
+
+      // 3. Hike Distance
+      if (maxDistance !== null) {
+        const distNum = parseFloat(rando.distance);
+        if (!isNaN(distNum) && distNum > maxDistance) return false;
+      }
+
+      // 4. Hike Elevation
+      if (maxElevation !== null) {
+        const elevNum = parseInt(rando.elevation.replace(/[^0-9]/g, ''), 10);
+        if (!isNaN(elevNum) && elevNum > maxElevation) return false;
+      }
+
+      // 5. Train Duration (Transit time)
+      if (maxTrainDuration !== null) {
+        const transitInfo = getTransitInfo(rando);
+        if (transitInfo.durationMinutes > maxTrainDuration) return false;
+      }
+
+      // 6. Dogs Allowed
+      if (dogsAllowed && !rando.dogsAllowed) return false;
+
+      // 7. Kids Friendly
+      if (kidsFriendly && !rando.kidsFriendly) return false;
+
+      // 8. Activity Types
+      if (selectedActivityTypes.length > 0) {
+        if (!rando.activityType || !selectedActivityTypes.includes(rando.activityType))
+          return false;
+      }
+
+      // 9. Points of Interest
+      if (selectedPointsOfInterest.length > 0) {
+        if (!rando.pointsOfInterest) return false;
+        const hasMatch = rando.pointsOfInterest.some((poi) =>
+          selectedPointsOfInterest.includes(poi)
+        );
+        if (!hasMatch) return false;
+      }
+
+      return true;
+    });
+    return filtered;
+  }, [
+    hikes,
+    searchQuery,
+    selectedDifficulties,
+    maxDistance,
+    maxElevation,
+    maxTrainDuration,
+    dogsAllowed,
+    kidsFriendly,
+    selectedActivityTypes,
+    selectedPointsOfInterest,
+    getTransitInfo,
+  ]);
 
   return (
     <AdventureContext.Provider
@@ -215,6 +345,26 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
         setUserLocationManually,
         refreshUserLocation,
         getTransitInfo,
+        searchQuery,
+        setSearchQuery,
+        selectedDifficulties,
+        setSelectedDifficulties,
+        maxTrainDuration,
+        setMaxTrainDuration,
+        maxDistance,
+        setMaxDistance,
+        maxElevation,
+        setMaxElevation,
+        dogsAllowed,
+        setDogsAllowed,
+        kidsFriendly,
+        setKidsFriendly,
+        selectedActivityTypes,
+        setSelectedActivityTypes,
+        selectedPointsOfInterest,
+        setSelectedPointsOfInterest,
+        clearAllFilters,
+        filteredHikes,
       }}>
       {children}
     </AdventureContext.Provider>

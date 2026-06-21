@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, Pressable, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Heart } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
@@ -42,7 +42,7 @@ export default function FavoritesScreen() {
 
         <View style={styles.emptyContainer}>
           <View style={[styles.iconWrapper, { backgroundColor: theme.greenBadge }]}>
-            <Ionicons name="heart" size={40} color={theme.tint} />
+            <Heart size={40} color={theme.tint} fill={theme.tint} />
           </View>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>
             {"Aucun favori pour l'instant"}

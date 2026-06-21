@@ -19,6 +19,22 @@ export default {
     greenBadge: '#F2F6F3', // status-bg-success-subtle
     blueBadge: '#F1F5F7', // status-bg-info-subtle
     orangeBadge: '#FDFAF2', // status-bg-warning-subtle
+    brandSubtle: '#FFF6ED', // bg/brand-subtle (Figma orange-subtle)
+    brandFocus: '#EB490B', // border/focus (selected brand focus)
+
+    // Figma Status Semantic Colors
+    statusBgSuccess: '#386641',
+    statusBgSuccessSubtle: '#F2F6F3',
+    statusTextSuccess: '#1E3522',
+    statusBgWarning: '#B07D06',
+    statusBgWarningSubtle: '#FDFAF2',
+    statusTextWarning: '#664600',
+    statusBgError: '#BC4749',
+    statusBgErrorSubtle: '#FDF4F4',
+    statusTextError: '#6F2022',
+    statusBgInfo: '#457B9D',
+    statusBgInfoSubtle: '#F1F5F7',
+    statusTextInfo: '#1D3557',
   },
   dark: {
     text: '#EFEFEF', // neutral-50
@@ -37,5 +53,21 @@ export default {
     greenBadge: '#0D1F11', // status-bg-success-subtle
     blueBadge: '#0A192F', // status-bg-info-subtle
     orangeBadge: '#241800', // status-bg-warning-subtle
+    brandSubtle: '#241800', // bg/brand-subtle dark
+    brandFocus: '#FA6415', // border/focus dark
+
+    // Figma Status Semantic Colors
+    statusBgSuccess: '#6A994E',
+    statusBgSuccessSubtle: '#0D1F11',
+    statusTextSuccess: '#C8DBC5',
+    statusBgWarning: '#E9C46A',
+    statusBgWarningSubtle: '#241800',
+    statusTextWarning: '#F4E2B0',
+    statusBgError: '#E07A5F',
+    statusBgErrorSubtle: '#260B0C',
+    statusTextError: '#F3C6C6',
+    statusBgInfo: '#98C1D9',
+    statusBgInfoSubtle: '#0A192F',
+    statusTextInfo: '#D0E1EC',
   },
 };

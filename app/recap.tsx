@@ -9,7 +9,15 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import {
+  ChevronLeft,
+  CheckCircle2,
+  AlertTriangle,
+  Info,
+  ChevronUp,
+  ChevronDown,
+  ExternalLink,
+} from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
@@ -175,7 +183,7 @@ export default function RecapScreen() {
           headerStyle: { backgroundColor: theme.card },
           headerLeft: () => (
             <Pressable onPress={handleBuyLater} style={styles.headerBack}>
-              <Ionicons name="chevron-back" size={20} color={theme.text} />
+              <ChevronLeft size={20} color={theme.text} />
             </Pressable>
           ),
         }}
@@ -211,11 +219,11 @@ export default function RecapScreen() {
                   borderColor: adventure.isBooked ? theme.tint : theme.warning,
                 },
               ]}>
-              <Ionicons
-                name={adventure.isBooked ? 'checkmark-circle' : 'warning'}
-                size={22}
-                color={adventure.isBooked ? theme.tint : theme.warning}
-              />
+              {adventure.isBooked ? (
+                <CheckCircle2 size={22} color={theme.tint} />
+              ) : (
+                <AlertTriangle size={22} color={theme.warning} />
+              )}
               <View style={{ flex: 1 }}>
                 <Text
                   style={[
@@ -244,7 +252,7 @@ export default function RecapScreen() {
                     borderColor: theme.secondary,
                   },
                 ]}>
-                <Ionicons name="information-circle" size={22} color={theme.secondary} />
+                <Info size={22} color={theme.secondary} />
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.infoCardTitle, { color: theme.text }]}>
                     Ticket Île-de-France (Navigo)
@@ -359,11 +367,11 @@ export default function RecapScreen() {
                         {rando.startStation}
                       </Text>
                     </View>
-                    <Ionicons
-                      name={expandedStep === 1 ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={theme.textMuted}
-                    />
+                    {expandedStep === 1 ? (
+                      <ChevronUp size={16} color={theme.textMuted} />
+                    ) : (
+                      <ChevronDown size={16} color={theme.textMuted} />
+                    )}
                   </Pressable>
 
                   {expandedStep === 1 && (
@@ -424,11 +432,11 @@ export default function RecapScreen() {
                         {rando.title}
                       </Text>
                     </View>
-                    <Ionicons
-                      name={expandedStep === 2 ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={theme.textMuted}
-                    />
+                    {expandedStep === 2 ? (
+                      <ChevronUp size={16} color={theme.textMuted} />
+                    ) : (
+                      <ChevronDown size={16} color={theme.textMuted} />
+                    )}
                   </Pressable>
 
                   {expandedStep === 2 && (
@@ -489,11 +497,11 @@ export default function RecapScreen() {
                         {adventure.departureStationName}
                       </Text>
                     </View>
-                    <Ionicons
-                      name={expandedStep === 3 ? 'chevron-up' : 'chevron-down'}
-                      size={16}
-                      color={theme.textMuted}
-                    />
+                    {expandedStep === 3 ? (
+                      <ChevronUp size={16} color={theme.textMuted} />
+                    ) : (
+                      <ChevronDown size={16} color={theme.textMuted} />
+                    )}
                   </Pressable>
 
                   {expandedStep === 3 && (
@@ -555,7 +563,7 @@ export default function RecapScreen() {
                     onPress={() => handleOpenIDF('sncf')}
                     style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}>
                     <View style={[styles.bookBtn, { backgroundColor: theme.tint, width: '100%' }]}>
-                      <Ionicons name="open-outline" size={16} color="#FFFFFF" />
+                      <ExternalLink size={16} color="#FFFFFF" />
                       <Text style={styles.bookBtnText} numberOfLines={1}>
                         SNCF Connect
                       </Text>
@@ -566,7 +574,7 @@ export default function RecapScreen() {
                     style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}>
                     <View
                       style={[styles.bookBtn, { backgroundColor: theme.secondary, width: '100%' }]}>
-                      <Ionicons name="open-outline" size={16} color="#FFFFFF" />
+                      <ExternalLink size={16} color="#FFFFFF" />
                       <Text style={styles.bookBtnText} numberOfLines={1}>
                         IDF Mobilités
                       </Text>
@@ -595,7 +603,7 @@ export default function RecapScreen() {
                   onPress={handleOpenTrainline}
                   style={({ pressed }) => ({ flex: 2.5, opacity: pressed ? 0.85 : 1 })}>
                   <View style={[styles.bookBtn, { backgroundColor: theme.tint, width: '100%' }]}>
-                    <Ionicons name="open-outline" size={16} color="#FFFFFF" />
+                    <ExternalLink size={16} color="#FFFFFF" />
                     <Text style={styles.bookBtnText}>
                       {adventure.isBooked ? 'Réserver à nouveau' : 'Réserver (Trainline)'}
                     </Text>

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Leaf, Cloud, Compass, Train, Sun, Moon, Settings } from 'lucide-react-native';
 import { usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
@@ -53,7 +53,7 @@ export default function ProfileScreen() {
           <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
             <View style={styles.userProfileRow}>
               <View style={[styles.avatarContainer, { backgroundColor: theme.greenBadge }]}>
-                <Ionicons name="leaf" size={32} color={theme.tint} />
+                <Leaf size={32} color={theme.tint} />
               </View>
               <View style={styles.userInfo}>
                 <Text style={[styles.userName, { color: theme.text }]}>Nathan Laure</Text>
@@ -72,7 +72,7 @@ export default function ProfileScreen() {
             {/* Card 1: CO2 */}
             <View
               style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="cloud-outline" size={24} color="#2D6A4F" />
+              <Cloud size={24} color="#2D6A4F" />
               <Text style={[styles.statValue, { color: theme.text }]}>84 kg</Text>
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>CO₂ économisé</Text>
             </View>
@@ -80,7 +80,7 @@ export default function ProfileScreen() {
             {/* Card 2: Hikes */}
             <View
               style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="trail-sign-outline" size={24} color={theme.tint} />
+              <Compass size={24} color={theme.tint} />
               <Text style={[styles.statValue, { color: theme.text }]}>6</Text>
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>Aventures</Text>
             </View>
@@ -88,7 +88,7 @@ export default function ProfileScreen() {
             {/* Card 3: Distance */}
             <View
               style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Ionicons name="train-outline" size={24} color={theme.secondary} />
+              <Train size={24} color={theme.secondary} />
               <Text style={[styles.statValue, { color: theme.text }]}>320 km</Text>
               <Text style={[styles.statLabel, { color: theme.textMuted }]}>En train</Text>
             </View>
@@ -121,11 +121,7 @@ export default function ProfileScreen() {
                       ? { backgroundColor: theme.card }
                       : { backgroundColor: 'transparent' },
                   ]}>
-                  <Ionicons
-                    name="sunny"
-                    size={16}
-                    color={activeTheme === 'light' ? theme.tint : theme.textMuted}
-                  />
+                  <Sun size={16} color={activeTheme === 'light' ? theme.tint : theme.textMuted} />
                   <Text
                     style={[
                       styles.segmentText,
@@ -145,11 +141,7 @@ export default function ProfileScreen() {
                       ? { backgroundColor: theme.card }
                       : { backgroundColor: 'transparent' },
                   ]}>
-                  <Ionicons
-                    name="moon"
-                    size={16}
-                    color={activeTheme === 'dark' ? theme.tint : theme.textMuted}
-                  />
+                  <Moon size={16} color={activeTheme === 'dark' ? theme.tint : theme.textMuted} />
                   <Text
                     style={[
                       styles.segmentText,
@@ -169,11 +161,7 @@ export default function ProfileScreen() {
                       ? { backgroundColor: theme.card }
                       : { backgroundColor: 'transparent' },
                   ]}>
-                  <Ionicons
-                    name="options-outline"
-                    size={16}
-                    color={activeTheme === null ? theme.tint : theme.textMuted}
-                  />
+                  <Settings size={16} color={activeTheme === null ? theme.tint : theme.textMuted} />
                   <Text
                     style={[
                       styles.segmentText,
@@ -248,17 +236,15 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
   },
   headerTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 22,
-    fontWeight: '900',
     letterSpacing: -0.5,
   },
   headerSub: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
-    fontWeight: '500',
   },
   card: {
     borderRadius: 20,
@@ -294,9 +280,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   userName: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 18,
-    fontWeight: '850',
   },
   badge: {
     paddingHorizontal: 10,
@@ -305,15 +290,13 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   badgeText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
   },
   sectionTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 15,
-    fontWeight: '800',
     letterSpacing: -0.3,
     marginBottom: 12,
   },
@@ -333,20 +316,17 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   statValue: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 16,
-    fontWeight: '900',
   },
   statLabel: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 10,
-    fontWeight: '700',
     textAlign: 'center',
   },
   cardLabel: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 14,
-    fontWeight: '800',
   },
   segmentedControl: {
     flexDirection: 'row',
@@ -367,9 +347,8 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   segmentText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 11,
-    fontWeight: '800',
   },
   charterItem: {
     flexDirection: 'row',
@@ -381,15 +360,13 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   charterTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 13,
-    fontWeight: '800',
     marginBottom: 2,
   },
   charterText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 11,
     lineHeight: 16,
-    fontWeight: '500',
   },
 });

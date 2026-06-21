@@ -1,7 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View, Image, ScrollView, Pressable, Platform } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Train, Map, Calendar } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
@@ -58,7 +58,7 @@ export default function RandoDetailScreen() {
           headerStyle: { backgroundColor: theme.card },
           headerLeft: () => (
             <Pressable onPress={() => router.back()} style={styles.headerBack}>
-              <Ionicons name="chevron-back" size={20} color={theme.text} />
+              <ChevronLeft size={20} color={theme.text} />
             </Pressable>
           ),
         }}
@@ -115,7 +115,7 @@ export default function RandoDetailScreen() {
         {/* Train Transport Segment */}
         <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="train" size={20} color={theme.secondary} />
+            <Train size={20} color={theme.secondary} />
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
               Transport Éco-Responsable
             </Text>
@@ -154,13 +154,15 @@ export default function RandoDetailScreen() {
               <View style={styles.metaItem}>
                 <Text style={styles.metaIcon}>⏱️</Text>
                 <Text style={[styles.metaText, { color: theme.text }]}>
-                  Trajet : <Text style={{ fontWeight: '800' }}>{transit.durationText}</Text>
+                  Trajet :{' '}
+                  <Text style={{ fontFamily: 'Satoshi-Bold' }}>{transit.durationText}</Text>
                 </Text>
               </View>
               <View style={styles.metaItem}>
                 <Text style={styles.metaIcon}>🎫</Text>
                 <Text style={[styles.metaText, { color: theme.text }]}>
-                  Est. : <Text style={{ fontWeight: '800' }}>{rando.priceEst.toFixed(2)}€</Text>
+                  Est. :{' '}
+                  <Text style={{ fontFamily: 'Satoshi-Bold' }}>{rando.priceEst.toFixed(2)}€</Text>
                 </Text>
               </View>
               <View style={[styles.trainBadge, { backgroundColor: theme.secondary }]}>
@@ -173,7 +175,7 @@ export default function RandoDetailScreen() {
         {/* GPX Map Trace */}
         <View style={[styles.section, { backgroundColor: theme.card, borderColor: theme.border }]}>
           <View style={styles.sectionHeaderRow}>
-            <Ionicons name="map" size={20} color={theme.tint} />
+            <Map size={20} color={theme.tint} />
             <Text style={[styles.sectionTitle, { color: theme.text }]}>
               {"Tracé GPX de l'Aventure"}
             </Text>
@@ -247,7 +249,7 @@ export default function RandoDetailScreen() {
           onPress={() => router.push(`/plan?randoId=${rando.id}`)}
           style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: '100%' })}>
           <View style={[styles.planBtn, { backgroundColor: theme.tint }]}>
-            <Ionicons name="calendar" size={20} color="#FFFFFF" />
+            <Calendar size={20} color="#FFFFFF" />
             <Text style={styles.planBtnText}>Planifier cette aventure</Text>
           </View>
         </Pressable>
@@ -324,9 +326,8 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   errorText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 16,
-    fontWeight: '700',
     marginBottom: 20,
   },
   backBtn: {
@@ -335,9 +336,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   backBtnText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
-    fontWeight: '700',
   },
   headerBack: {
     padding: 8,
@@ -366,10 +366,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   difficultyText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
     fontSize: 12,
-    fontWeight: '800',
     textTransform: 'uppercase',
   },
   section: {
@@ -384,17 +383,15 @@ const styles = StyleSheet.create({
     marginTop: 16,
   },
   title: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 22,
-    fontWeight: '900',
     letterSpacing: -0.5,
     marginBottom: 10,
   },
   description: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 14,
     lineHeight: 22,
-    fontWeight: '500',
     marginBottom: 16,
   },
   specsRow: {
@@ -415,15 +412,13 @@ const styles = StyleSheet.create({
     fontSize: 18,
   },
   specLabel: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 10,
-    fontWeight: '700',
     textTransform: 'uppercase',
   },
   specVal: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 12,
-    fontWeight: '800',
     marginTop: 1,
   },
   sectionHeaderRow: {
@@ -433,9 +428,8 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   sectionTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 16,
-    fontWeight: '800',
     letterSpacing: -0.3,
   },
   transitCard: {
@@ -467,15 +461,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
   },
   stationType: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 10,
-    fontWeight: '700',
     textTransform: 'uppercase',
   },
   stationName: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 14,
-    fontWeight: '800',
     marginTop: 2,
   },
   divider: {
@@ -496,9 +488,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   metaText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 12,
-    fontWeight: '600',
   },
   trainBadge: {
     borderRadius: 8,
@@ -506,10 +497,9 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   trainBadgeText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
     fontSize: 10,
-    fontWeight: '800',
   },
   gpxMap: {
     height: 200,
@@ -558,9 +548,8 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   markerLabel: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 9,
-    fontWeight: '800',
     backgroundColor: 'rgba(255,255,255,0.85)',
     paddingHorizontal: 4,
     paddingVertical: 1,
@@ -596,9 +585,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#1F5F3E',
   },
   planBtnText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
     fontSize: 16,
-    fontWeight: '800',
   },
 });

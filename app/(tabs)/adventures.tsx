@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { FlatList, StyleSheet, Text, View, Pressable, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
+import { Trash2, ChevronRight, Calendar } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
@@ -106,7 +106,7 @@ export default function MyAdventuresScreen() {
                       styles.deleteBtn,
                       { backgroundColor: theme.orangeBadge, opacity: pressed ? 0.7 : 1 },
                     ]}>
-                    <Ionicons name="trash" size={16} color="#C62828" />
+                    <Trash2 size={16} color="#C62828" />
                   </Pressable>
                 </View>
 
@@ -155,7 +155,7 @@ export default function MyAdventuresScreen() {
 
                   <View style={styles.actionLinkRow}>
                     <Text style={[styles.actionLink, { color: theme.tint }]}>Détails voyage</Text>
-                    <Ionicons name="chevron-forward" size={12} color={theme.tint} />
+                    <ChevronRight size={12} color={theme.tint} />
                   </View>
                 </View>
               </Pressable>
@@ -164,7 +164,7 @@ export default function MyAdventuresScreen() {
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <View style={[styles.emptyIconWrapper, { backgroundColor: theme.greenBadge }]}>
-                <Ionicons name="calendar-outline" size={40} color={theme.tint} />
+                <Calendar size={40} color={theme.tint} />
               </View>
               <Text style={[styles.emptyTitle, { color: theme.text }]}>Aucun voyage planifié</Text>
               <Text style={[styles.emptySub, { color: theme.textMuted }]}>
@@ -196,17 +196,15 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   headerTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 22,
-    fontWeight: '900',
     letterSpacing: -0.5,
   },
   headerSub: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 12,
     lineHeight: 18,
     marginTop: 4,
-    fontWeight: '500',
   },
   listContent: {
     paddingHorizontal: 16,
@@ -240,16 +238,14 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   cardDate: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 11,
-    fontWeight: '800',
     textTransform: 'uppercase',
     letterSpacing: 0.4,
   },
   cardTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 16,
-    fontWeight: '800',
     marginTop: 4,
   },
   deleteBtn: {
@@ -274,9 +270,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
   transitText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 12,
-    fontWeight: '600',
     flex: 1,
   },
   cardFooter: {
@@ -298,9 +293,8 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   statusText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 10,
-    fontWeight: '800',
     textTransform: 'uppercase',
   },
   actionLinkRow: {
@@ -309,9 +303,8 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   actionLink: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 12,
-    fontWeight: '800',
   },
   emptyContainer: {
     alignItems: 'center',
@@ -329,12 +322,11 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
-    fontFamily: 'BricolageGrotesque',
+    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 18,
-    fontWeight: '850',
   },
   emptySub: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 20,
@@ -347,9 +339,8 @@ const styles = StyleSheet.create({
     borderRadius: 14,
   },
   exploreBtnText: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
-    fontWeight: '800',
     fontSize: 14,
   },
 });

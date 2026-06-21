@@ -29,16 +29,22 @@ export interface RandoData {
   trainDurationMinutes: number; // base duration from Paris
   trainType: string;
   priceEst: number;
+  location?: string;
   gpxTrace: GPXPoint[];
   trainOptionsGo: TrainOption[];
   trainOptionsBack: TrainOption[];
   description: string;
+  dogsAllowed?: boolean;
+  kidsFriendly?: boolean;
+  activityType?: string;
+  pointsOfInterest?: string[];
 }
 
 export const MOCK_RANDOS: RandoData[] = [
   {
     id: '1',
     title: 'Les Balcons de la Vallée de Chevreuse',
+    location: 'Rambouillet, Yvelines, France',
     imageUrl:
       'https://images.unsplash.com/photo-1501555088652-021faa106b9b?q=80&w=600&auto=format&fit=crop',
     startStation: 'Gare de Rambouillet',
@@ -54,6 +60,10 @@ export const MOCK_RANDOS: RandoData[] = [
     trainDurationMinutes: 35,
     trainType: 'Transilien N',
     priceEst: 5.0,
+    dogsAllowed: true,
+    kidsFriendly: true,
+    activityType: 'Randonnée',
+    pointsOfInterest: ['Forêt', 'Lac', 'Site historique'],
     description:
       "Une superbe randonnée au cœur de la vallée de Chevreuse. Ce parcours forestier vous fait découvrir des châteaux dômes et des étangs calmes. Parfait pour s'échapper de la ville le temps d'une après-midi.",
     gpxTrace: [
@@ -137,6 +147,7 @@ export const MOCK_RANDOS: RandoData[] = [
   {
     id: '2',
     title: 'La Traversée de la Forêt de Fontainebleau',
+    location: 'Fontainebleau, Seine-et-Marne, France',
     imageUrl:
       'https://images.unsplash.com/photo-1448375240586-882707db888b?q=80&w=600&auto=format&fit=crop',
     startStation: 'Gare de Fontainebleau-Avon',
@@ -152,6 +163,10 @@ export const MOCK_RANDOS: RandoData[] = [
     trainDurationMinutes: 40,
     trainType: 'Transilien R',
     priceEst: 6.2,
+    dogsAllowed: true,
+    kidsFriendly: false,
+    activityType: 'Randonnée',
+    pointsOfInterest: ['Forêt', 'Grotte', 'Vue panoramique'],
     description:
       'Une grande randonnée physique à travers les chaos rocheux célèbres de la forêt de Fontainebleau. Un dépaysement total garanti parmi les pins maritimes et les étendues de sable blanc.',
     gpxTrace: [
@@ -219,6 +234,7 @@ export const MOCK_RANDOS: RandoData[] = [
   {
     id: '3',
     title: 'Le Sentier Historique des Peintres de Barbizon',
+    location: 'Barbizon, Seine-et-Marne, France',
     imageUrl:
       'https://images.unsplash.com/photo-1441974231531-c6227db76b6e?q=80&w=600&auto=format&fit=crop',
     startStation: 'Gare de Melun',
@@ -234,6 +250,10 @@ export const MOCK_RANDOS: RandoData[] = [
     trainDurationMinutes: 25,
     trainType: 'TER',
     priceEst: 4.8,
+    dogsAllowed: true,
+    kidsFriendly: true,
+    activityType: 'Balade',
+    pointsOfInterest: ['Forêt', 'Site historique', 'Fleurs'],
     description:
       "Une balade paisible et accessible à tous sur les pas des peintres impressionnistes de l'école de Barbizon. Vous traverserez de jolis villages pavés et des sous-bois lumineux.",
     gpxTrace: [
@@ -300,6 +320,7 @@ export const MOCK_RANDOS: RandoData[] = [
   {
     id: '4',
     title: 'La Boucle des Étangs de Hollande',
+    location: 'Rambouillet, Yvelines, France',
     imageUrl:
       'https://images.unsplash.com/photo-1470071459604-3b5ec3a7fe05?q=80&w=600&auto=format&fit=crop',
     startStation: 'Gare de Rambouillet',
@@ -315,6 +336,10 @@ export const MOCK_RANDOS: RandoData[] = [
     trainDurationMinutes: 35,
     trainType: 'Transilien N',
     priceEst: 5.0,
+    dogsAllowed: false,
+    kidsFriendly: true,
+    activityType: 'Randonnée',
+    pointsOfInterest: ['Forêt', 'Lac', 'Faune sauvage'],
     description:
       "Une magnifique boucle au bord des célèbres Étangs de Hollande créés sous Louis XIV. L'itinéraire traverse d'imposants massifs forestiers sauvages idéaux pour l'observation de la faune.",
     gpxTrace: [

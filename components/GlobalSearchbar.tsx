@@ -6,30 +6,15 @@ import { useColorScheme } from '@/components/useColorScheme';
 
 interface GlobalSearchbarProps {
   searchQuery: string;
-  selectedDifficulty: string;
-  selectedTransitLimit: string;
   onPress: () => void;
   style?: any;
 }
 
-export default function GlobalSearchbar({
-  searchQuery,
-  selectedDifficulty,
-  selectedTransitLimit,
-  onPress,
-  style,
-}: GlobalSearchbarProps) {
+export default function GlobalSearchbar({ searchQuery, onPress, style }: GlobalSearchbarProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  // Format the subtitle based on active filters
   const getSubtitleText = () => {
-    if (selectedDifficulty !== 'Toutes' || selectedTransitLimit !== 'Toutes') {
-      const difficultyPart = selectedDifficulty !== 'Toutes' ? selectedDifficulty : '';
-      const transitPart =
-        selectedTransitLimit !== 'Toutes' ? `• Train ≤ ${selectedTransitLimit}m` : '';
-      return `${difficultyPart} ${transitPart}`.trim();
-    }
     return 'Lieu · Difficulté · Durée';
   };
 

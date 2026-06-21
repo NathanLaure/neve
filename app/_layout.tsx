@@ -88,7 +88,14 @@ export default function RootLayout() {
             <AdventureProvider>
               <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen name="modal" options={{ title: 'Modal', presentation: 'modal' }} />
+                <Stack.Screen
+                  name="search"
+                  options={{
+                    headerShown: false,
+                    presentation: 'transparentModal',
+                    animation: 'fade',
+                  }}
+                />
               </Stack>
             </AdventureProvider>
           </ThemeProvider>

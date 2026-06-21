@@ -9,7 +9,7 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { ChevronLeft, Check, ChevronRight, CheckCircle2 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -135,7 +135,7 @@ export default function PlanScreen() {
           headerStyle: { backgroundColor: theme.card },
           headerLeft: () => (
             <Pressable onPress={() => router.back()} style={styles.headerBack}>
-              <Ionicons name="chevron-back" size={20} color={theme.text} />
+              <ChevronLeft size={20} color={theme.text} />
             </Pressable>
           ),
         }}
@@ -171,7 +171,7 @@ export default function PlanScreen() {
             <Pressable onPress={() => toggleStep(1)} style={styles.collapsedHeader}>
               <View style={styles.stepNumLabelWrapper}>
                 <View style={[styles.stepDoneBadge, { backgroundColor: theme.tint }]}>
-                  <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                  <Check size={12} color="#FFFFFF" />
                 </View>
                 <Text style={[styles.stepTitleCollapsed, { color: theme.text }]}>
                   Dates du voyage
@@ -289,7 +289,7 @@ export default function PlanScreen() {
                 style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1, width: '100%' })}>
                 <View style={[styles.confirmBtn, { backgroundColor: theme.tint }]}>
                   <Text style={styles.confirmBtnText}>Valider les dates</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                  <ChevronRight size={16} color="#FFFFFF" />
                 </View>
               </Pressable>
             </View>
@@ -315,7 +315,7 @@ export default function PlanScreen() {
                     { backgroundColor: selectedOutwardTrain ? theme.tint : theme.border },
                   ]}>
                   {selectedOutwardTrain ? (
-                    <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                    <Check size={12} color="#FFFFFF" />
                   ) : (
                     <Text style={[styles.stepNumberTextCollapsed, { color: theme.textMuted }]}>
                       2
@@ -430,7 +430,7 @@ export default function PlanScreen() {
                 })}>
                 <View style={[styles.confirmBtn, { backgroundColor: theme.tint }]}>
                   <Text style={styles.confirmBtnText}>Valider le train aller</Text>
-                  <Ionicons name="chevron-forward" size={16} color="#FFFFFF" />
+                  <ChevronRight size={16} color="#FFFFFF" />
                 </View>
               </Pressable>
             </View>
@@ -456,7 +456,7 @@ export default function PlanScreen() {
                     { backgroundColor: selectedReturnTrain ? theme.tint : theme.border },
                   ]}>
                   {selectedReturnTrain ? (
-                    <Ionicons name="checkmark" size={12} color="#FFFFFF" />
+                    <Check size={12} color="#FFFFFF" />
                   ) : (
                     <Text style={[styles.stepNumberTextCollapsed, { color: theme.textMuted }]}>
                       3
@@ -532,7 +532,7 @@ export default function PlanScreen() {
                 })}>
                 <View style={[styles.confirmBtn, { backgroundColor: theme.tint }]}>
                   <Text style={styles.confirmBtnText}>Finaliser ma planification</Text>
-                  <Ionicons name="checkmark-circle" size={16} color="#FFFFFF" />
+                  <CheckCircle2 size={16} color="#FFFFFF" />
                 </View>
               </Pressable>
             </View>
