@@ -85,16 +85,18 @@ export default function TabBar({ state, descriptors, navigation }: any) {
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
 
-  const bottomPadding = Platform.select({
-    ios: insets.bottom > 0 ? insets.bottom - 12 : 8,
-    android: 0,
-    default: 0,
-  }) ?? 0;
-  const baseHeight = Platform.select({
-    ios: 56,
-    android: 56,
-    default: 52,
-  }) ?? 52;
+  const bottomPadding =
+    Platform.select({
+      ios: insets.bottom > 0 ? insets.bottom - 12 : 8,
+      android: 30,
+      default: 0,
+    }) ?? 0;
+  const baseHeight =
+    Platform.select({
+      ios: 56,
+      android: 56,
+      default: 56,
+    }) ?? 56;
 
   return (
     <View

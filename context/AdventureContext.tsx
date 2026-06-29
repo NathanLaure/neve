@@ -66,6 +66,8 @@ interface AdventureContextType {
   setSelectedPointsOfInterest: (pois: string[]) => void;
   clearAllFilters: () => void;
   filteredHikes: RandoData[];
+  recentSearches: { name: string; coords: Coordinates }[];
+  addRecentSearch: (name: string, coords: Coordinates) => void;
 }
 
 const AdventureContext = createContext<AdventureContextType | undefined>(undefined);
@@ -107,6 +109,14 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [kidsFriendly, setKidsFriendly] = useState(false);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [selectedPointsOfInterest, setSelectedPointsOfInterest] = useState<string[]>([]);
+  const [recentSearches, setRecentSearches] = useState<{ name: string; coords: Coordinates }[]>([]);
+
+  const addRecentSearch = (name: string, coords: Coordinates) => {
+    setRecentSearches((prev) => {
+      const filtered = prev.filter((item) => item.name.toLowerCase() !== name.toLowerCase());
+      return [{ name, coords }, ...filtered].slice(0, 5);
+    });
+  };
 
   const loadHikes = async () => {
     setIsLoadingHikes(true);
@@ -257,16 +267,34 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const filteredHikes = useMemo(() => {
-    const filtered = hikes.filter((rando) => {
+    let filtered = hikes.filter((rando) => {
       // 1. Text Search query (title, location, startStation, endStation)
       if (searchQuery) {
-        const query = searchQuery.toLowerCase();
-        const matchesText =
-          rando.title?.toLowerCase().includes(query) ||
-          rando.location?.toLowerCase().includes(query) ||
-          rando.startStation?.toLowerCase().includes(query) ||
-          rando.endStation?.toLowerCase().includes(query);
-        if (!matchesText) return false;
+        const query = searchQuery.toLowerCase().trim();
+        const locName = userLocationName.toLowerCase().trim();
+        const isUserLocationSearch =
+          query === 'à proximité' ||
+          query === 'a proximité' ||
+          query === 'proximité' ||
+          query === locName;
+
+        if (isUserLocationSearch) {
+          // Filter hikes within 75 km of user's location
+          const dist = calculateDistanceKm(
+            userLocation.latitude,
+            userLocation.longitude,
+            rando.startStationCoords.latitude,
+            rando.startStationCoords.longitude
+          );
+          if (dist > 75) return false;
+        } else {
+          const matchesText =
+            rando.title?.toLowerCase().includes(query) ||
+            rando.location?.toLowerCase().includes(query) ||
+            rando.startStation?.toLowerCase().includes(query) ||
+            rando.endStation?.toLowerCase().includes(query);
+          if (!matchesText) return false;
+        }
       }
 
       // 2. Difficulty
@@ -315,10 +343,33 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
 
       return true;
     });
+
+    // If query is "À proximité", sort the results by distance to the user
+    const query = searchQuery.toLowerCase().trim();
+    if (query === 'à proximité' || query === 'a proximité' || query === 'proximité') {
+      filtered = [...filtered].sort((a, b) => {
+        const distA = calculateDistanceKm(
+          userLocation.latitude,
+          userLocation.longitude,
+          a.startStationCoords.latitude,
+          a.startStationCoords.longitude
+        );
+        const distB = calculateDistanceKm(
+          userLocation.latitude,
+          userLocation.longitude,
+          b.startStationCoords.latitude,
+          b.startStationCoords.longitude
+        );
+        return distA - distB;
+      });
+    }
+
     return filtered;
   }, [
     hikes,
     searchQuery,
+    userLocation,
+    userLocationName,
     selectedDifficulties,
     maxDistance,
     maxElevation,
@@ -365,6 +416,8 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
         setSelectedPointsOfInterest,
         clearAllFilters,
         filteredHikes,
+        recentSearches,
+        addRecentSearch,
       }}>
       {children}
     </AdventureContext.Provider>

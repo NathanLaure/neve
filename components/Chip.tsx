@@ -23,7 +23,7 @@ export default function Chip({ text, selected = false, onPress, style, textStyle
         {
           backgroundColor: theme.brandSubtle,
           borderColor: selected ? theme.tint : theme.border,
-          borderWidth: selected ? 2 : 1,
+          borderWidth: 2,
         },
         style,
       ]}>
@@ -32,7 +32,7 @@ export default function Chip({ text, selected = false, onPress, style, textStyle
           styles.text,
           {
             color: theme.text,
-            fontFamily: selected ? 'Satoshi-Bold' : 'Satoshi-Medium',
+            fontFamily: 'Satoshi-Medium',
           },
           textStyle,
         ]}>

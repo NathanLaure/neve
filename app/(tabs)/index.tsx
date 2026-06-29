@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, usePathname } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
@@ -43,7 +43,6 @@ export default function ExplorerScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
-  const pathname = usePathname();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<ExplorerMapRef>(null);
   const [fadeAnim] = useState(() => new Animated.Value(1));
@@ -114,11 +113,7 @@ export default function ExplorerScreen() {
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <View style={[styles.container, { backgroundColor: theme.background }]}>
         <StatusBar
-          barStyle={
-            colorScheme === 'dark' || sheetIndex !== 2
-              ? 'light-content'
-              : 'dark-content'
-          }
+          barStyle={colorScheme === 'dark' || sheetIndex !== 2 ? 'light-content' : 'dark-content'}
         />
 
         {/* Full-bleed background map */}
