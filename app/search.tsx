@@ -416,7 +416,7 @@ export default function SearchModal() {
     const targetRight = isSearchFocused ? 0 : placeholderLayout.x;
     
     const currentCardHeight = isSearchCollapsed ? 72 : 140 + boundedContentHeight;
-    const targetBottom = isSearchFocused ? 0 : SCREEN_HEIGHT - placeholderLayout.y - currentCardHeight;
+    const targetBottom = isSearchFocused ? -(insets.bottom || 16) : SCREEN_HEIGHT - placeholderLayout.y - currentCardHeight;
     const targetPlaceholderHeight = currentCardHeight;
 
     Animated.parallel([
@@ -462,6 +462,8 @@ export default function SearchModal() {
     cardRightAnim,
     cardBottomAnim,
     placeholderHeightAnim,
+    insets.top,
+    insets.bottom,
   ]);
 
   // Helper to change search focus state with smooth animations
@@ -1214,7 +1216,6 @@ export default function SearchModal() {
                 shadowOpacity: 0,
                 elevation: 0,
                 flex: 1,
-                height: '100%',
               },
             ]}>
              {/* Collapsed search bar UI */}
@@ -1351,6 +1352,7 @@ export default function SearchModal() {
                                 textAlignVertical: 'center',
                                 includeFontPadding: false,
                                 paddingTop: Platform.OS === 'ios' ? 0 : 4,
+                                flex: 0,
                               },
                             ]}
                             numberOfLines={1}>
@@ -1727,6 +1729,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: 12,
+    height: 42,
   },
   cardTitle: {
     fontFamily: 'BricolageGrotesque-SemiBold',
@@ -1737,6 +1740,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingVertical: 4,
+    ...Platform.select({
+      ios: {
+        paddingTop: 8,
+        paddingBottom: 4,
+      },
+    }),
   },
   collapsedSearchLeft: {
     flex: 1,
@@ -1800,7 +1809,14 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: 'Satoshi-Medium',
     fontSize: 15,
-    paddingVertical: 8,
+    ...Platform.select({
+      ios: {
+        paddingVertical: 0,
+      },
+      android: {
+        paddingVertical: 8,
+      },
+    }),
   },
   clearSearchBtn: {
     padding: 4,

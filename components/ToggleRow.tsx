@@ -29,7 +29,7 @@ export default function ToggleRow({ title, value, onValueChange, style }: Toggle
           {title}
         </Text>
       </View>
-      <Host matchContents>
+      <Host matchContents style={{ overflow: 'visible' }}>
         {Platform.OS === 'android' && AndroidSwitch ? (
           <AndroidSwitch
             value={value}
@@ -61,6 +61,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingRight: 6,
   },
   toggleLeft: {
     flex: 1,
