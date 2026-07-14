@@ -19,7 +19,7 @@ export default {
     greenBadge: '#F2F6F3', // status-bg-success-subtle
     blueBadge: '#F1F5F7', // status-bg-info-subtle
     orangeBadge: '#FDFAF2', // status-bg-warning-subtle
-    brandSubtle: '#FFF6ED', // bg/brand-subtle (Figma orange-subtle)
+    brandSubtle: '#FFFFFF', // bg/brand-subtle (Figma orange-subtle)
     brandFocus: '#EB490B', // border/focus (selected brand focus)
 
     // Figma Status Semantic Colors
