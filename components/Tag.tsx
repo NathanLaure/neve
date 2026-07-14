@@ -8,6 +8,8 @@ export type TagStatus = 'Success' | 'Warning' | 'Error' | 'Info';
 export interface TagProps {
   text: string;
   statut?: TagStatus;
+  size?: 'sm' | 'md';
+  icon?: React.ReactNode;
   style?: ViewStyle;
   textStyle?: TextStyle;
 }
@@ -42,24 +44,30 @@ const getTagStyles = (statut: TagStatus, theme: any) => {
   }
 };
 
-export default function Tag({ text, statut = 'Success', style, textStyle }: TagProps) {
+export default function Tag({ text, statut = 'Success', size = 'sm', icon, style, textStyle }: TagProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const colors = getTagStyles(statut, theme);
+
+  const sizeContainerStyle = size === 'md' ? styles.containerMd : styles.containerSm;
+  const sizeTextStyle = size === 'md' ? styles.textMd : styles.textSm;
 
   return (
     <View
       style={[
         styles.container,
+        sizeContainerStyle,
         {
           backgroundColor: colors.bg,
           borderColor: colors.border,
         },
         style,
       ]}>
+      {icon && <View style={styles.iconContainer}>{icon}</View>}
       <Text
         style={[
           styles.text,
+          sizeTextStyle,
           {
             color: colors.text,
           },
@@ -75,17 +83,34 @@ const styles = StyleSheet.create({
   container: {
     borderWidth: 1,
     borderStyle: 'solid',
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 4,
+  },
+  containerSm: {
+    paddingHorizontal: 6,
     paddingVertical: 2,
     borderRadius: 4,
   },
+  containerMd: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  iconContainer: {
+    marginRight: 6,
+  },
   text: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
     fontWeight: '500',
-    lineHeight: 16,
     textAlign: 'center',
+  },
+  textSm: {
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  textMd: {
+    fontSize: 14,
+    lineHeight: 18,
   },
 });

@@ -14,6 +14,7 @@ import Tag from '@/components/Tag';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { IconButton } from '@/components/IconButton';
 
 export interface RandoCardProps {
   id?: string;
@@ -250,21 +251,18 @@ export default function RandoCard({
           </View>
 
           {/* Heart/Favorite Button */}
-          <Pressable
+          <IconButton
+            variant="plain"
+            icon={
+              <Heart
+                size={20}
+                color={isFavorite ? '#EF4444' : '#FFFFFF'}
+                fill={isFavorite ? '#EF4444' : 'transparent'}
+              />
+            }
             onPress={handleFavoritePress}
-            style={[
-              styles.favoriteButton,
-              {
-                backgroundColor: theme.card,
-                shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
-              },
-            ]}>
-            <Heart
-              size={16}
-              color={isFavorite ? theme.tint : theme.text}
-              fill={isFavorite ? theme.tint : 'transparent'}
-            />
-          </Pressable>
+            style={styles.favoriteButton}
+          />
 
           {/* Mini Map Preview Overlay */}
           <View
@@ -423,15 +421,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 8,
     right: 8,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 3,
+    padding: 6,
   },
   miniMapContainer: {
     position: 'absolute',

@@ -4,6 +4,7 @@ import { Search, Heart, Compass, UserRound } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useAdventure } from '@/context/AdventureContext';
 
 const TAB_ICONS = {
   index: Search,
@@ -84,6 +85,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
+  const { searchQuery } = useAdventure();
 
   const bottomPadding =
     Platform.select({
@@ -110,6 +112,9 @@ export default function TabBar({ state, descriptors, navigation }: any) {
         },
       ]}>
       {state.routes.map((route: any, index: number) => {
+        if (route.name === 'results') {
+          return null;
+        }
         const { options } = descriptors[route.key];
         const label =
           options.tabBarLabel !== undefined
@@ -118,7 +123,10 @@ export default function TabBar({ state, descriptors, navigation }: any) {
               ? options.title
               : route.name;
 
-        const isFocused = state.index === index;
+        const currentRouteName = state.routes[state.index].name;
+        const isFocused =
+          state.index === index ||
+          (currentRouteName === 'results' && route.name === 'index');
         const IconComponent = TAB_ICONS[route.name as keyof typeof TAB_ICONS] || Compass;
 
         const onPress = () => {
@@ -128,8 +136,18 @@ export default function TabBar({ state, descriptors, navigation }: any) {
             canPreventDefault: true,
           });
 
-          if (!isFocused && !event.defaultPrevented) {
-            navigation.navigate(route.name, route.params);
+          if (!event.defaultPrevented) {
+            if (route.name === 'index') {
+              if (currentRouteName === 'results') {
+                // Do nothing, the user is already logically on the Explorer tab
+              } else if (searchQuery && searchQuery.trim() !== '') {
+                navigation.navigate('results');
+              } else {
+                navigation.navigate('index');
+              }
+            } else if (!isFocused) {
+              navigation.navigate(route.name, route.params);
+            }
           }
         };
 

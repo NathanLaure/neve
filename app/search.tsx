@@ -18,7 +18,7 @@ import {
   ActivityIndicator,
   LayoutAnimation,
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -41,41 +41,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
-import Chip from '@/components/Chip';
-import RangeSlider from '@/components/RangeSlider';
-import ToggleRow from '@/components/ToggleRow';
-const ACTIVITY_TYPES = [
-  'Randonnée',
-  'Balade',
-  'Course à pied',
-  'Trail',
-  'VTT',
-  'Vélo de route',
-  'Itinérance',
-  'Camping',
-  'Refuge',
-  'Cyclotourisme',
-  'Via ferrata',
-  'Randonnée à cheval',
-  'Ski de fond',
-  'Ski alpin',
-];
-
-const POINTS_OF_INTEREST = [
-  'Vue panoramique',
-  'Forêt',
-  'Fleurs',
-  'Lac',
-  'Rivière',
-  'Cascade',
-  'Faune sauvage',
-  'Plage',
-  'Grotte',
-  'Sources chaudes',
-  'Site historique',
-  'Voies vertes',
-  'Balade en ville',
-];
+import FiltersForm from '@/components/FiltersForm';
 
 // Helper to choose appropriate icon for suggestion based on name & region
 function getSuggestionIcon(name: string, dept: string): any {
@@ -137,6 +103,7 @@ const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
 export default function SearchModal() {
   const router = useRouter();
+  const { fromResults } = useLocalSearchParams<{ fromResults?: string }>();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -233,6 +200,13 @@ export default function SearchModal() {
   const [localActivityTypes, setLocalActivityTypes] = useState<string[]>(selectedActivityTypes);
   const [localPointsOfInterest, setLocalPointsOfInterest] =
     useState<string[]>(selectedPointsOfInterest);
+
+  const [highestPointRange, setHighestPointRange] = useState<[number, number]>([0, 4500]);
+  const [geographicZone, setGeographicZone] = useState<string>('idf');
+  const [wheelchairFriendly, setWheelchairFriendly] = useState(false);
+  const [parcoursType, setParcoursType] = useState<string[]>([]);
+  const [frequentation, setFrequentation] = useState<string[]>([]);
+  const [communityNote, setCommunityNote] = useState<number | null>(null);
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -636,7 +610,27 @@ export default function SearchModal() {
     setKidsFriendly(localKids);
     setSelectedActivityTypes(localActivityTypes);
     setSelectedPointsOfInterest(localPointsOfInterest);
-    handleClose();
+    
+    // Close the modal and navigate
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: SCREEN_HEIGHT,
+        duration: 280,
+        easing: Easing.bezier(0.3, 0, 0.8, 0.15),
+        useNativeDriver: false,
+      }),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 280,
+        easing: Easing.linear,
+        useNativeDriver: false,
+      }),
+    ]).start(() => {
+      router.back();
+      if (fromResults !== 'true') {
+        router.push('/results');
+      }
+    });
   };
 
   const handleClearFilters = () => {
@@ -652,6 +646,12 @@ export default function SearchModal() {
     setLocalKids(false);
     setLocalActivityTypes([]);
     setLocalPointsOfInterest([]);
+    setHighestPointRange([0, 4500]);
+    setGeographicZone('idf');
+    setWheelchairFriendly(false);
+    setParcoursType([]);
+    setFrequentation([]);
+    setCommunityNote(null);
   };
 
   const handleSuggestionPress = (
@@ -690,32 +690,7 @@ export default function SearchModal() {
     };
   }, [isSearchFocused, toggleSearchFocus, handleClose]);
 
-  // Toggle Difficulty Chip
-  const toggleDifficulty = (diff: 'Facile' | 'Modéré' | 'Difficile') => {
-    if (localDifficulties.includes(diff)) {
-      setLocalDifficulties(localDifficulties.filter((d) => d !== diff));
-    } else {
-      setLocalDifficulties([...localDifficulties, diff]);
-    }
-  };
-
-  // Toggle Activity Chip
-  const toggleActivity = (act: string) => {
-    if (localActivityTypes.includes(act)) {
-      setLocalActivityTypes(localActivityTypes.filter((a) => a !== act));
-    } else {
-      setLocalActivityTypes([...localActivityTypes, act]);
-    }
-  };
-
-  // Toggle POI Chip
-  const togglePOI = (poi: string) => {
-    if (localPointsOfInterest.includes(poi)) {
-      setLocalPointsOfInterest(localPointsOfInterest.filter((p) => p !== poi));
-    } else {
-      setLocalPointsOfInterest([...localPointsOfInterest, poi]);
-    }
-  };
+  // Local toggling helpers removed as they are managed inside FiltersForm
 
   // Compute local filtered hikes inside modal in real-time based on local selections
   const localFilteredHikes = useMemo(() => {
@@ -970,198 +945,47 @@ export default function SearchModal() {
                   showsVerticalScrollIndicator={false}
                   keyboardShouldPersistTaps="handled"
                   contentContainerStyle={styles.filtersScrollContent}>
-                  {/* Difficulty */}
-                  <View style={styles.filterGroup}>
-                    <Text style={[styles.filterGroupTitle, { color: theme.text }]}>Difficulté</Text>
-                    <View style={styles.chipsRow}>
-                      {/* Facile Chip */}
-                      <Chip
-                        text="Facile"
-                        selected={localDifficulties.includes('Facile')}
-                        onPress={() => toggleDifficulty('Facile')}
-                        style={
-                          localDifficulties.includes('Facile')
-                            ? {
-                                backgroundColor: theme.statusBgSuccess,
-                                borderColor: theme.statusBgSuccess,
-                                borderWidth: 2,
-                              }
-                            : {
-                                backgroundColor: theme.statusBgSuccessSubtle,
-                                borderColor: theme.statusBgSuccess,
-                                borderWidth: 2,
-                              }
-                        }
-                        textStyle={{
-                          color: localDifficulties.includes('Facile') ? theme.card : theme.statusTextSuccess,
-                          fontFamily: 'Satoshi-Bold',
-                        }}
-                      />
-
-                      {/* Modéré Chip */}
-                      <Chip
-                        text="Modéré"
-                        selected={localDifficulties.includes('Modéré')}
-                        onPress={() => toggleDifficulty('Modéré')}
-                        style={
-                          localDifficulties.includes('Modéré')
-                            ? {
-                                backgroundColor: theme.statusBgWarning,
-                                borderColor: theme.statusBgWarning,
-                                borderWidth: 2,
-                              }
-                            : {
-                                backgroundColor: theme.statusBgWarningSubtle,
-                                borderColor: theme.statusBgWarning,
-                                borderWidth: 2,
-                              }
-                        }
-                        textStyle={{
-                          color: localDifficulties.includes('Modéré') ? theme.card : theme.statusTextWarning,
-                          fontFamily: 'Satoshi-Bold',
-                        }}
-                      />
-
-                      {/* Difficile Chip */}
-                      <Chip
-                        text="Difficile"
-                        selected={localDifficulties.includes('Difficile')}
-                        onPress={() => toggleDifficulty('Difficile')}
-                        style={
-                          localDifficulties.includes('Difficile')
-                            ? {
-                                backgroundColor: theme.statusBgError,
-                                borderColor: theme.statusBgError,
-                                borderWidth: 2,
-                              }
-                            : {
-                                backgroundColor: theme.statusBgErrorSubtle,
-                                borderColor: theme.statusBgError,
-                                borderWidth: 2,
-                              }
-                        }
-                        textStyle={{
-                          color: localDifficulties.includes('Difficile') ? theme.card : theme.statusTextError,
-                          fontFamily: 'Satoshi-Bold',
-                        }}
-                      />
-                    </View>
-                  </View>
-
-                  {/* Train Duration Slider */}
-                  <RangeSlider
-                    title="Temps de transport"
-                    subtitle={
-                      <Text style={[styles.filterOriginText, { color: theme.text }]}>
-                        Depuis <Text style={{ color: theme.text }}>{userLocationName}</Text>
-                      </Text>
-                    }
-                    min={0}
-                    max={180}
-                    values={trainRange}
-                    onChange={setTrainRange}
-                    valueFormatter={(minVal, maxVal) => `${minVal}-${formatTrainLabel(maxVal)}`}
+                  <FiltersForm
+                    difficulties={localDifficulties}
+                    setDifficulties={setLocalDifficulties}
+                    trainRange={trainRange}
+                    setTrainRange={setTrainRange}
+                    distanceRange={distanceRange}
+                    setDistanceRange={setDistanceRange}
+                    elevationRange={elevationRange}
+                    setElevationRange={setElevationRange}
+                    highestPointRange={highestPointRange}
+                    setHighestPointRange={setHighestPointRange}
+                    geographicZone={geographicZone}
+                    setGeographicZone={setGeographicZone}
+                    dogsAllowed={localDogs}
+                    setDogsAllowed={setLocalDogs}
+                    kidsFriendly={localKids}
+                    setKidsFriendly={setLocalKids}
+                    wheelchairFriendly={wheelchairFriendly}
+                    setWheelchairFriendly={setWheelchairFriendly}
+                    activityTypes={localActivityTypes}
+                    setActivityTypes={setLocalActivityTypes}
+                    pointsOfInterest={localPointsOfInterest}
+                    setPointsOfInterest={setLocalPointsOfInterest}
+                    parcoursType={parcoursType}
+                    setParcoursType={setParcoursType}
+                    frequentation={frequentation}
+                    setFrequentation={setFrequentation}
+                    communityNote={communityNote}
+                    setCommunityNote={setCommunityNote}
+                    showDifficulties={true}
+                    showTrainRange={true}
+                    showDistanceRange={true}
+                    showElevationRange={true}
+                    showHighestPointRange={true}
+                    showAccessibility={true}
+                    showActivityTypes={true}
+                    showPointsOfInterest={true}
+                    showParcoursType={true}
+                    showFrequentation={true}
+                    showCommunityNote={true}
                   />
-
-                  {/* Distance Slider */}
-                  <RangeSlider
-                    title="Distance du parcours"
-                    min={0}
-                    max={34}
-                    values={distanceRange}
-                    onChange={setDistanceRange}
-                    valueFormatter={(minVal, maxVal) =>
-                      `${minVal}-${maxVal === 34 ? 'Toutes' : `${maxVal} km`}`
-                    }
-                  />
-
-                  {/* Elevation Slider */}
-                  <RangeSlider
-                    title="Dénivelé positif"
-                    min={0}
-                    max={4500}
-                    values={elevationRange}
-                    onChange={setElevationRange}
-                    valueFormatter={(minVal, maxVal) =>
-                      `${minVal}-${maxVal === 4500 ? 'Tous' : `${maxVal} m+`}`
-                    }
-                  />
-
-                  {/* Toggles (Dogs & Kids) */}
-                  <ToggleRow
-                    title="Accessible aux chiens"
-                    value={localDogs}
-                    onValueChange={setLocalDogs}
-                  />
-
-                  <ToggleRow
-                    title="Convient aux enfants"
-                    value={localKids}
-                    onValueChange={setLocalKids}
-                    style={{ marginTop: 12 }}
-                  />
-
-                  {/* Activity Types Grid */}
-                  <View
-                    style={[
-                      styles.filterGroup,
-                      {
-                        marginTop: 20,
-                      },
-                    ]}>
-                    <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
-                      Type d’activité
-                    </Text>
-                    <View style={styles.chipsWrapRow}>
-                      {ACTIVITY_TYPES.map((act) => {
-                        const isSelected = localActivityTypes.includes(act);
-                        return (
-                          <Chip
-                            key={act}
-                            text={act}
-                            selected={isSelected}
-                            onPress={() => toggleActivity(act)}
-                            style={
-                              isSelected
-                                ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                                : { backgroundColor: theme.background, borderColor: theme.border }
-                            }
-                            textStyle={
-                              isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                            }
-                          />
-                        );
-                      })}
-                    </View>
-                  </View>
-
-                  {/* Points of interest Grid */}
-                  <View style={styles.filterGroup}>
-                    <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
-                      Points d’intérêts
-                    </Text>
-                    <View style={styles.chipsWrapRow}>
-                      {POINTS_OF_INTEREST.map((poi) => {
-                        const isSelected = localPointsOfInterest.includes(poi);
-                        return (
-                          <Chip
-                            key={poi}
-                            text={poi}
-                            selected={isSelected}
-                            onPress={() => togglePOI(poi)}
-                            style={
-                              isSelected
-                                ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                                : { backgroundColor: theme.background, borderColor: theme.border }
-                            }
-                            textStyle={
-                              isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                            }
-                          />
-                        );
-                      })}
-                    </View>
-                  </View>
                 </ScrollView>
 
                 {/* Fade gradient at the bottom of the filters scroll */}
@@ -1185,7 +1009,7 @@ export default function SearchModal() {
                 title={localFilteredHikes.length === 0 ? 'Aucun résultat' : 'Rechercher'}
                 icon={<Search size={20} color="#efefef" />}
                 onPress={handleApplyFilters}
-                disabled={localFilteredHikes.length === 0}
+                disabled={!localSearch || localSearch.trim() === '' || localFilteredHikes.length === 0}
                 style={{ flex: 1 }}
               />
             </View>
@@ -1943,5 +1767,29 @@ const styles = StyleSheet.create({
   noResultsText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
+  },
+  segmentContainer: {
+    flexDirection: 'row',
+    borderRadius: 12,
+    borderWidth: 1,
+    overflow: 'hidden',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  segmentButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    minHeight: 44,
+  },
+  segmentLabel: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 11,
+  },
+  segmentSub: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 9,
+    marginTop: 1,
   },
 });

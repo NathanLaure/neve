@@ -254,7 +254,7 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     [userLocation]
   );
 
-  const clearAllFilters = () => {
+  const clearAllFilters = useCallback(() => {
     setSearchQuery('');
     setSelectedDifficulties([]);
     setMaxTrainDuration(null);
@@ -264,7 +264,7 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     setKidsFriendly(false);
     setSelectedActivityTypes([]);
     setSelectedPointsOfInterest([]);
-  };
+  }, []);
 
   const filteredHikes = useMemo(() => {
     let filtered = hikes.filter((rando) => {

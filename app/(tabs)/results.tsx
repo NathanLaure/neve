@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -12,11 +12,10 @@ import {
   Animated,
   useWindowDimensions,
   Dimensions,
-  InteractionManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
@@ -26,6 +25,7 @@ import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapLayerSheet, { type MapStyleType } from '@/components/MapLayerSheet';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
+import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
 
 // Simulated stations for manual toggling
 const SIMULATED_LOCATIONS = [
@@ -40,7 +40,7 @@ const formatHikeDuration = (hours: number) => {
   return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`;
 };
 
-export default function ExplorerScreen() {
+export default function SearchResultsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const router = useRouter();
@@ -61,61 +61,50 @@ export default function ExplorerScreen() {
     getTransitInfo,
     hikes,
     isLoadingHikes,
+    filteredHikes,
     searchQuery,
     selectedDifficulties,
     maxTrainDuration,
     maxDistance,
     maxElevation,
-    dogsAllowed,
-    kidsFriendly,
-    selectedActivityTypes,
-    selectedPointsOfInterest,
     clearAllFilters,
   } = useAdventure();
 
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
-  const [sheetIndex, setSheetIndex] = useState<number>(0);
+  const [sheetIndex, setSheetIndex] = useState<number>(2); // Start at 2 since the sheet is open at max
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
+  const filtersSheetRef = useRef<FiltersBottomSheetRef>(null);
   const [showLayerSheet, setShowLayerSheet] = useState<boolean>(false);
 
-  useFocusEffect(
-    useCallback(() => {
-      const hasActiveSearch =
-        searchQuery !== '' ||
-        selectedDifficulties.length > 0 ||
-        maxTrainDuration !== null ||
-        maxDistance !== null ||
-        maxElevation !== null ||
-        dogsAllowed ||
-        kidsFriendly ||
-        selectedActivityTypes.length > 0 ||
-        selectedPointsOfInterest.length > 0;
-
-      if (hasActiveSearch) {
-        const task = InteractionManager.runAfterInteractions(() => {
-          clearAllFilters();
-        });
-        return () => task.cancel();
-      }
-    }, [
-      clearAllFilters,
-      searchQuery,
-      selectedDifficulties,
-      maxTrainDuration,
-      maxDistance,
-      maxElevation,
-      dogsAllowed,
-      kidsFriendly,
-      selectedActivityTypes,
-      selectedPointsOfInterest,
-    ])
-  );
 
   const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
   const [compassBearing, setCompassBearing] = useState(0);
 
-  const filteredRandos = hikes;
+  const filteredRandos = filteredHikes;
+
+  const getSearchSummaryText = () => {
+    if (searchQuery) return searchQuery;
+
+    const summaryParts: string[] = [];
+    if (selectedDifficulties.length > 0) {
+      summaryParts.push(selectedDifficulties.join(', '));
+    }
+    if (maxTrainDuration !== null) {
+      summaryParts.push(`< ${maxTrainDuration} min`);
+    }
+    if (maxDistance !== null) {
+      summaryParts.push(`< ${maxDistance} km`);
+    }
+    if (maxElevation !== null) {
+      summaryParts.push(`< ${maxElevation} m+`);
+    }
+
+    if (summaryParts.length > 0) {
+      return summaryParts.join(' · ');
+    }
+    return '';
+  };
 
   const handleSelectHike = (id: string) => {
     setSelectedHikeId(id);
@@ -157,9 +146,14 @@ export default function ExplorerScreen() {
         {/* Floating Pill Search Bar */}
         <GlobalSearchbar
           searchQuery={searchQuery}
-          isStatic={true}
           onPress={() => {
-            router.push('/search');
+            router.push({ pathname: '/search', params: { fromResults: 'true' } });
+          }}
+          onPressFilter={() => {
+            filtersSheetRef.current?.present();
+          }}
+          onBack={() => {
+            router.back();
           }}
           style={{ top: Math.max(insets.top, 16), zIndex: 30, elevation: 30 }}
         />
@@ -287,6 +281,7 @@ export default function ExplorerScreen() {
           getTransitInfo={getTransitInfo}
           onSelectHike={handleSelectHike}
           onChange={setSheetIndex}
+          initialIndex={2}
         />
 
         {/* Map Layer Sheet */}
@@ -299,6 +294,9 @@ export default function ExplorerScreen() {
             onClose={() => setShowLayerSheet(false)}
           />
         )}
+
+        {/* Filters Bottom Sheet Modal */}
+        <FiltersBottomSheet ref={filtersSheetRef} />
       </View>
     </Animated.View>
   );
@@ -308,6 +306,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     position: 'relative',
+    paddingBottom: 56, // Add space for bottom tabs in SearchResultsScreen
   },
   mapContainerFullScreen: {
     ...StyleSheet.absoluteFillObject,

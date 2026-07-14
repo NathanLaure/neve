@@ -63,6 +63,7 @@ interface HikesBottomSheetProps {
   };
   onSelectHike: (id: string) => void;
   onChange?: (index: number) => void;
+  initialIndex?: number;
 }
 
 const AnimatedFlatList = Animated.createAnimatedComponent(BottomSheetFlatList);
@@ -76,16 +77,16 @@ const formatHikeDuration = (hours: number) => {
 const HikesBottomSheetRender: React.ForwardRefRenderFunction<
   HikesBottomSheetRef,
   HikesBottomSheetProps
-> = ({ hikes, isLoadingHikes, getTransitInfo, onSelectHike, onChange }, ref) => {
+> = ({ hikes, isLoadingHikes, getTransitInfo, onSelectHike, onChange, initialIndex = 0 }, ref) => {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
   const { height: windowHeight } = useWindowDimensions();
 
-  const [sheetIndex, setSheetIndex] = useState<number>(0);
+  const [sheetIndex, setSheetIndex] = useState<number>(initialIndex);
   const [selectedCategory, setSelectedCategory] = useState<string>('A proximité');
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const animatedIndex = useSharedValue(0);
+  const animatedIndex = useSharedValue(initialIndex);
 
   const animatedSpacerStyle = useAnimatedStyle(() => {
     const searchbarTop = Math.max(insets.top, 16);
@@ -262,7 +263,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     <BottomSheet
       ref={bottomSheetRef}
       animatedIndex={animatedIndex}
-      index={0}
+      index={initialIndex}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
       onChange={handleSheetChange}

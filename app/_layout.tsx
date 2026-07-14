@@ -82,10 +82,10 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <BottomSheetModalProvider>
-        <SafeAreaProvider>
-          <ThemeProvider value={customTheme}>
-            <AdventureProvider>
+      <AdventureProvider>
+        <BottomSheetModalProvider>
+          <SafeAreaProvider>
+            <ThemeProvider value={customTheme}>
               <Stack>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen
@@ -97,10 +97,10 @@ export default function RootLayout() {
                   }}
                 />
               </Stack>
-            </AdventureProvider>
-          </ThemeProvider>
-        </SafeAreaProvider>
-      </BottomSheetModalProvider>
+            </ThemeProvider>
+          </SafeAreaProvider>
+        </BottomSheetModalProvider>
+      </AdventureProvider>
     </GestureHandlerRootView>
   );
 }
