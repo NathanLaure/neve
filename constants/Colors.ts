@@ -38,7 +38,7 @@ export default {
   },
   dark: {
     text: '#EFEFEF', // neutral-50
-    background: '#292929', // neutral-900
+    background: '#222222', // neutral-900
     tint: tintColorDark,
     tabIconDefault: '#989898', // neutral-300
     tabIconSelected: tintColorDark,
@@ -46,7 +46,7 @@ export default {
     primaryLight: '#FC863B', // Primary-400
     secondary: '#98C1D9', // blue-500
     warning: '#E9C46A', // amber-500
-    card: '#1B1B1B', // neutral-950
+    card: '#111111', // neutral-950
     border: '#3D3D3D', // neutral-800
     borderLight: '#525252', // neutral-600
     textMuted: '#989898', // neutral-300

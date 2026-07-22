@@ -11,7 +11,6 @@ import {
   Text,
   View,
   ActivityIndicator,
-  useWindowDimensions,
   Pressable,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
@@ -81,12 +80,11 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
-  const { height: windowHeight } = useWindowDimensions();
 
   const [sheetIndex, setSheetIndex] = useState<number>(initialIndex);
   const [selectedCategory, setSelectedCategory] = useState<string>('A proximité');
   const bottomSheetRef = useRef<BottomSheet>(null);
-  const animatedIndex = useSharedValue(initialIndex);
+  const animatedIndex = useSharedValue(-1);
 
   const animatedSpacerStyle = useAnimatedStyle(() => {
     const searchbarTop = Math.max(insets.top, 16);
@@ -227,12 +225,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     [theme.tabIconDefault, animatedHandleStyle]
   );
 
-  const snapPoints = useMemo(() => {
-    const collapsedHeight = 70;
-    const middleHeight = windowHeight * 0.5;
-    const expandedHeight = windowHeight;
-    return [collapsedHeight, middleHeight, expandedHeight];
-  }, [windowHeight]);
+  const snapPoints = useMemo(() => [70, '50%', '100%'], []);
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -263,7 +256,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     <BottomSheet
       ref={bottomSheetRef}
       animatedIndex={animatedIndex}
-      index={initialIndex}
+      index={sheetIndex}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
       onChange={handleSheetChange}

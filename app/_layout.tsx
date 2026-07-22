@@ -86,7 +86,7 @@ export default function RootLayout() {
         <BottomSheetModalProvider>
           <SafeAreaProvider>
             <ThemeProvider value={customTheme}>
-              <Stack>
+              <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
                 <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
                 <Stack.Screen
                   name="search"
@@ -94,6 +94,14 @@ export default function RootLayout() {
                     headerShown: false,
                     presentation: 'transparentModal',
                     animation: 'fade',
+                  }}
+                />
+                <Stack.Screen
+                  name="rando/[id]"
+                  options={{
+                    headerShown: false,
+                    detachPreviousScreen: false,
+                    animation: 'none',
                   }}
                 />
               </Stack>

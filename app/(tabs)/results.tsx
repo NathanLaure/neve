@@ -12,6 +12,7 @@ import {
   Animated,
   useWindowDimensions,
   Dimensions,
+  Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -22,10 +23,12 @@ import RandoCard from '@/components/RandoCard';
 import { useAdventure } from '@/context/AdventureContext';
 import ExplorerMap, { type ExplorerMapRef } from '@/components/ExplorerMap';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
-import MapLayerSheet, { type MapStyleType } from '@/components/MapLayerSheet';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
 import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
+import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+
+export type MapStyleType = 'default' | 'satellite';
 
 // Simulated stations for manual toggling
 const SIMULATED_LOCATIONS = [
@@ -75,7 +78,27 @@ export default function SearchResultsScreen() {
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
   const filtersSheetRef = useRef<FiltersBottomSheetRef>(null);
-  const [showLayerSheet, setShowLayerSheet] = useState<boolean>(false);
+  const layerSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+
+  const mapTypes = React.useMemo(() => {
+    const defaultPreviewStyle =
+      colorScheme === 'dark' ? 'nlaure/cmqeb16wa001u01qn7zxmgncl' : 'mapbox/outdoors-v12';
+
+    return [
+      {
+        key: 'default' as MapStyleType,
+        label: 'Par défaut',
+        previewUri: `https://api.mapbox.com/styles/v1/${defaultPreviewStyle}/static/2.35,48.86,10,0/200x200@2x?access_token=`,
+      },
+      {
+        key: 'satellite' as MapStyleType,
+        label: 'Satellite',
+        previewUri:
+          'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/2.35,48.86,10,0/200x200@2x?access_token=',
+      },
+    ];
+  }, [colorScheme]);
 
 
   const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
@@ -225,7 +248,7 @@ export default function SearchResultsScreen() {
         <MapControls
           compassBearing={compassBearing}
           onPressCompass={() => mapRef.current?.resetNorth()}
-          onPressLayers={() => setShowLayerSheet(!showLayerSheet)}
+          onPressLayers={() => layerSheetRef.current?.present()}
           onPressLocate={refreshUserLocation}
           isLocating={isLocating}
           style={{
@@ -284,16 +307,54 @@ export default function SearchResultsScreen() {
           initialIndex={2}
         />
 
-        {/* Map Layer Sheet */}
-        {showLayerSheet && (
-          <MapLayerSheet
-            selectedStyle={mapStyle}
-            onSelectStyle={(style) => {
-              setMapStyle(style);
-            }}
-            onClose={() => setShowLayerSheet(false)}
-          />
-        )}
+        {/* Map Layer Sheet Modal */}
+        <BaseBottomSheetModal
+          ref={layerSheetRef}
+          snapPoints={['30%']}
+          showHeader={true}
+          title="Type de carte"
+          showCloseButton={true}>
+          <View style={styles.layerOptionsList}>
+            {mapTypes.map((mapType) => {
+              const isSelected = mapStyle === mapType.key;
+              return (
+                <Pressable
+                  key={mapType.key}
+                  onPress={() => {
+                    setMapStyle(mapType.key);
+                    layerSheetRef.current?.dismiss();
+                  }}
+                  style={styles.layerOptionItem}>
+                  <View
+                    style={[
+                      styles.layerPreviewContainer,
+                      isSelected && {
+                        borderColor: theme.tint,
+                        borderWidth: 2,
+                      },
+                      !isSelected && {
+                        borderColor: theme.border,
+                        borderWidth: 1,
+                      },
+                    ]}>
+                    <Image
+                      source={{ uri: mapType.previewUri + mapboxToken }}
+                      style={styles.layerPreviewImage}
+                      resizeMode="cover"
+                    />
+                  </View>
+                  <Text
+                    style={[
+                      styles.layerOptionLabel,
+                      { color: isSelected ? theme.text : theme.textMuted },
+                    ]}>
+                    {mapType.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </BaseBottomSheetModal>
 
         {/* Filters Bottom Sheet Modal */}
         <FiltersBottomSheet ref={filtersSheetRef} />
@@ -367,5 +428,30 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     height: 320,
+  },
+  layerOptionsList: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 16,
+  },
+  layerOptionItem: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  layerPreviewContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  layerPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  layerOptionLabel: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
+    lineHeight: 24,
   },
 });

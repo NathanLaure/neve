@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   StyleSheet,
   Text,
@@ -10,6 +10,7 @@ import {
   Share,
   Alert,
   Animated,
+  Modal,
 } from 'react-native';
 import { Host, Switch } from '@expo/ui';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -29,6 +30,11 @@ import {
   Sun,
   CloudSun,
   CloudRain,
+  Flag,
+  MessageSquareWarning,
+  Trash2,
+  ChevronRight,
+  Layers,
 } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -38,6 +44,12 @@ import { useAdventure } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
 import { IconButton } from '@/components/IconButton';
 import Tag from '@/components/Tag';
+import Reanimated, { FadeInDown } from 'react-native-reanimated';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import ItemButton from '@/components/ItemButton';
+import WeatherIcon, { WeatherIconType } from '@/components/WeatherIcon';
+import ExplorerMap, { MapStyleType, ExplorerMapRef } from '@/components/ExplorerMap';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const iosTint = Platform.OS === 'ios' ? require('@expo/ui/swift-ui/modifiers').tint : null;
@@ -56,6 +68,34 @@ export default function RandoDetailScreen() {
   // Local interactive states
   const [isFavorite, setIsFavorite] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
+  const [isMapModalVisible, setIsMapModalVisible] = useState(false);
+  const [fullMapStyle, setFullMapStyle] = useState<MapStyleType>('default');
+  const [mapBearing, setMapBearing] = useState(0);
+
+  const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const mapLayerSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const fullMapRef = useRef<ExplorerMapRef>(null);
+
+  const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
+
+  const mapTypes = useMemo(() => {
+    return [
+      {
+        key: 'default' as MapStyleType,
+        label: 'Par défaut',
+        previewUri:
+          colorScheme === 'dark'
+            ? 'https://api.mapbox.com/styles/v1/nlaure/cmqeb16wa001u01qn7zxmgncl/static/2.35,48.86,10,0/200x200@2x?access_token='
+            : 'https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/2.35,48.86,10,0/200x200@2x?access_token=',
+      },
+      {
+        key: 'satellite' as MapStyleType,
+        label: 'Satellite',
+        previewUri:
+          'https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/static/2.35,48.86,10,0/200x200@2x?access_token=',
+      },
+    ];
+  }, [colorScheme]);
 
   const scrollY = useRef(new Animated.Value(0)).current;
 
@@ -160,29 +200,86 @@ export default function RandoDetailScreen() {
     }
   };
 
-  // Mock weather forecast
-  const weatherForecast = [
+  // Helper for Open-Meteo WMO Weather codes with multi-color icons
+  const getWeatherDetails = (code: number): { type: WeatherIconType; desc: string } => {
+    if (code === 0) return { type: 'sun', desc: 'Ensoleillé' };
+    if (code >= 1 && code <= 3) return { type: 'cloud-sun', desc: 'Éclaircies' };
+    if (code === 45 || code === 48) return { type: 'fog', desc: 'Brouillard' };
+    if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return { type: 'cloud-rain', desc: 'Pluie' };
+    if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return { type: 'cloud-snow', desc: 'Neige' };
+    if (code >= 95 && code <= 99) return { type: 'cloud-lightning', desc: 'Orage' };
+    return { type: 'sun', desc: 'Ensoleillé' };
+  };
+
+  const [realWeather, setRealWeather] = useState<any[] | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const lat = rando?.startStationCoords?.latitude ?? 45.9237;
+    const lon = rando?.startStationCoords?.longitude ?? 6.8694;
+
+    const fetchWeather = async () => {
+      try {
+        const res = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto`
+        );
+        const data = await res.json();
+
+        if (data?.daily?.time && isMounted) {
+          const daysLabels = ['Aujourd’hui', 'Demain', 'Après-demain'];
+          const dayNames = ['Dim', 'Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam'];
+
+          const forecast = data.daily.time.slice(0, 3).map((dateStr: string, idx: number) => {
+            const dateObj = new Date(dateStr);
+            const dayName = dayNames[dateObj.getDay()];
+            const dateNum = dateObj.getDate();
+            const maxTemp = Math.round(data.daily.temperature_2m_max[idx]);
+            const minTemp = Math.round(data.daily.temperature_2m_min[idx]);
+            const code = data.daily.weather_code[idx];
+            const { type, desc } = getWeatherDetails(code);
+
+            return {
+              day: daysLabels[idx] || dayName,
+              date: `${dayName} ${dateNum}`,
+              type,
+              desc,
+              temp: `${minTemp}-${maxTemp}℃`,
+            };
+          });
+
+          setRealWeather(forecast);
+        }
+      } catch (err) {
+        console.warn('Erreur lors du chargement de la météo Open-Meteo:', err);
+      }
+    };
+
+    fetchWeather();
+    return () => {
+      isMounted = false;
+    };
+  }, [rando?.startStationCoords?.latitude, rando?.startStationCoords?.longitude]);
+
+  // Mock weather fallback
+  const weatherForecast = realWeather || [
     {
       day: 'Aujourd’hui',
       date: 'Mar 6',
-      icon: Sun,
-      iconColor: '#F59E0B',
+      type: 'sun' as WeatherIconType,
       desc: 'Ensoleillé',
       temp: '15-20℃',
     },
     {
       day: 'Demain',
       date: 'Mer 7',
-      icon: CloudSun,
-      iconColor: '#9CA3AF',
+      type: 'cloud-sun' as WeatherIconType,
       desc: 'Éclaircies',
       temp: '14-18℃',
     },
     {
       day: 'Après-demain',
       date: 'Jeu 8',
-      icon: CloudRain,
-      iconColor: '#3B82F6',
+      type: 'cloud-rain' as WeatherIconType,
       desc: 'Pluie faible',
       temp: '11-15℃',
     },
@@ -233,10 +330,9 @@ export default function RandoDetailScreen() {
   ];
 
   return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-      {/* Hide default header since we use a custom absolute positioned overlay */}
-      <Stack.Screen options={{ headerShown: false }} />
-
+    <Reanimated.View
+      entering={FadeInDown.duration(220)}
+      style={[styles.root, { backgroundColor: theme.background }]}>
       {/* Animated Collapsing Top Header Bar */}
       <Animated.View
         style={[
@@ -276,26 +372,7 @@ export default function RandoDetailScreen() {
               <IconButton
                 variant="circle"
                 icon={<MoreVertical size={20} color={theme.text} />}
-                onPress={() => {
-                  Alert.alert('Options', undefined, [
-                    {
-                      text: 'Partager',
-                      onPress: handleShare,
-                    },
-                    {
-                      text: isFavorite ? 'Retirer des favoris' : 'Enregistrer',
-                      onPress: () => setIsFavorite(!isFavorite),
-                    },
-                    {
-                      text: 'Signaler un probl\u00e8me',
-                      style: 'destructive',
-                    },
-                    {
-                      text: 'Annuler',
-                      style: 'cancel',
-                    },
-                  ]);
-                }}
+                onPress={() => actionsSheetRef.current?.present()}
               />
             </Animated.View>
 
@@ -321,18 +398,7 @@ export default function RandoDetailScreen() {
               <IconButton
                 variant="circle"
                 icon={<MoreVertical size={20} color={theme.text} />}
-                onPress={() => {
-                  Alert.alert('Options', undefined, [
-                    {
-                      text: 'Signaler un probl\u00e8me',
-                      style: 'destructive',
-                    },
-                    {
-                      text: 'Annuler',
-                      style: 'cancel',
-                    },
-                  ]);
-                }}
+                onPress={() => actionsSheetRef.current?.present()}
               />
             </Animated.View>
           </View>
@@ -483,41 +549,22 @@ export default function RandoDetailScreen() {
 
           {/* GPX Map Section */}
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Carte</Text>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Carte du parcours</Text>
           </View>
 
-          <View style={[styles.gpxMap, { backgroundColor: theme.greenBadge }]}>
-            {/* Topography Grid mock */}
-            <View style={styles.topoGrid}>
-              <View style={[styles.topoLine, { borderStyle: 'dashed', borderColor: theme.border, width: '100%', top: '30%' }]} />
-              <View style={[styles.topoLine, { borderStyle: 'dashed', borderColor: theme.border, width: '100%', top: '60%' }]} />
-              <View style={[styles.topoLineVertical, { borderStyle: 'dashed', borderColor: theme.border, height: '100%', left: '30%' }]} />
-              <View style={[styles.topoLineVertical, { borderStyle: 'dashed', borderColor: theme.border, height: '100%', left: '70%' }]} />
-            </View>
-
-            {/* Custom GPX path drawn visually */}
-            <View style={styles.gpxTraceContainer}>
-              <SvgMockTrace />
-            </View>
-
-            {/* Map Labels/Pins */}
-            <View style={[styles.mapMarker, { left: '15%', top: '45%' }]}>
-              <View style={[styles.markerPin, { backgroundColor: theme.secondary }]}>
-                <Text style={styles.markerPinText}>🚆</Text>
-              </View>
-              <Text style={[styles.markerLabel, { color: theme.text }]}>Départ</Text>
-            </View>
-
-            <View style={[styles.mapMarker, { right: '15%', bottom: '25%' }]}>
-              <View style={[styles.markerPin, { backgroundColor: theme.primary }]}>
-                <Text style={styles.markerPinText}>🌲</Text>
-              </View>
-              <Text style={[styles.markerLabel, { color: theme.text }]}>Arrivée</Text>
-            </View>
+          <View style={styles.inlineMapCardContainer}>
+            <ExplorerMap
+              userLocation={rando.startStationCoords}
+              userLocationName={rando.startStation}
+              hikes={[rando]}
+              selectedHikeId={rando.id}
+              showGpxTrace={true}
+              style={styles.inlineMapStyle}
+            />
 
             {/* Floating Maximize Button in Top-Right */}
             <Pressable
-              onPress={() => Alert.alert('Aperçu GPX', 'Ouvrir la carte interactive plein écran.')}
+              onPress={() => setIsMapModalVisible(true)}
               style={[styles.mapMaximizeBtn, { backgroundColor: theme.card }]}>
               <Maximize2 size={16} color={theme.text} />
             </Pressable>
@@ -558,22 +605,21 @@ export default function RandoDetailScreen() {
           <View style={[styles.weatherCard, { backgroundColor: theme.blueBadge }]}>
             <View style={styles.weatherCardHeader}>
               <Text style={[styles.weatherCity, { color: theme.text }]}>
-                {rando.endStation || 'Haute-Savoie, France'}
+                {rando.location || rando.endStation || 'Haute-Savoie, France'}
               </Text>
-              <ChevronDown size={24} color={theme.text} />
+              <ChevronRight size={24} color={theme.text} />
             </View>
 
             <View style={[styles.weatherDivider, { backgroundColor: theme.border }]} />
 
             <View style={styles.weatherForecastList}>
               {weatherForecast.map((fc, index) => {
-                const WeatherIcon = fc.icon;
                 return (
                   <View key={index} style={styles.weatherForecastCol}>
                     <Text style={[styles.weatherDay, { color: theme.text }]}>{fc.day}</Text>
                     <Text style={[styles.weatherDate, { color: theme.textMuted }]}>{fc.date}</Text>
                     <View style={styles.weatherIconWrapper}>
-                      <WeatherIcon size={48} color={theme.text} />
+                      <WeatherIcon type={fc.type} size={48} />
                     </View>
                     <Text style={[styles.weatherDesc, { color: theme.text }]}>{fc.desc}</Text>
                     <Text style={[styles.weatherTemp, { color: theme.text }]}>{fc.temp}</Text>
@@ -600,10 +646,10 @@ export default function RandoDetailScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Avis des randonneurs</Text>
           </View>
 
-          <View style={styles.reviewsSummaryRow}>
+          <View style={[styles.reviewsSummaryRow, { marginBottom: 24 }]}>
             <View style={styles.reviewsSummaryLeft}>
               <Text style={[styles.reviewsLargeScore, { color: theme.text }]}>4,6</Text>
-              <Star size={16} color={theme.text} />
+              <Star size={20} color={theme.text} fill={theme.text} style={{ marginBottom: 7 }} />
             </View>
             <Text style={[styles.reviewsCountUnderline, { color: '#989898' }]}>234 avis</Text>
           </View>
@@ -613,7 +659,7 @@ export default function RandoDetailScreen() {
             variant="secondary"
             title="Laisser un avis sur cette randonnée"
             onPress={() => Alert.alert('Laisser un avis', 'Formulaire de notation en cours de développement.')}
-            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0 }]}
+            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0, marginBottom: 40 }]}
             textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
           />
 
@@ -634,7 +680,8 @@ export default function RandoDetailScreen() {
                       <Star
                         key={i}
                         size={16}
-                        color={theme.text}
+                        color={i < rev.stars ? theme.text : theme.border}
+                        fill={i < rev.stars ? theme.text : 'transparent'}
                         style={{ marginLeft: 2 }}
                       />
                     ))}
@@ -652,7 +699,7 @@ export default function RandoDetailScreen() {
             variant="secondary"
             title="Afficher tous les avis"
             onPress={() => Alert.alert('Tous les avis', 'Affichage de la liste complète des avis.')}
-            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0, marginTop: 24 }]}
+            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0, marginTop: 40 }]}
             textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
           />
 
@@ -693,7 +740,199 @@ export default function RandoDetailScreen() {
 
         </View>
       </View>
-    </View>
+
+      {/* Actions Bottom Sheet Modal (Figma node 424:5042) */}
+      <BaseBottomSheetModal
+        ref={actionsSheetRef}
+        snapPoints={['30%']}
+        showHeader={false}>
+        <View style={styles.actionsOptionsList}>
+          {/* Item 1: Partager la randonnée */}
+          <ItemButton
+            icon={<ShareIcon size={20} color={theme.text} />}
+            label="Partager la randonnée"
+            onPress={() => {
+              actionsSheetRef.current?.dismiss();
+              handleShare();
+            }}
+          />
+
+          {/* Item 2: Ajouter aux favoris */}
+          <ItemButton
+            icon={
+              <Heart
+                size={20}
+                color={isFavorite ? '#EF4444' : theme.text}
+                fill={isFavorite ? '#EF4444' : 'none'}
+              />
+            }
+            label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+            color={isFavorite ? '#EF4444' : undefined}
+            onPress={() => {
+              actionsSheetRef.current?.dismiss();
+              setIsFavorite(!isFavorite);
+            }}
+          />
+
+          {/* Item 3: Rendre disponible hors connexion */}
+          <ItemButton
+            icon={isOffline ? <Trash2 size={20} color={theme.text} /> : <Download size={20} color={theme.text} />}
+            label={isOffline ? 'Supprimer la sauvegarde locale' : 'Rendre disponible hors connexion'}
+            onPress={() => {
+              actionsSheetRef.current?.dismiss();
+              const nextState = !isOffline;
+              setIsOffline(nextState);
+              if (nextState) {
+                Alert.alert(
+                  'Mode Hors Ligne',
+                  'Cette randonnée et son tracé GPX ont été enregistrés localement.'
+                );
+              } else {
+                Alert.alert(
+                  'Sauvegarde supprimée',
+                  'La randonnée a été retirée de votre stockage local.'
+                );
+              }
+            }}
+          />
+
+          <View style={[styles.actionsDivider, { backgroundColor: theme.border }]} />
+
+          {/* Item 4: Signaler une anomalie */}
+          <ItemButton
+            icon={<MessageSquareWarning size={20} color="#E0633B" />}
+            label="Signaler une anomalie"
+            color="#E0633B"
+            onPress={() => {
+              actionsSheetRef.current?.dismiss();
+              Alert.alert(
+                'Signaler une anomalie',
+                'Merci de nous aider à maintenir les informations de randonnées à jour.'
+              );
+            }}
+          />
+        </View>
+      </BaseBottomSheetModal>
+
+      {/* Fullscreen Interactive Map Modal */}
+      <Modal
+        visible={isMapModalVisible}
+        animationType="slide"
+        statusBarTranslucent
+        onRequestClose={() => setIsMapModalVisible(false)}>
+        <BottomSheetModalProvider>
+          <View style={[styles.fullMapContainer, { backgroundColor: theme.background }]}>
+            <ExplorerMap
+              ref={fullMapRef}
+              userLocation={rando.startStationCoords}
+              userLocationName={rando.startStation}
+              hikes={[rando]}
+              selectedHikeId={rando.id}
+              showGpxTrace={true}
+              mapStyle={fullMapStyle}
+              onBearingChange={setMapBearing}
+            />
+
+            {/* Fullscreen Map Floating Header */}
+            <View
+              style={[
+                styles.fullMapHeader,
+                {
+                  paddingTop: Math.max(insets.top + 8, 20),
+                  backgroundColor: colorScheme === 'dark' ? 'rgba(27,27,27,0.92)' : 'rgba(255,255,255,0.92)',
+                  borderBottomColor: theme.border,
+                },
+              ]}>
+              <Pressable
+                onPress={() => setIsMapModalVisible(false)}
+                style={[styles.fullMapBackBtn, { backgroundColor: theme.card }]}>
+                <ArrowLeft size={22} color={theme.text} />
+              </Pressable>
+
+              <View style={styles.fullMapTitleCol}>
+                <Text style={[styles.fullMapTitle, { color: theme.text }]} numberOfLines={1}>
+                  {rando.title}
+                </Text>
+                <Text style={[styles.fullMapSubtitle, { color: theme.textMuted }]}>
+                  {rando.distance} • {rando.elevation} • {rando.durationHours}h
+                </Text>
+              </View>
+
+              <Pressable
+                onPress={() => mapLayerSheetRef.current?.present()}
+                style={[styles.fullMapLayerBtn, { backgroundColor: theme.card }]}>
+                <Layers size={20} color={theme.text} />
+              </Pressable>
+            </View>
+
+            {/* Compass / Reset North floating button */}
+            {mapBearing !== 0 && (
+              <Pressable
+                onPress={() => fullMapRef.current?.resetNorth()}
+                style={[
+                  styles.fullMapCompassBtn,
+                  { backgroundColor: theme.card, bottom: insets.bottom + 24 },
+                ]}>
+                <Navigation
+                  size={22}
+                  color={theme.primary}
+                  style={{ transform: [{ rotate: `${-mapBearing}deg` }] }}
+                />
+              </Pressable>
+            )}
+
+            {/* Map Layer Selector Sheet */}
+            <BaseBottomSheetModal
+              ref={mapLayerSheetRef}
+              snapPoints={['30%']}
+              showHeader={true}
+              title="Type de carte"
+              showCloseButton={true}>
+              <View style={styles.layerOptionsList}>
+                {mapTypes.map((mapType) => {
+                  const isSelected = fullMapStyle === mapType.key;
+                  return (
+                    <Pressable
+                      key={mapType.key}
+                      onPress={() => {
+                        setFullMapStyle(mapType.key);
+                        mapLayerSheetRef.current?.dismiss();
+                      }}
+                      style={styles.layerOptionItem}>
+                      <View
+                        style={[
+                          styles.layerPreviewContainer,
+                          isSelected && {
+                            borderColor: theme.tint,
+                            borderWidth: 2,
+                          },
+                          !isSelected && {
+                            borderColor: theme.border,
+                            borderWidth: 1,
+                          },
+                        ]}>
+                        <Image
+                          source={{ uri: mapType.previewUri + mapboxToken }}
+                          style={styles.layerPreviewImage}
+                          resizeMode="cover"
+                        />
+                      </View>
+                      <Text
+                        style={[
+                          styles.layerOptionLabel,
+                          { color: isSelected ? theme.text : theme.textMuted },
+                        ]}>
+                        {mapType.label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </BaseBottomSheetModal>
+          </View>
+        </BottomSheetModalProvider>
+      </Modal>
+    </Reanimated.View>
   );
 }
 
@@ -843,7 +1082,7 @@ const styles = StyleSheet.create({
     width: '100%',
   },
   contentCard: {
-    marginBottom: 8,
+    marginBottom: 40,
   },
   metaRow: {
     flexDirection: 'row',
@@ -901,7 +1140,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginVertical: 40,
+    marginBottom: 40,
     width: '100%',
   },
   specCol: {
@@ -920,7 +1159,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
     marginBottom: 40,
     width: '100%',
   },
@@ -1011,7 +1249,6 @@ const styles = StyleSheet.create({
     elevation: 3,
   },
   transitContainer: {
-    paddingVertical: 12,
     marginBottom: 40,
     width: '100%',
   },
@@ -1259,7 +1496,9 @@ const styles = StyleSheet.create({
   },
   bottomBarButtonsRow: {
     flexDirection: 'row',
-    gap: 10,
+    alignItems: 'center',
+    width: '100%',
+    gap: 12,
   },
   bottomBtnSecondary: {
     flex: 1,
@@ -1267,6 +1506,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 48,
+    paddingHorizontal: 0,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1284,6 +1524,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     height: 48,
+    paddingHorizontal: 0,
     borderRadius: 12,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -1362,5 +1603,119 @@ const styles = StyleSheet.create({
   },
   headerBarButtonPressable: {
     padding: 4,
+  },
+  actionsOptionsList: {
+    width: '100%',
+    gap: 4,
+    paddingTop: 8,
+  },
+  actionsOptionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    gap: 12,
+  },
+  actionsOptionText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  actionsDivider: {
+    height: 1,
+    marginVertical: 8,
+  },
+  inlineMapCardContainer: {
+    height: 220,
+    width: '100%',
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+    marginBottom: 40,
+  },
+  inlineMapStyle: {
+    width: '100%',
+    height: '100%',
+  },
+  fullMapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  fullMapHeader: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    gap: 12,
+  },
+  fullMapBackBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullMapTitleCol: {
+    flex: 1,
+  },
+  fullMapTitle: {
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 17,
+  },
+  fullMapSubtitle: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  fullMapLayerBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fullMapCompassBtn: {
+    position: 'absolute',
+    right: 20,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 4,
+  },
+  layerOptionsList: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    alignItems: 'center',
+    gap: 16,
+    paddingTop: 8,
+  },
+  layerOptionItem: {
+    alignItems: 'center',
+    gap: 8,
+  },
+  layerPreviewContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  layerPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+  layerOptionLabel: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
+    lineHeight: 24,
   },
 });

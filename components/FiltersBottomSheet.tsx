@@ -13,19 +13,14 @@ import {
   Pressable,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { X } from 'lucide-react-native';
-import {
-  BottomSheetModal,
-  BottomSheetScrollView,
-  BottomSheetBackdrop,
-  BottomSheetView,
-} from '@gorhom/bottom-sheet';
+import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
 import FiltersForm from '@/components/FiltersForm';
+import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 
 export interface FiltersBottomSheetRef {
   present: () => void;
@@ -39,7 +34,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
-  const bottomSheetModalRef = useRef<BottomSheetModal>(null);
+  const bottomSheetModalRef = useRef<BaseBottomSheetModalRef>(null);
 
   const {
     hikes,
@@ -255,31 +250,21 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   };
 
   return (
-    <BottomSheetModal
+    <BaseBottomSheetModal
       ref={bottomSheetModalRef}
-      index={0}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      backdropComponent={renderBackdrop}
-      handleIndicatorStyle={[styles.handle, { backgroundColor: theme.tabIconDefault }]}
-      backgroundStyle={{
-        backgroundColor: theme.card,
-        borderTopLeftRadius: 20,
-        borderTopRightRadius: 20,
-      }}
-      style={styles.sheetShadow}
-    >
+      snapPoints={['92%']}
+      showHeader={true}
+      title="Filtres"
+      showCloseButton={true}
+      backdropOpacity={0.5}
+      contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 0, flex: 1 }}>
       <View style={{ flex: 1 }}>
-        <View style={[styles.headingRow, { borderBottomColor: theme.border }]}>
-          <Text style={[styles.heading, { color: theme.text }]}>Filtres</Text>
-          <Pressable
-            onPress={() => bottomSheetModalRef.current?.dismiss()}
-            hitSlop={8}>
-            <X size={24} color={theme.text} />
-          </Pressable>
-        </View>
 
-        <BottomSheetScrollView style={{ flex: 1 }} contentContainerStyle={styles.scrollContent}>
+        <BottomSheetScrollView
+          style={{ flex: 1 }}
+          contentContainerStyle={styles.scrollContent}
+          nestedScrollEnabled={true}
+          showsVerticalScrollIndicator={true}>
           <FiltersForm
             difficulties={localDifficulties}
             setDifficulties={setLocalDifficulties}
@@ -340,7 +325,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
           />
         </View>
       </View>
-    </BottomSheetModal>
+    </BaseBottomSheetModal>
   );
 };
 

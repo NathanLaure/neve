@@ -4,16 +4,18 @@ import { WebView } from 'react-native-webview';
 import { RandoData } from '@/constants/RandosData';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-import type { MapStyleType } from '@/components/MapLayerSheet';
+
+export type MapStyleType = 'default' | 'satellite';
 
 interface ExplorerMapProps {
   userLocation: { latitude: number; longitude: number };
   userLocationName: string;
   hikes: RandoData[];
   selectedHikeId: string | null;
-  onSelectHike: (id: string) => void;
+  onSelectHike?: (id: string) => void;
   onBearingChange?: (bearing: number) => void;
   mapStyle?: MapStyleType;
+  showGpxTrace?: boolean;
   style?: any;
 }
 
@@ -36,6 +38,7 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     onSelectHike,
     onBearingChange,
     mapStyle = 'default',
+    showGpxTrace = false,
     style,
   },
   ref
@@ -58,7 +61,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         : MAPBOX_STYLES.default
       : MAPBOX_STYLES[mapStyle];
 
-  // Generate the full HTML template with serialized initial data
   const htmlContent = `
     <!DOCTYPE html>
     <html>
@@ -72,7 +74,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         body { margin: 0; padding: 0; background-color: ${theme.background}; }
         #map { position: absolute; top: 0; bottom: 0; width: 100%; height: 100%; }
         
-        /* User marker custom styling */
         .user-marker {
           width: 32px;
           height: 32px;
@@ -102,7 +103,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
           100% { transform: scale(1.2); opacity: 0; }
         }
 
-        /* Hike marker styling */
         .hike-marker {
           background-color: #ffffff;
           border: 1.5px solid #eb490b;
@@ -144,8 +144,8 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
 
         let currentMarkers = {};
         let selectedHikeId = ${selectedHikeId ? `'${selectedHikeId}'` : 'null'};
+        let activeGpxTrace = null;
 
-        // Add user marker
         const el = document.createElement('div');
         el.className = 'user-marker';
         el.innerHTML = '<div class="user-pulse"></div><div class="user-dot"></div>';
@@ -154,9 +154,65 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
           .setLngLat([${userLocation.longitude}, ${userLocation.latitude}])
           .addTo(map);
 
-        // Function to render hike markers
+        function drawGpxTrace(gpxTrace) {
+          activeGpxTrace = gpxTrace;
+          if (map.getSource('gpx-route')) {
+            if (map.getLayer('gpx-route-layer')) map.removeLayer('gpx-route-layer');
+            if (map.getLayer('gpx-route-casing')) map.removeLayer('gpx-route-casing');
+            map.removeSource('gpx-route');
+          }
+
+          if (!gpxTrace || gpxTrace.length === 0) return;
+
+          const coordinates = gpxTrace.map(pt => [pt.longitude, pt.latitude]);
+
+          map.addSource('gpx-route', {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              properties: {},
+              geometry: {
+                type: 'LineString',
+                coordinates: coordinates
+              }
+            }
+          });
+
+          map.addLayer({
+            id: 'gpx-route-casing',
+            type: 'line',
+            source: 'gpx-route',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#FFFFFF',
+              'line-width': 6,
+              'line-opacity': 0.85
+            }
+          });
+
+          map.addLayer({
+            id: 'gpx-route-layer',
+            type: 'line',
+            source: 'gpx-route',
+            layout: { 'line-join': 'round', 'line-cap': 'round' },
+            paint: {
+              'line-color': '#FA6415',
+              'line-width': 4.5
+            }
+          });
+
+          const bounds = new mapboxgl.LngLatBounds();
+          coordinates.forEach(coord => bounds.extend(coord));
+          map.fitBounds(bounds, { padding: 40, duration: 800 });
+        }
+
+        map.on('style.load', () => {
+          if (activeGpxTrace) {
+            drawGpxTrace(activeGpxTrace);
+          }
+        });
+
         function renderHikes(hikesList, selectedId) {
-          // Remove old markers
           Object.keys(currentMarkers).forEach(id => {
             currentMarkers[id].remove();
           });
@@ -185,9 +241,16 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
           });
         }
 
-        // Initialize markers
+        const allowGpxTrace = ${showGpxTrace ? 'true' : 'false'};
         const initialHikes = ${JSON.stringify(hikes)};
         renderHikes(initialHikes, selectedHikeId);
+
+        map.on('load', () => {
+          const selectedHike = initialHikes.find(h => h.id === selectedHikeId);
+          if (allowGpxTrace && selectedHike && selectedHike.gpxTrace && selectedHike.gpxTrace.length > 0) {
+            drawGpxTrace(selectedHike.gpxTrace);
+          }
+        });
 
         const handleMessageEvent = (event) => {
           try {
@@ -207,13 +270,16 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
               selectedHikeId = data.id;
               const hike = data.hike;
               if (hike) {
-                map.easeTo({
-                  center: [hike.startStationCoords.longitude, hike.startStationCoords.latitude],
-                  zoom: 12,
-                  duration: 800
-                });
+                if (allowGpxTrace && hike.gpxTrace && hike.gpxTrace.length > 0) {
+                  drawGpxTrace(hike.gpxTrace);
+                } else {
+                  map.easeTo({
+                    center: [hike.startStationCoords.longitude, hike.startStationCoords.latitude],
+                    zoom: 12,
+                    duration: 800
+                  });
+                }
                 
-                // Update selected classes immediately
                 Object.keys(currentMarkers).forEach(id => {
                   const element = currentMarkers[id].getElement();
                   if (id === data.id) {
@@ -225,12 +291,12 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
               }
             } else if (data.type === 'PAN_TO_USER') {
               selectedHikeId = null;
+              drawGpxTrace(null);
               map.easeTo({
                 center: [data.longitude, data.latitude],
                 zoom: 10.5,
                 duration: 800
               });
-              // Reset all marker styles
               Object.keys(currentMarkers).forEach(id => {
                 currentMarkers[id].getElement().classList.remove('selected');
               });
@@ -247,7 +313,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         window.addEventListener('message', handleMessageEvent);
         document.addEventListener('message', handleMessageEvent);
 
-        // Report bearing changes to React Native
         map.on('rotate', () => {
           const bearing = map.getBearing();
           window.ReactNativeWebView.postMessage(JSON.stringify({
@@ -260,7 +325,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     </html>
   `;
 
-  // Update hikes and selected state dynamically
   useEffect(() => {
     if (webViewRef.current) {
       webViewRef.current.postMessage(
@@ -273,7 +337,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     }
   }, [hikes, selectedHikeId]);
 
-  // Update user location dynamically
   useEffect(() => {
     if (webViewRef.current) {
       webViewRef.current.postMessage(
@@ -286,7 +349,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     }
   }, [userLocation.latitude, userLocation.longitude]);
 
-  // Pan to selected hike or return to user location
   useEffect(() => {
     if (webViewRef.current) {
       if (selectedHikeId) {
@@ -312,7 +374,6 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     }
   }, [selectedHikeId, userLocation.latitude, userLocation.longitude, hikes]);
 
-  // Update map style dynamically
   useEffect(() => {
     if (webViewRef.current) {
       webViewRef.current.postMessage(
@@ -322,40 +383,44 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         })
       );
     }
-  }, [mapStyle, mapboxStyle]);
+  }, [mapboxStyle]);
 
   const handleMessage = (event: any) => {
     try {
       const data = JSON.parse(event.nativeEvent.data);
       if (data.type === 'SELECT_HIKE') {
-        onSelectHike(data.id);
+        if (onSelectHike) {
+          onSelectHike(data.id);
+        }
       } else if (data.type === 'BEARING_CHANGE') {
-        onBearingChange?.(data.bearing);
+        if (onBearingChange) {
+          onBearingChange(data.bearing);
+        }
       }
-    } catch (e) {
-      console.warn('Error parsing message from webview:', e);
+    } catch (err) {
+      console.error('Error parsing webview message:', err);
     }
   };
 
   return (
-    <View style={[styles.mapContainer, style, { backgroundColor: theme.background }]}>
-      <WebView
-        ref={webViewRef}
-        originWhitelist={['*']}
-        source={{ html: htmlContent }}
-        style={styles.map}
-        javaScriptEnabled={true}
-        domStorageEnabled={true}
-        onMessage={handleMessage}
-        renderLoading={() => (
-          <View style={StyleSheet.absoluteFillObject}>
-            <ActivityIndicator size="large" color={theme.tint} />
-          </View>
-        )}
-        startInLoadingState={true}
-        androidLayerType="hardware"
-        mixedContentMode="always"
-      />
+    <View style={[styles.container, style]}>
+      {mapboxToken ? (
+        <WebView
+          ref={webViewRef}
+          originWhitelist={['*']}
+          source={{ html: htmlContent }}
+          onMessage={handleMessage}
+          style={styles.map}
+          scrollEnabled={true}
+          nestedScrollEnabled={true}
+          javaScriptEnabled={true}
+          domStorageEnabled={true}
+        />
+      ) : (
+        <View style={styles.fallback}>
+          <ActivityIndicator size="large" color={theme.primary} />
+        </View>
+      )}
     </View>
   );
 });
@@ -363,15 +428,16 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
 export default ExplorerMap;
 
 const styles = StyleSheet.create({
-  mapContainer: {
-    height: 250,
-    width: '100%',
-    borderRadius: 20,
+  container: {
+    flex: 1,
     overflow: 'hidden',
-    position: 'relative',
   },
   map: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
+    flex: 1,
+  },
+  fallback: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });
