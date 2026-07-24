@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   Dimensions,
   Image,
+  InteractionManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';

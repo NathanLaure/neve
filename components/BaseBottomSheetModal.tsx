@@ -111,7 +111,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={[styles.handle, { backgroundColor: theme.tabIconDefault }]}
       backgroundStyle={{
-        backgroundColor: theme.card,
+        backgroundColor: theme.background,
         borderTopLeftRadius: 20,
         borderTopRightRadius: 20,
       }}

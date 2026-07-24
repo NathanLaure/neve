@@ -11,6 +11,7 @@ import {
   Alert,
   Animated,
   Modal,
+  StatusBar,
 } from 'react-native';
 import { Host, Switch } from '@expo/ui';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -333,6 +334,8 @@ export default function RandoDetailScreen() {
     <Reanimated.View
       entering={FadeInDown.duration(220)}
       style={[styles.root, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
+
       {/* Animated Collapsing Top Header Bar */}
       <Animated.View
         style={[

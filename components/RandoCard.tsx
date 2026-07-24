@@ -178,7 +178,7 @@ export default function RandoCard({
             styles.horizontalCard,
             {
               width: cardWidth,
-              backgroundColor: theme.card,
+              backgroundColor: theme.background,
               shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
             },
           ]}>

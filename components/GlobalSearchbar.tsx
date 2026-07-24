@@ -49,7 +49,9 @@ export default function GlobalSearchbar({ searchQuery, onPress, style, onBack, o
         style={[
           styles.floatingSearchButton,
           {
-            backgroundColor: theme.card,
+            backgroundColor: theme.background,
+            borderColor: theme.border,
+            borderWidth: colorScheme === 'dark' ? 2 : 0,
             shadowColor: '#000',
           },
         ]}>
@@ -111,6 +113,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
+    borderWidth: 2,
     ...Platform.select({
       ios: {
         shadowOffset: { width: 0, height: 10 },

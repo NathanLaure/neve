@@ -11,9 +11,11 @@ import {
   Text,
   View,
   Pressable,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -309,7 +311,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
         </BottomSheetScrollView>
 
         {/* Footer Buttons */}
-        <View style={[styles.footer, { borderTopColor: theme.border, paddingBottom: Math.max(insets.bottom, 16), backgroundColor: theme.card }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: theme.background }]}>
           <Button
             variant="text"
             title="Tout effacer"
@@ -369,9 +371,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 12,
-    borderTopWidth: 1,
     paddingHorizontal: 24,
     paddingTop: 16,
+    shadowColor: '#000000',
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: -4 },
+        shadowOpacity: 0.12,
+        shadowRadius: 8,
+      },
+      android: {
+        elevation: 6,
+      },
+    }),
   },
   resetButton: {
     paddingHorizontal: 12,

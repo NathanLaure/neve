@@ -1130,7 +1130,7 @@ export default function SearchModal() {
                         styles.textInputWrapper,
                         {
                           flex: 1,
-                          backgroundColor: theme.background,
+                          backgroundColor: theme.card,
                           borderColor: isSearchFocused ? theme.text : theme.border,
                           marginBottom: 0,
                           borderWidth: isSearchFocused ? 1.5 : 1,
@@ -1175,7 +1175,7 @@ export default function SearchModal() {
                                 color: localSearch ? theme.text : theme.textMuted,
                                 textAlignVertical: 'center',
                                 includeFontPadding: false,
-                                paddingTop: Platform.OS === 'ios' ? 0 : 4,
+                                paddingTop: Platform.OS === 'ios' ? 0 : 9  ,
                                 flex: 0,
                               },
                             ]}
@@ -1534,8 +1534,8 @@ const styles = StyleSheet.create({
   filtersFadeGradient: {
     position: 'absolute',
     bottom: 0,
-    left: 0,
-    right: 0,
+    left: -16,
+    right: -16,
     height: 48,
   },
   card: {

@@ -106,7 +106,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
         styles.tabBarContainer,
         {
           backgroundColor: theme.background,
-          borderTopColor: theme.border,
+          borderTopColor: theme.borderLight,
           paddingBottom: bottomPadding,
           height: baseHeight + bottomPadding,
         },

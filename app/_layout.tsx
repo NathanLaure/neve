@@ -13,6 +13,8 @@ import { AdventureProvider } from '@/context/AdventureContext';
 import { useColorScheme, setThemeOverride } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 
+import { AuthProvider } from '@/context/AuthContext';
+
 // Suppress known upstream library deprecation warnings in React Native 0.85+
 LogBox.ignoreLogs(['InteractionManager has been deprecated']);
 
@@ -82,33 +84,37 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <AdventureProvider>
-        <BottomSheetModalProvider>
-          <SafeAreaProvider>
-            <ThemeProvider value={customTheme}>
-              <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
-                <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                <Stack.Screen
-                  name="search"
-                  options={{
-                    headerShown: false,
-                    presentation: 'transparentModal',
-                    animation: 'fade',
-                  }}
-                />
-                <Stack.Screen
-                  name="rando/[id]"
-                  options={{
-                    headerShown: false,
-                    detachPreviousScreen: false,
-                    animation: 'none',
-                  }}
-                />
-              </Stack>
-            </ThemeProvider>
-          </SafeAreaProvider>
-        </BottomSheetModalProvider>
-      </AdventureProvider>
+      <AuthProvider>
+        <AdventureProvider>
+          <BottomSheetModalProvider>
+            <SafeAreaProvider>
+              <ThemeProvider value={customTheme}>
+                <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
+                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
+                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+                  <Stack.Screen
+                    name="search"
+                    options={{
+                      headerShown: false,
+                      presentation: 'transparentModal',
+                      animation: 'fade',
+                    }}
+                  />
+                  <Stack.Screen
+                    name="rando/[id]"
+                    options={{
+                      headerShown: false,
+                      detachPreviousScreen: false,
+                      animation: 'none',
+                    }}
+                  />
+                </Stack>
+              </ThemeProvider>
+            </SafeAreaProvider>
+          </BottomSheetModalProvider>
+        </AdventureProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }

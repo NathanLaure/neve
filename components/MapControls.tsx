@@ -52,7 +52,7 @@ export default function MapControls({
         style={[
           styles.compassButton,
           {
-            backgroundColor: theme.card,
+            backgroundColor: theme.background,
             shadowColor: '#000',
           },
         ]}>
@@ -66,7 +66,7 @@ export default function MapControls({
         style={[
           styles.pillGroup,
           {
-            backgroundColor: theme.card,
+            backgroundColor: theme.background,
             shadowColor: '#000',
           },
         ]}>

@@ -1,18 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Animated } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Leaf, Cloud, Compass, Train, Sun, Moon, Settings } from 'lucide-react-native';
-import { usePathname } from 'expo-router';
+import { Leaf, Cloud, Compass, Train, Sun, Moon, Settings, LogOut, User as UserIcon, Sparkles } from 'lucide-react-native';
+import { usePathname, useRouter } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme, setThemeOverride, getThemeOverride } from '@/components/useColorScheme';
+import { useAuth } from '@/context/AuthContext';
+import { Button } from '@/components/Button';
 
 export default function ProfileScreen() {
+  const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const pathname = usePathname();
   const isFocused = pathname === '/profile';
   const [fadeAnim] = useState(() => new Animated.Value(0));
+
+  const { user, profile, signOut } = useAuth();
 
   useEffect(() => {
     if (isFocused) {
@@ -35,6 +40,14 @@ export default function ProfileScreen() {
     setActiveTheme(mode);
   };
 
+  const handleSignOut = async () => {
+    await signOut();
+    router.replace('/onboarding');
+  };
+
+  const displayName = profile?.fullName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Nathan Laure';
+  const displayEmail = user?.email || 'nathan.laure@neve.fr';
+
   return (
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <SafeAreaView
@@ -56,8 +69,9 @@ export default function ProfileScreen() {
                 <Leaf size={32} color={theme.tint} />
               </View>
               <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: theme.text }]}>Nathan Laure</Text>
-                <View style={[styles.badge, { backgroundColor: theme.tint }]}>
+                <Text style={[styles.userName, { color: theme.text }]}>{displayName}</Text>
+                <Text style={[styles.userEmail, { color: theme.textMuted }]}>{displayEmail}</Text>
+                <View style={[styles.badge, { backgroundColor: theme.tint, marginTop: 4 }]}>
                   <Text style={styles.badgeText}>{"Éco-Explorateur d'Or"}</Text>
                 </View>
               </View>
@@ -217,6 +231,27 @@ export default function ProfileScreen() {
               </View>
             </View>
           </View>
+
+          {/* Account Actions Section */}
+          <View style={{ gap: 12, marginBottom: 40 }}>
+            <Button
+              title="Voir la présentation (Onboarding)"
+              variant="secondary"
+              icon={<Sparkles size={18} color={theme.text} />}
+              onPress={() => router.push('/onboarding')}
+              style={{ backgroundColor: theme.card, borderWidth: 0, height: 48 }}
+              textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 15 }}
+            />
+
+            <Button
+              title="Se déconnecter"
+              variant="secondary"
+              icon={<LogOut size={18} color={theme.statusBgError} />}
+              onPress={handleSignOut}
+              style={{ backgroundColor: theme.card, borderWidth: 0, height: 48 }}
+              textStyle={{ color: theme.statusBgError, fontFamily: 'BricolageGrotesque-Medium', fontSize: 15 }}
+            />
+          </View>
         </ScrollView>
       </SafeAreaView>
     </Animated.View>
@@ -282,6 +317,10 @@ const styles = StyleSheet.create({
   userName: {
     fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 18,
+  },
+  userEmail: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 13,
   },
   badge: {
     paddingHorizontal: 10,
