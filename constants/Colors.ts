@@ -23,6 +23,14 @@ export default {
     brandSubtle: '#FFFFFF', // bg/brand-subtle (Figma orange-subtle)
     brandFocus: '#EB490B', // border/focus (selected brand focus)
 
+    // Figma Button Color Tokens (Node 42:303)
+    buttonPrimary: '#EB490B',
+    buttonSecondary: '#3D3D3D',
+    buttonTertiary: '#FFFFFF',
+    buttonDisabled: '#DCDCDC',
+    buttonTextDisabled: '#7C7C7C',
+    buttonTextOnBrand: '#FFFFFF',
+
     // Figma Status Semantic Colors
     statusBgSuccess: '#386641',
     statusBgSuccessSubtle: '#F2F6F3',
@@ -57,6 +65,14 @@ export default {
     orangeBadge: '#241800', // status-bg-warning-subtle
     brandSubtle: '#241800', // bg/brand-subtle dark
     brandFocus: '#FA6415', // border/focus dark
+
+    // Figma Button Color Tokens (Node 42:303)
+    buttonPrimary: '#FA6415',
+    buttonSecondary: '#111111',
+    buttonTertiary: '#222222',
+    buttonDisabled: '#2A2A2A',
+    buttonTextDisabled: '#7C7C7C',
+    buttonTextOnBrand: '#FFFFFF',
 
     // Figma Status Semantic Colors
     statusBgSuccess: '#6A994E',

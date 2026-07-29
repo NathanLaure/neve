@@ -1,6 +1,6 @@
 import '../global.css';
 import React, { useEffect } from 'react';
-import { DevSettings, LogBox } from 'react-native';
+import { DevSettings, LogBox, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme, DefaultTheme } from 'expo-router/react-navigation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -8,12 +8,13 @@ import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
+import { StatusBar } from 'expo-status-bar';
 
 import { AdventureProvider } from '@/context/AdventureContext';
 import { useColorScheme, setThemeOverride } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-
 import { AuthProvider } from '@/context/AuthContext';
+import { SplashScreenView } from '@/components/SplashScreenView';
 
 // Suppress known upstream library deprecation warnings in React Native 0.85+
 LogBox.ignoreLogs(['InteractionManager has been deprecated']);
@@ -89,27 +90,43 @@ export default function RootLayout() {
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <ThemeProvider value={customTheme}>
-                <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
-                  <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-                  <Stack.Screen name="onboarding" options={{ headerShown: false }} />
-                  <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-                  <Stack.Screen
-                    name="search"
-                    options={{
-                      headerShown: false,
-                      presentation: 'transparentModal',
-                      animation: 'fade',
-                    }}
-                  />
-                  <Stack.Screen
-                    name="rando/[id]"
-                    options={{
-                      headerShown: false,
-                      detachPreviousScreen: false,
-                      animation: 'none',
-                    }}
-                  />
-                </Stack>
+                <View style={{ flex: 1 }}>
+                  <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} animated />
+                  <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
+                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen
+                      name="onboarding"
+                      options={{
+                        headerShown: false,
+                        animation: 'slide_from_bottom',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="(auth)"
+                      options={{
+                        headerShown: false,
+                        animation: 'slide_from_bottom',
+                      }}
+                    />
+                    <Stack.Screen name="splash" options={{ headerShown: false }} />
+                    <Stack.Screen
+                      name="search"
+                      options={{
+                        headerShown: false,
+                        presentation: 'transparentModal',
+                        animation: 'fade',
+                      }}
+                    />
+                    <Stack.Screen
+                      name="rando/[id]"
+                      options={{
+                        headerShown: false,
+                        detachPreviousScreen: false,
+                        animation: 'none',
+                      }}
+                    />
+                  </Stack>
+                </View>
               </ThemeProvider>
             </SafeAreaProvider>
           </BottomSheetModalProvider>

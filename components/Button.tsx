@@ -13,7 +13,7 @@ import Colors from '@/constants/Colors';
 
 export interface ButtonProps extends TouchableOpacityProps {
   title: string;
-  variant?: 'primary' | 'secondary' | 'text';
+  variant?: 'primary' | 'secondary' | 'tertiary' | 'social' | 'text' | 'transparent';
   icon?: React.ReactNode;
   loading?: boolean;
   textStyle?: TextStyle;
@@ -37,7 +37,14 @@ export const Button = forwardRef<View, ButtonProps>(
         style={[defaultStyles.button, variantStyles.button, style]}
         {...touchableProps}>
         {loading ? (
-          <ActivityIndicator color={variant === 'primary' ? '#EFEFEF' : theme.text} size="small" />
+          <ActivityIndicator
+            color={
+              variant === 'primary' || variant === 'secondary'
+                ? theme.buttonTextOnBrand
+                : theme.text
+            }
+            size="small"
+          />
         ) : (
           <>
             {icon && <View style={defaultStyles.iconWrapper}>{icon}</View>}
@@ -52,49 +59,99 @@ export const Button = forwardRef<View, ButtonProps>(
 Button.displayName = 'Button';
 
 const getButtonStyles = (
-  variant: 'primary' | 'secondary' | 'text',
+  variant: 'primary' | 'secondary' | 'tertiary' | 'social' | 'text' | 'transparent',
   theme: any,
   disabled: boolean
 ) => {
+  if (disabled) {
+    return {
+      button: {
+        backgroundColor: theme.buttonDisabled || theme.borderLight,
+        borderColor: theme.borderDisabled || theme.border,
+        borderWidth: variant === 'tertiary' || variant === 'social' ? 1 : 0,
+        height: variant === 'tertiary' ? 36 : 48,
+        borderRadius: variant === 'tertiary' ? 12 : 12,
+        paddingHorizontal: 16,
+      },
+      text: {
+        color: theme.buttonTextDisabled || theme.textMuted,
+        fontFamily: 'BricolageGrotesque-Medium',
+        fontSize: variant === 'tertiary' ? 14 : 16,
+        fontWeight: '600' as const,
+      },
+    };
+  }
+
   switch (variant) {
     case 'primary':
       return {
         button: {
-          backgroundColor: theme.primary,
-          borderColor: '#1B1B1B',
-          borderWidth: 2,
+          backgroundColor: theme.buttonPrimary || theme.primary,
+          height: 48,
           borderRadius: 12,
           paddingHorizontal: 24,
           paddingVertical: 12,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.15,
-          shadowRadius: 8,
-          elevation: 5,
-          opacity: disabled ? 0.5 : 1,
         },
         text: {
-          color: '#EFEFEF',
-          fontFamily: 'BricolageGrotesque-SemiBold',
+          color: theme.buttonTextOnBrand || '#FFFFFF',
+          fontFamily: 'BricolageGrotesque-Medium',
           fontSize: 16,
-          lineHeight: 16 * 1.5,
+          fontWeight: '600' as const,
         },
       };
     case 'secondary':
       return {
         button: {
-          backgroundColor: 'transparent',
+          backgroundColor: theme.buttonSecondary || '#111111',
+          height: 48,
+          borderRadius: 12,
+          paddingHorizontal: 24,
+          paddingVertical: 12,
+        },
+        text: {
+          color: theme.buttonTextOnBrand || '#FFFFFF',
+          fontFamily: 'BricolageGrotesque-Medium',
+          fontSize: 16,
+          fontWeight: '600' as const,
+        },
+      };
+    case 'tertiary':
+      return {
+        button: {
+          backgroundColor: theme.buttonTertiary || theme.card,
           borderColor: theme.border,
           borderWidth: 1,
           borderRadius: 12,
-          opacity: disabled ? 0.5 : 1,
+          height: 36,
+          paddingHorizontal: 16,
+          paddingVertical: 8,
         },
         text: {
           color: theme.text,
           fontFamily: 'BricolageGrotesque-Medium',
           fontSize: 14,
+          fontWeight: '500' as const,
         },
       };
+    case 'social':
+      return {
+        button: {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+          borderWidth: 1,
+          borderRadius: 12,
+          height: 48,
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+        },
+        text: {
+          color: theme.text,
+          fontFamily: 'BricolageGrotesque-Medium',
+          fontSize: 14,
+          fontWeight: '500' as const,
+        },
+      };
+    case 'transparent':
     case 'text':
     default:
       return {
@@ -105,7 +162,6 @@ const getButtonStyles = (
           paddingHorizontal: 16,
           paddingVertical: 8,
           height: 36,
-          opacity: disabled ? 0.5 : 1,
         },
         text: {
           color: theme.textMuted,
@@ -122,9 +178,10 @@ const defaultStyles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    width: '100%',
   },
   iconWrapper: {
-    marginRight: 8,
+    marginRight: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,33 +8,158 @@ import {
   Pressable,
   useWindowDimensions,
   Image,
+  Animated,
+
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import {
-  ArrowRight,
-  Train,
-  MapPin,
-  Compass,
-  Sparkles,
-  CheckCircle2,
-  Sun,
-  Star,
-  Mountain,
-  Clock,
-  WifiOff,
-  Navigation,
-} from 'lucide-react-native';
+import { ArrowRight, ArrowLeft } from 'lucide-react-native';
 
+import { StatusBar } from 'expo-status-bar';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/Button';
+import { IconButton } from '@/components/IconButton';
 
 interface SlideItem {
   id: string;
   imageSource: any;
   title: string;
+  subtitle: string;
+  bgColor: string;
+  targetRotationDeg: number; // numeric degrees for smooth interpolation
+  rotationStr: string;
+  imageZoomScale?: number;
+}
+
+interface SlideCardProps {
+  item: SlideItem;
+  index: number;
+  isActive: boolean;
+  screenWidth: number;
+  theme: any;
+  colorScheme: string;
+  onPrev: () => void;
+  onNext: () => void;
+  isLastSlide: boolean;
+}
+
+function SlideCard({
+  item,
+  index,
+  isActive,
+  screenWidth,
+  theme,
+  colorScheme,
+  onPrev,
+  onNext,
+  isLastSlide,
+}: SlideCardProps) {
+  const animValue = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (isActive) {
+      animValue.setValue(0);
+      Animated.spring(animValue, {
+        toValue: 1,
+        tension: 45,
+        friction: 6,
+        useNativeDriver: true,
+      }).start();
+    } else {
+      animValue.setValue(0);
+    }
+  }, [isActive, animValue]);
+
+  // Interpolate rotation: starts at 0deg and rotates into target angle (e.g., -4.06deg) on entry
+  const rotateInterpolation = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', `${item.targetRotationDeg}deg`],
+  });
+
+  // Interpolate scale: subtle pop scale from 0.92 to 1
+  const scaleInterpolation = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.92, 1],
+  });
+
+  // Interpolate opacity
+  const opacityInterpolation = animValue.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0.4, 1],
+  });
+
+  return (
+    <View style={[styles.slideWrapper, { width: screenWidth }]}>
+      <View
+        style={[
+          styles.card,
+          {
+            backgroundColor: item.bgColor,
+          },
+        ]}>
+        {/* Header Text Container */}
+        <View style={styles.textContainer}>
+          <Text style={[styles.cardTitle, { color: '#222222' }]}>
+            {item.title}
+          </Text>
+          <Text style={[styles.cardSubtitle, { color: '#525252' }]}>
+            {item.subtitle}
+          </Text>
+        </View>
+
+        {/* Animated Image Illustration Frame with Entry Rotation Animation */}
+        <View style={styles.imageOuterFlex}>
+          <Animated.View
+            style={[
+              styles.imageRotatedFrame,
+              {
+                opacity: opacityInterpolation,
+                transform: [
+                  { scale: scaleInterpolation },
+                  { rotate: rotateInterpolation },
+                ],
+                borderColor: theme.text,
+                backgroundColor: theme.text,
+              },
+            ]}>
+            <View style={styles.imageInnerClip}>
+              <Image
+                source={item.imageSource}
+                style={[
+                  styles.cardImage,
+                  item.imageZoomScale ? { transform: [{ scale: item.imageZoomScale }] } : null,
+                ]}
+                resizeMode="cover"
+              />
+            </View>
+          </Animated.View>
+        </View>
+
+        {/* Card Action Buttons (Back / Next Arrow Circles) */}
+        <View style={styles.cardNavRow}>
+          {index > 0 ? (
+            <IconButton
+              icon={<ArrowLeft size={22} color={theme.text} />}
+              variant="circle"
+              onPress={onPrev}
+              style={{ backgroundColor: theme.background }}
+            />
+          ) : null}
+
+          {!isLastSlide ? (
+            <IconButton
+              icon={<ArrowRight size={22} color={theme.text} />}
+              variant="circle"
+              onPress={onNext}
+              style={{ backgroundColor: theme.background }}
+            />
+          ) : null}
+        </View>
+      </View>
+    </View>
+  );
 }
 
 export default function OnboardingScreen() {
@@ -42,571 +167,323 @@ export default function OnboardingScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
-  const { width, height } = useWindowDimensions();
+  const { width } = useWindowDimensions();
   const screenWidth = width > 0 ? width : Dimensions.get('window').width;
 
   const { completeOnboarding } = useAuth();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList>(null);
+  const scrollX = useRef(new Animated.Value(0)).current;
+
+
 
   const slides: SlideItem[] = [
     {
       id: '1',
-      imageSource: require('@/assets/images/onboarding_train_mountain.png'),
-      title: 'Des centaines de randonnées d’exception accessibles en train direct',
+      title: 'La rando, à portée de train',
+      subtitle: "Une sélection exclusive d'itinéraires accessibles uniquement en transports en commun.",
+      bgColor: '#D0E1EC',
+      targetRotationDeg: -4.06,
+      rotationStr: '-4.06deg',
+      imageSource: require('@/assets/images/onboarding_slide1_lake.jpg'),
     },
     {
       id: '2',
-      imageSource: require('@/assets/images/onboarding_forest_gpx.png'),
-      title: 'Cartes et tracés GPX 100% hors-ligne pour ne jamais vous perdre',
+      title: "L'esprit libre, même sans réseau",
+      subtitle: 'Embarquez vos cartes topographiques et vos tracés GPX hors-ligne pour garder le cap sur tous les sentiers.',
+      bgColor: '#DAEAD7',
+      targetRotationDeg: 3.66,
+      rotationStr: '3.66deg',
+      imageSource: require('@/assets/images/onboarding_slide2_map.jpg'),
     },
     {
       id: '3',
-      imageSource: require('@/assets/images/onboarding_lake_transit.png'),
-      title: 'Horaires de train en direct et trajets Pass Navigo inclus',
+      title: 'Vos trajets synchronisés en temps réel',
+      subtitle: 'Horaires des lignes, correspondances et alertes réseau centralisés dans une seule interface.',
+      bgColor: '#F7E9D7',
+      targetRotationDeg: -2.5,
+      rotationStr: '-2.5deg',
+      imageSource: require('@/assets/images/onboarding_slide3_phone.jpg'),
+      imageZoomScale: 1.7,
     },
     {
       id: '4',
-      imageSource: require('@/assets/images/onboarding_adventure_call.png'),
-      title: 'Planifiez votre toute première escapade sans voiture dès aujourd’hui',
+      title: 'Le grand air commence ici',
+      subtitle: 'Configurez vos préférences et partez immédiatement à la découverte des plus beaux panoramas.',
+      bgColor: '#E9EAEF',
+      targetRotationDeg: 6.04,
+      rotationStr: '6.04deg',
+      imageSource: require('@/assets/images/onboarding_slide4_panorama.jpg'),
     },
   ];
 
+  const [isAutoPlayUserPaused, setIsAutoPlayUserPaused] = useState(false);
+
+  const pauseAutoPlay = () => {
+    setIsAutoPlayUserPaused(true);
+  };
+
+  // Smart Auto-Advance Timer (Option B: 10s interval, pauses on user drag/interaction)
+  useEffect(() => {
+    if (isAutoPlayUserPaused) return;
+
+    const timer = setInterval(() => {
+      setCurrentIndex((prevIndex) => {
+        if (prevIndex < slides.length - 1) {
+          const nextIndex = prevIndex + 1;
+          flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+          return nextIndex;
+        } else {
+          setIsAutoPlayUserPaused(true);
+          return prevIndex;
+        }
+      });
+    }, 10000);
+
+    return () => clearInterval(timer);
+  }, [isAutoPlayUserPaused, slides.length]);
+
   const finishOnboarding = () => {
+    pauseAutoPlay();
     completeOnboarding();
     router.push('/(auth)/register');
   };
 
-  // Dedicated custom graphic composition per slide
-  const renderSlideGraphic = (slideId: string, imageSource: any) => {
-    switch (slideId) {
-      case '1':
-        // Slide 1: Train Departure Station Widget Composition
-        return (
-          <View style={styles.visualWrapper}>
-            <View style={[styles.visualCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Image source={imageSource} style={styles.cardImage} resizeMode="cover" />
-            </View>
-
-            {/* Train Departure Schedule Overlay Card */}
-            <View style={[styles.customOverlayCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <View style={styles.cardHeaderRow}>
-                <View style={[styles.badgePill, { backgroundColor: theme.primary }]}>
-                  <Train size={14} color="#FFFFFF" />
-                  <Text style={styles.badgePillText}>Train Direct</Text>
-                </View>
-                <Text style={[styles.durationText, { color: theme.primary }]}>42 min</Text>
-              </View>
-
-              <Text style={[styles.stationTitle, { color: theme.text }]}>
-                Gare de Lyon ➔ Fontainebleau
-              </Text>
-              <Text style={[styles.stationSub, { color: theme.textMuted }]}>
-                Ligne R · Pass Navigo inclus · Départs toutes les 30 min
-              </Text>
-            </View>
-          </View>
-        );
-
-      case '2':
-        // Slide 2: GPX Offline Stats & Profile Card Composition
-        return (
-          <View style={styles.visualWrapper}>
-            <View style={[styles.visualCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Image source={imageSource} style={styles.cardImage} resizeMode="cover" />
-              {/* Floating Offline Indicator Chip */}
-              <View style={[styles.topChip, { backgroundColor: 'rgba(0,0,0,0.75)', borderColor: 'rgba(255,255,255,0.2)' }]}>
-                <WifiOff size={14} color="#4EAE71" />
-                <Text style={{ fontFamily: 'Satoshi-Bold', fontSize: 12, color: '#FFFFFF' }}>
-                  GPS Hors-Ligne Actif
-                </Text>
-              </View>
-            </View>
-
-            {/* GPX Stats Strip Overlay */}
-            <View style={[styles.statsStripCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <View style={styles.statCol}>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>Dénivelé</Text>
-                <Text style={[styles.statValue, { color: theme.primary }]}>+520m D+</Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-              <View style={styles.statCol}>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>Distance</Text>
-                <Text style={[styles.statValue, { color: theme.text }]}>14.2 km</Text>
-              </View>
-              <View style={[styles.statDivider, { backgroundColor: theme.border }]} />
-              <View style={styles.statCol}>
-                <Text style={[styles.statLabel, { color: theme.textMuted }]}>Durée</Text>
-                <Text style={[styles.statValue, { color: theme.text }]}>3h45</Text>
-              </View>
-            </View>
-          </View>
-        );
-
-      case '3':
-        // Slide 3: Pass Navigo & Countdown Timer Widget Composition
-        return (
-          <View style={styles.visualWrapper}>
-            <View style={[styles.visualCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Image source={imageSource} style={styles.cardImage} resizeMode="cover" />
-            </View>
-
-            {/* Pass Navigo Card Badge */}
-            <View style={[styles.navigoBadge, { backgroundColor: '#457B9D' }]}>
-              <Compass size={18} color="#FFFFFF" />
-              <Text style={styles.navigoBadgeText}>Pass Navigo Inclus · Zone 1-5</Text>
-            </View>
-
-            {/* Live Countdown Overlay */}
-            <View style={[styles.countdownCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Clock size={18} color={theme.primary} />
-              <Text style={[styles.countdownText, { color: theme.text }]}>
-                Prochain train dans <Text style={{ color: theme.primary, fontFamily: 'BricolageGrotesque-Bold' }}>12 min</Text> (Quai 3)
-              </Text>
-            </View>
-          </View>
-        );
-
-      case '4':
-      default:
-        // Slide 4: Photo Collage Composition with Overlapping Reviews
-        return (
-          <View style={styles.visualWrapper}>
-            {/* Smaller Central Tilted Photo Frame */}
-            <View style={[styles.collagePhotoCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Image source={imageSource} style={styles.cardImage} resizeMode="cover" />
-            </View>
-
-            {/* Overlapping Review Card 1 (Top-Right) */}
-            <View style={[styles.collageReviewCard, styles.collageCardTopRight, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <View style={styles.reviewAvatar}>
-                <Text style={styles.reviewAvatarText}>SF</Text>
-              </View>
-              <View style={styles.reviewTextCol}>
-                <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star key={s} size={10} color="#B07D06" fill="#B07D06" />
-                  ))}
-                </View>
-                <Text style={[styles.reviewQuote, { color: theme.text }]} numberOfLines={1}>
-                  « Des rando sans voiture magiques ! »
-                </Text>
-                <Text style={[styles.reviewAuthor, { color: theme.textMuted }]}>Sophie F. · Randonneuse</Text>
-              </View>
-            </View>
-
-            {/* Overlapping Review Card 2 (Bottom-Left) */}
-            <View style={[styles.collageReviewCard, styles.collageCardBottomLeft, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <View style={[styles.reviewAvatar, { backgroundColor: '#457B9D' }]}>
-                <Text style={styles.reviewAvatarText}>MR</Text>
-              </View>
-              <View style={styles.reviewTextCol}>
-                <View style={styles.starsRow}>
-                  {[1, 2, 3, 4, 5].map((s) => (
-                    <Star key={s} size={10} color="#B07D06" fill="#B07D06" />
-                  ))}
-                </View>
-                <Text style={[styles.reviewQuote, { color: theme.text }]} numberOfLines={1}>
-                  « Tracé GPX hors-ligne parfait »
-                </Text>
-                <Text style={[styles.reviewAuthor, { color: theme.textMuted }]}>Marc R. · Hiker Navigo</Text>
-              </View>
-            </View>
-
-            {/* Overlapping Rating Chip (Bottom-Right) */}
-            <View style={[styles.collageRatingChip, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Star size={14} color="#B07D06" fill="#B07D06" />
-              <Text style={[styles.collageRatingText, { color: theme.text }]}>4.9/5 · 1.2k avis</Text>
-            </View>
-          </View>
-        );
+  const handleNext = () => {
+    pauseAutoPlay();
+    if (currentIndex < slides.length - 1) {
+      const nextIndex = currentIndex + 1;
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+      setCurrentIndex(nextIndex);
+    } else {
+      finishOnboarding();
     }
   };
 
+  const handlePrev = () => {
+    pauseAutoPlay();
+    if (currentIndex > 0) {
+      const prevIndex = currentIndex - 1;
+      flatListRef.current?.scrollToIndex({ index: prevIndex, animated: true });
+      setCurrentIndex(prevIndex);
+    }
+  };
+
+  const activeCardBg = slides[currentIndex].bgColor;
+
   return (
-    <View style={[styles.root, { backgroundColor: theme.background, paddingTop: insets.top }]}>
-      {/* Main Swarm Slides Horizontal FlatList */}
-      <FlatList
-        ref={flatListRef}
-        data={slides}
-        horizontal
-        pagingEnabled
-        showsHorizontalScrollIndicator={false}
-        onMomentumScrollEnd={(e) => {
-          const index = Math.round(e.nativeEvent.contentOffset.x / screenWidth);
-          setCurrentIndex(index);
-        }}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => (
-          <View style={[styles.slide, { width: screenWidth }]}>
-            {/* Top Text Header Block */}
-            <View style={styles.topTextBlock}>
-              <Text style={[styles.slideTitle, { color: theme.text }]}>{item.title}</Text>
-            </View>
-
-            {/* Unique Visual Composition Per Slide */}
-            {renderSlideGraphic(item.id, item.imageSource)}
-          </View>
-        )}
-      />
-
-      {/* Fixed Bottom Action Area */}
-      <View style={[styles.bottomContainer, { paddingBottom: Math.max(insets.bottom + 16, 24) }]}>
-        {/* Swarm Style Page Indicator Dots */}
-        <View style={styles.dotsRow}>
-          {slides.map((_, i) => (
-            <View
-              key={i}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor: i === currentIndex ? theme.primary : theme.border,
-                  width: i === currentIndex ? 24 : 8,
-                },
-              ]}
+    <View
+      style={[
+        styles.container,
+        {
+          backgroundColor: theme.background,
+          paddingTop: Math.max(insets.top + 16, 44),
+          paddingBottom: Math.max(insets.bottom + 16, 24),
+        },
+      ]}>
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} animated />
+      {/* Cards Swiper */}
+      <View style={styles.swiperContainer}>
+        <FlatList
+          ref={flatListRef}
+          data={slides}
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item.id}
+          onScrollBeginDrag={pauseAutoPlay}
+          onScroll={Animated.event(
+            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+            { useNativeDriver: false }
+          )}
+          scrollEventThrottle={16}
+          onMomentumScrollEnd={(event) => {
+            const index = Math.round(event.nativeEvent.contentOffset.x / screenWidth);
+            setCurrentIndex(index);
+          }}
+          renderItem={({ item, index }) => (
+            <SlideCard
+              item={item}
+              index={index}
+              isActive={index === currentIndex}
+              screenWidth={screenWidth}
+              theme={theme}
+              colorScheme={colorScheme}
+              onPrev={handlePrev}
+              onNext={handleNext}
+              isLastSlide={index === slides.length - 1}
             />
-          ))}
-        </View>
-
-        {/* Primary CTA Button */}
-        <Button
-          title="Commencer"
-          variant="primary"
-          icon={<ArrowRight size={18} color="#FFFFFF" />}
-          iconPosition="right"
-          onPress={finishOnboarding}
-          style={styles.primaryBtn}
-          textStyle={styles.primaryBtnText}
+          )}
         />
+      </View>
+
+      {/* Bottom Fixed Toolbar Container */}
+      <View
+        style={[
+          styles.toolbarCard,
+          {
+            backgroundColor: activeCardBg,
+          },
+        ]}>
+        <Button
+          title="Commencer gratuitement"
+          variant="secondary"
+          onPress={finishOnboarding}
+          style={styles.ctaButton}
+        />
+
+        {/* Animated Stretching Worm Pagination Pill */}
+        <View style={styles.paginationRow}>
+          {slides.map((_, idx) => {
+            const dotWidth = scrollX.interpolate({
+              inputRange: [
+                (idx - 1) * screenWidth,
+                (idx - 0.5) * screenWidth,
+                idx * screenWidth,
+                (idx + 0.5) * screenWidth,
+                (idx + 1) * screenWidth,
+              ],
+              outputRange: [8, 20, 32, 20, 8],
+              extrapolate: 'clamp',
+            });
+
+            const dotOpacity = scrollX.interpolate({
+              inputRange: [
+                (idx - 1) * screenWidth,
+                idx * screenWidth,
+                (idx + 1) * screenWidth,
+              ],
+              outputRange: [0.4, 1, 0.4],
+              extrapolate: 'clamp',
+            });
+
+            return (
+              <Animated.View
+                key={idx}
+                style={[
+                  styles.dot,
+                  {
+                    width: dotWidth,
+                    opacity: dotOpacity,
+                    backgroundColor: '#222222',
+                  },
+                ]}
+              />
+            );
+          })}
+        </View>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
+  container: {
     flex: 1,
+    justifyContent: 'space-between',
+    paddingHorizontal: 20,
   },
-  slide: {
+  swiperContainer: {
     flex: 1,
-    paddingHorizontal: 24,
-    paddingVertical: 12,
+    marginHorizontal: -20,
+    marginBottom: 16,
+  },
+  slideWrapper: {
+    paddingHorizontal: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  topTextBlock: {
-    width: '100%',
-    alignItems: 'flex-start',
-    marginBottom: 16,
-  },
-  slideTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 32,
-    lineHeight: 40,
-    letterSpacing: -0.6,
-    textAlign: 'left',
-  },
-  visualWrapper: {
+  card: {
     width: '100%',
     flex: 1,
-    maxHeight: 380,
-    position: 'relative',
-    marginVertical: 4,
+    borderRadius: 20,
+    padding: 20,
+    justifyContent: 'space-between',
+    overflow: 'visible',
   },
-  visualCard: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 24,
-    borderWidth: 1,
-    overflow: 'hidden',
+  textContainer: {
+    gap: 10,
+    marginTop: 8,
+    zIndex: 2,
+  },
+  cardTitle: {
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 40,
+    lineHeight: 38,
+  },
+  cardSubtitle: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 16,
+    lineHeight: 22,
+  },
+  imageOuterFlex: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginVertical: 12,
+    overflow: 'visible',
+    zIndex: 1,
+  },
+  imageRotatedFrame: {
+    width: '106%',
+    height: '94%',
+    borderRadius: 20,
+    borderWidth: 2.5,
+    borderBottomWidth: 6.5,
+    borderRightWidth: 6.5,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.08,
-    shadowRadius: 18,
+    shadowOpacity: 0.16,
+    shadowRadius: 12,
     elevation: 6,
+  },
+  imageInnerClip: {
+    flex: 1,
+    borderRadius: 16,
+    overflow: 'hidden',
   },
   cardImage: {
     width: '100%',
     height: '100%',
   },
-  // Slide 1 Custom Card Overlay
-  customOverlayCard: {
-    position: 'absolute',
-    bottom: -16,
-    left: 12,
-    right: 12,
+  cardNavRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: 10,
+    zIndex: 2,
+  },
+  arrowCircleBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  toolbarCard: {
     borderRadius: 20,
-    borderWidth: 1,
-    padding: 14,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
+    padding: 16,
+    gap: 14,
+    alignItems: 'center',
   },
-  cardHeaderRow: {
+  ctaButton: {
+    width: '100%',
+  },
+  paginationRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  badgePill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 10,
+    justifyContent: 'center',
+    gap: 8,
     paddingVertical: 4,
-    borderRadius: 12,
-  },
-  badgePillText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 12,
-    color: '#FFFFFF',
-  },
-  durationText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 14,
-  },
-  stationTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 15,
-  },
-  stationSub: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 12,
-  },
-  // Slide 2 GPX Custom Overlay
-  topChip: {
-    position: 'absolute',
-    top: 14,
-    left: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    borderWidth: 1,
-  },
-  statsStripCard: {
-    position: 'absolute',
-    bottom: -16,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  statCol: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  statLabel: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 11,
-  },
-  statValue: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 15,
-  },
-  statDivider: {
-    width: 1,
-    height: 24,
-  },
-  // Slide 3 Navigo Custom Overlay
-  navigoBadge: {
-    position: 'absolute',
-    top: 14,
-    right: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 16,
-  },
-  navigoBadgeText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 12,
-    color: '#FFFFFF',
-  },
-  countdownCard: {
-    position: 'absolute',
-    bottom: -16,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  countdownText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
-    flex: 1,
-  },
-  // Slide 4 Photo Collage Composition Styles
-  collagePhotoCard: {
-    width: '68%',
-    height: '76%',
-    borderRadius: 22,
-    borderWidth: 1,
-    overflow: 'hidden',
-    alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.1,
-    shadowRadius: 14,
-    elevation: 6,
-  },
-  collageReviewCard: {
-    position: 'absolute',
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    borderRadius: 18,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  collageCardTopRight: {
-    top: 10,
-    right: 0,
-    width: '74%',
-  },
-  collageCardBottomLeft: {
-    bottom: 24,
-    left: 0,
-    width: '74%',
-  },
-  reviewAvatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#EB490B',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  reviewAvatarText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 12,
-    color: '#FFFFFF',
-  },
-  reviewTextCol: {
-    flex: 1,
-    gap: 2,
-  },
-  starsRow: {
-    flexDirection: 'row',
-    gap: 2,
-  },
-  reviewQuote: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 12,
-  },
-  reviewAuthor: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 10,
-  },
-  collageRatingChip: {
-    position: 'absolute',
-    bottom: -10,
-    right: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 18,
-    borderWidth: 1,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 6,
-  },
-  collageRatingText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 12,
-  },
-  communityCard: {
-    position: 'absolute',
-    bottom: -16,
-    left: 12,
-    right: 12,
-    borderRadius: 20,
-    borderWidth: 1,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    gap: 6,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-  },
-  ratingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  ratingScore: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 14,
-  },
-  ratingCount: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 12,
-  },
-  communitySubText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 13,
-    fontStyle: 'italic',
-  },
-  bottomContainer: {
-    paddingHorizontal: 24,
-    gap: 16,
-  },
-  dotsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    marginBottom: 4,
   },
   dot: {
     height: 8,
     borderRadius: 4,
   },
-  primaryBtn: {
-    height: 54,
-    borderRadius: 16,
+  activeDot: {
+    width: 28,
   },
-  primaryBtnText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 17,
-    color: '#FFFFFF',
+  inactiveDot: {
+    width: 8,
   },
 });

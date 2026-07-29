@@ -3,28 +3,21 @@ import {
   StyleSheet,
   Text,
   View,
-  TextInput,
   Pressable,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Linking,
+  Image,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   ArrowLeft,
-  ArrowRight,
-  User as UserIcon,
-  Mail,
-  Lock,
-  Train,
-  Eye,
-  EyeOff,
-  Globe,
   Apple,
-  Check,
+  Globe,
   Sparkles,
+  Mountain,
 } from 'lucide-react-native';
 
 import { useColorScheme } from '@/components/useColorScheme';
@@ -32,6 +25,9 @@ import Colors from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/Button';
 import { Input } from '@/components/Input';
+import { Checkbox } from '@/components/Checkbox';
+import { NeveLogo } from '@/components/NeveLogo';
+import { SocialIcon } from '@/components/SocialIcon';
 
 const PARIS_STATIONS = [
   'Paris Gare de Lyon',
@@ -50,18 +46,19 @@ export default function SwarmAuthScreen() {
 
   const { signUp, signIn, signInWithOAuth, checkUserExists, isLoading } = useAuth();
 
-  const [authMode, setAuthMode] = useState<'entry' | 'login' | 'signup'>('entry');
-  const [signupStep, setSignupStep] = useState(1);
+  const [authMode, setAuthMode] = useState<'entry' | 'login' | 'signup' | 'welcome'>('entry');
+  const [signupStep, setSignupStep] = useState<1 | 2>(1);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [fullName, setFullName] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
   const [selectedStation, setSelectedStation] = useState('Paris Gare de Lyon');
-  const [showPassword, setShowPassword] = useState(false);
+  const [newsletterConsent, setNewsletterConsent] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
 
-  // Universal Email Submission
+  // Check whether email already exists
   const handleEmailCheck = async () => {
     if (!email.trim() || !email.includes('@')) {
       setErrorMsg('Veuillez entrer une adresse email valide.');
@@ -81,7 +78,7 @@ export default function SwarmAuthScreen() {
     }
   };
 
-  // Sign In Submission
+  // Sign In Submission for Existing Users
   const handleLoginSubmit = async () => {
     if (!password.trim()) {
       setErrorMsg('Veuillez entrer votre mot de passe.');
@@ -91,66 +88,38 @@ export default function SwarmAuthScreen() {
 
     const { error } = await signIn(email.trim(), password);
     if (error) {
-      setErrorMsg(error.message || 'Mot de passe incorrect. Veuillez réessayer.');
+      setErrorMsg(error);
     } else {
       router.replace('/(tabs)');
     }
   };
 
   // Signup Wizard Submission
-  const handleSignupNext = () => {
+  const handleSignupSubmit = async () => {
     setErrorMsg('');
-    if (signupStep === 1) {
-      if (!fullName.trim()) {
-        setErrorMsg('Veuillez entrer votre nom complet.');
-        return;
-      }
-      setSignupStep(2);
-    } else if (signupStep === 2) {
-      if (password.length < 6) {
-        setErrorMsg('Le mot de passe doit contenir au moins 6 caractères.');
-        return;
-      }
-      setSignupStep(3);
-    } else if (signupStep === 3) {
-      handleFinalRegisterSubmit();
-    }
-  };
+    const fullName = `${firstName.trim()} ${lastName.trim()}`.trim();
+    const { error } = await signUp(
+      email.trim(),
+      password,
+      fullName || undefined,
+      selectedStation
+    );
 
-  const handleFinalRegisterSubmit = async () => {
-    setErrorMsg('');
-    const { error } = await signUp(email.trim(), password, fullName.trim(), selectedStation);
     if (error) {
-      setErrorMsg(error.message || 'Création de compte échouée. Veuillez réessayer.');
+      setErrorMsg(error);
     } else {
-      Alert.alert(
-        'Bienvenue sur Névé ! 🎉',
-        'Votre compte a été créé avec succès.',
-        [{ text: 'Découvrir', onPress: () => router.replace('/(tabs)') }]
-      );
+      setAuthMode('welcome');
     }
   };
 
-  const handlePrev = () => {
-    setErrorMsg('');
-    if (authMode === 'login') {
-      setAuthMode('entry');
-    } else if (authMode === 'signup') {
-      if (signupStep > 1) {
-        setSignupStep(signupStep - 1);
-      } else {
-        setAuthMode('entry');
-      }
-    } else {
-      router.back();
-    }
-  };
-
-  const handleOAuth = async (provider: 'google' | 'apple') => {
+  // OAuth Authentication
+  const handleOAuth = async (provider: 'google' | 'apple' | 'facebook') => {
     setErrorMsg('');
     const { error } = await signInWithOAuth(provider);
     if (error) {
-      setErrorMsg(error.message || `Connexion ${provider} indisponible.`);
+      setErrorMsg(error);
+    } else {
+      router.replace('/(tabs)');
     }
   };
 
@@ -161,281 +130,318 @@ export default function SwarmAuthScreen() {
       <ScrollView
         contentContainerStyle={[
           styles.container,
-          { paddingTop: Math.max(insets.top + 12, 24), paddingBottom: Math.max(insets.bottom + 20, 24) },
+          {
+            paddingTop: Math.max(insets.top + 16, 44),
+            paddingBottom: Math.max(insets.bottom + 20, 24),
+          },
         ]}
         keyboardShouldPersistTaps="handled">
         
-        {/* Back Button / Top Bar */}
-        <View style={styles.topRow}>
-          <Pressable
-            onPress={handlePrev}
-            style={[styles.backBtn, { backgroundColor: theme.card }]}>
-            <ArrowLeft size={22} color={theme.text} />
-          </Pressable>
-
-          {authMode === 'signup' && (
-            <View style={styles.progressContainer}>
-              <View style={styles.progressTrack}>
-                <View
-                  style={[
-                    styles.progressFill,
-                    { backgroundColor: theme.primary, width: `${(signupStep / 3) * 100}%` },
-                  ]}
-                />
-              </View>
-              <Text style={[styles.stepCounterText, { color: theme.textMuted }]}>
-                Étape {signupStep} sur 3
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Error Banner */}
-        {errorMsg ? (
-          <View
-            style={[
-              styles.errorBox,
-              { backgroundColor: theme.statusBgErrorSubtle, borderColor: theme.statusBgError },
-            ]}>
-            <Text style={[styles.errorText, { color: theme.statusTextError }]}>{errorMsg}</Text>
+        {/* Topbar with Circular Back Button */}
+        {authMode !== 'entry' && authMode !== 'welcome' ? (
+          <View style={styles.topbar}>
+            <Pressable
+              onPress={() => {
+                if (authMode === 'signup' && signupStep === 2) {
+                  setSignupStep(1);
+                } else {
+                  setAuthMode('entry');
+                }
+              }}
+              style={[styles.circularBackBtn, { backgroundColor: theme.card }]}>
+              <ArrowLeft size={20} color={theme.text} />
+            </Pressable>
           </View>
         ) : null}
 
-        {/* MODE 1: Swarm Style Entry Screen */}
-        {authMode === 'entry' && (
-          <View style={styles.swarmCenterBlock}>
-            {/* Top Swarm Logo */}
+        {/* ERROR BANNER */}
+        {errorMsg ? (
+          <View
+            style={[
+              styles.errorBanner,
+              { backgroundColor: theme.statusBgErrorSubtle, borderColor: theme.statusBgError },
+            ]}>
+            <Text style={[styles.errorText, { color: theme.statusTextError }]}>
+              {errorMsg}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE 1: AUTH ENTRY / INITIAL EMAIL STEP (Frame 481:6036) */}
+        {/* ---------------------------------------------------- */}
+        {authMode === 'entry' ? (
+          <View style={styles.contentFlex}>
+            {/* Header Névé Official Logo */}
             <View style={styles.logoRow}>
-              <Text style={[styles.logoText, { color: theme.text }]}>Névé</Text>
-              <View style={[styles.logoDot, { backgroundColor: theme.primary }]} />
+              <NeveLogo variant="icon" size={64} color={theme.text} />
             </View>
 
-            {/* Title (Matching Swarm Screen) */}
-            <Text style={[styles.swarmTitle, { color: theme.text }]}>
-              Rejoindre Névé avec votre email
-            </Text>
-
-            {/* Email Input */}
-            <Input
-              placeholder="Entrez votre adresse email"
-              value={email}
-              onChangeText={setEmail}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoCorrect={false}
-              icon={<Mail size={20} color={theme.textMuted} />}
-              containerStyle={{ marginBottom: 16 }}
-            />
-
-            {/* Primary Continue Button */}
-            <Button
-              title="Continuer"
-              variant="primary"
-              loading={isCheckingEmail}
-              onPress={handleEmailCheck}
-              disabled={isCheckingEmail}
-              style={styles.fullWidthBtn}
-            />
-
-            {/* Divider 'ou' */}
-            <View style={styles.swarmDividerRow}>
-              <View style={[styles.swarmDividerLine, { backgroundColor: theme.border }]} />
-              <Text style={[styles.swarmDividerText, { color: theme.textMuted }]}>ou</Text>
-              <View style={[styles.swarmDividerLine, { backgroundColor: theme.border }]} />
-            </View>
-
-            {/* Stacked Social Sign In Buttons (Using design system Button component) */}
-            <View style={styles.socialStack}>
-              <Button
-                title="Continuer avec Apple"
-                variant="secondary"
-                icon={<Apple size={18} color={theme.text} />}
-                onPress={() => handleOAuth('apple')}
-                style={styles.socialButton}
-                textStyle={styles.socialButtonText}
-              />
-
-              <Button
-                title="Continuer avec Google"
-                variant="secondary"
-                icon={<Globe size={18} color={theme.text} />}
-                onPress={() => handleOAuth('google')}
-                style={styles.socialButton}
-                textStyle={styles.socialButtonText}
-              />
-            </View>
-
-            {/* Legal Disclaimer Footer */}
-            <Text style={[styles.legalDisclaimer, { color: theme.textMuted }]}>
-              En continuant, vous acceptez nos{' '}
-              <Text style={styles.legalLink}>Conditions d’utilisation</Text> et reconnaissez avoir lu notre{' '}
-              <Text style={styles.legalLink}>Politique de confidentialité</Text>.
-            </Text>
-          </View>
-        )}
-
-        {/* MODE 2: Existing User Password Sign-In */}
-        {authMode === 'login' && (
-          <View style={styles.stepContent}>
-            <View style={styles.headerGroup}>
-              <Text style={[styles.questionTitle, { color: theme.text }]}>
-                Bon retour parmi nous !
+            {/* Title & Input Block */}
+            <View style={styles.mainBlock}>
+              <Text style={[styles.headingTitle, { color: theme.text, textAlign: 'center' }]}>
+                Commencez avec votre mail
               </Text>
-              <Text style={[styles.questionSub, { color: theme.textMuted }]}>
-                Entrez votre mot de passe pour vous connecter à <Text style={{ color: theme.text, fontFamily: 'Satoshi-Bold' }}>{email}</Text>.
-              </Text>
-            </View>
 
-            <Input
-              label="Mot de passe"
-              placeholder="••••••••••••"
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry={!showPassword}
-              icon={<Lock size={20} color={theme.textMuted} />}
-              rightIcon={
-                <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                  {showPassword ? (
-                    <EyeOff size={20} color={theme.textMuted} />
-                  ) : (
-                    <Eye size={20} color={theme.textMuted} />
-                  )}
-                </Pressable>
-              }
-              containerStyle={{ marginBottom: 28 }}
-            />
-
-            <Button
-              title={isLoading ? 'Connexion...' : 'Se connecter'}
-              variant="primary"
-              onPress={handleLoginSubmit}
-              disabled={isLoading}
-              style={styles.submitBtn}
-            />
-          </View>
-        )}
-
-        {/* MODE 3: New User Registration Wizard */}
-        {authMode === 'signup' && (
-          <View style={styles.stepContent}>
-            {signupStep === 1 && (
-              <>
-                <View style={styles.headerGroup}>
-                  <Text style={[styles.questionTitle, { color: theme.text }]}>
-                    Comment t’appelles-tu ?
-                  </Text>
-                  <Text style={[styles.questionSub, { color: theme.textMuted }]}>
-                    C’est ainsi que tu apparaîtras dans ton profil et sur tes favoris.
-                  </Text>
-                </View>
-
+              <View style={styles.formGroup}>
                 <Input
-                  label="Prénom & Nom"
-                  placeholder="Alex Dupont"
-                  value={fullName}
-                  onChangeText={setFullName}
-                  autoCapitalize="words"
-                  icon={<UserIcon size={20} color={theme.textMuted} />}
-                  containerStyle={{ marginBottom: 28 }}
+                  variant="outlined"
+                  label="Adresse e-mail"
+                  placeholder="Entrer votre email"
+                  value={email}
+                  onChangeText={setEmail}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  onClear={() => setEmail('')}
                 />
-              </>
-            )}
 
-            {signupStep === 2 && (
-              <>
-                <View style={styles.headerGroup}>
-                  <Text style={[styles.questionTitle, { color: theme.text }]}>
-                    Sécurise ton compte
-                  </Text>
-                  <Text style={[styles.questionSub, { color: theme.textMuted }]}>
-                    Choisis un mot de passe d’au moins 6 caractères pour <Text style={{ color: theme.text, fontFamily: 'Satoshi-Bold' }}>{email}</Text>.
-                  </Text>
-                </View>
+                <Button
+                  title="Continuer"
+                  onPress={handleEmailCheck}
+                  loading={isCheckingEmail}
+                  style={styles.actionBtn}
+                />
+              </View>
 
-                <Input
-                  label="Mot de passe"
-                  placeholder="••••••••••••"
-                  value={password}
-                  onChangeText={setPassword}
-                  secureTextEntry={!showPassword}
-                  icon={<Lock size={20} color={theme.textMuted} />}
-                  rightIcon={
-                    <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.eyeBtn}>
-                      {showPassword ? (
-                        <EyeOff size={20} color={theme.textMuted} />
-                      ) : (
-                        <Eye size={20} color={theme.textMuted} />
-                      )}
-                    </Pressable>
+              {/* Divider: "ou" */}
+              <View style={styles.dividerRow}>
+                <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+                <Text style={[styles.dividerText, { color: theme.textMuted }]}>ou</Text>
+                <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+              </View>
+
+              {/* Social Auth Buttons */}
+              <View style={styles.socialButtonsGroup}>
+                <Button
+                  title="Continuer avec Apple"
+                  variant="social"
+                  icon={<SocialIcon provider="apple" size={20} />}
+                  onPress={() => handleOAuth('apple')}
+                />
+                <Button
+                  title="Continuer avec Google"
+                  variant="social"
+                  icon={<SocialIcon provider="google" size={20} />}
+                  onPress={() => handleOAuth('google')}
+                />
+                <Button
+                  title="Continuer avec Facebook"
+                  variant="social"
+                  icon={<SocialIcon provider="facebook" size={20} />}
+                  onPress={() => handleOAuth('facebook')}
+                />
+              </View>
+            </View>
+
+            {/* Terms & Conditions Footer Disclaimer */}
+            <View style={styles.footerLegal}>
+              <Text style={[styles.legalText, { color: theme.textMuted }]}>
+                En continuant, vous acceptez nos{' '}
+                <Text
+                  onPress={() => Linking.openURL('https://neve-app.fr/terms')}
+                  style={[styles.legalLink, { color: theme.text }]}>
+                  Conditions d’utilisation
+                </Text>{' '}
+                et nous considérons que vous avez lu et accepté notre{' '}
+                <Text
+                  onPress={() => Linking.openURL('https://neve-app.fr/privacy')}
+                  style={[styles.legalLink, { color: theme.text }]}>
+                  Politique de confidentialité
+                </Text>
+                .
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE 2: SIGNUP STEP 1 - EMAIL & PASSWORD (Frame 484:7142) */}
+        {/* ---------------------------------------------------- */}
+        {authMode === 'signup' && signupStep === 1 ? (
+          <View style={styles.contentFlex}>
+            <View style={styles.headerTextGroup}>
+              <Text style={[styles.headingTitle, { color: theme.text }]}>
+                Créer un nouveau compte
+              </Text>
+              <Text style={[styles.headingSubtitle, { color: theme.textMuted }]}>
+                C’est votre première fois ici ? Créez un nouveau compte pour continuer.
+              </Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Input
+                variant="outlined"
+                label="Adresse e-mail"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                onClear={() => setEmail('')}
+              />
+
+              <Input
+                variant="outlined"
+                label="Mot de passe"
+                placeholder="Tapez votre mot de passe"
+                value={password}
+                onChangeText={setPassword}
+                isPassword
+              />
+
+              <Checkbox
+                checked={newsletterConsent}
+                onToggle={setNewsletterConsent}
+                label="J’accepte être tenu au courant des dernières nouveautés, des nouvelles aventures disponibles et de recevoir notre newsletter exclusive. Vous pouvez vous désabonner à tout moment."
+              />
+
+              <Button
+                title="Continuer"
+                onPress={() => {
+                  if (!password || password.length < 6) {
+                    setErrorMsg('Le mot de passe doit contenir au moins 6 caractères.');
+                    return;
                   }
-                  containerStyle={{ marginBottom: 28 }}
+                  setErrorMsg('');
+                  setSignupStep(2);
+                }}
+                style={styles.actionBtn}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE 3: SIGNUP STEP 2 - PROFILE DETAILS (Frame 481:6989) */}
+        {/* ---------------------------------------------------- */}
+        {authMode === 'signup' && signupStep === 2 ? (
+          <View style={styles.contentFlex}>
+            <View style={styles.headerTextGroup}>
+              <Text style={[styles.headingTitle, { color: theme.text }]}>
+                Parlez-nous un peu de vous
+              </Text>
+              <Text style={[styles.headingSubtitle, { color: theme.textMuted }]}>
+                Ces informations nous permettent de personnaliser votre expérience d'aventure Névé.
+              </Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <View style={styles.inlineInputsRow}>
+                <Input
+                  variant="outlined"
+                  label="Prénom"
+                  placeholder="Nathan"
+                  value={firstName}
+                  onChangeText={setFirstName}
+                  containerStyle={{ flex: 1 }}
                 />
-              </>
-            )}
+                <Input
+                  variant="outlined"
+                  label="Nom"
+                  placeholder="Laure"
+                  value={lastName}
+                  onChangeText={setLastName}
+                  containerStyle={{ flex: 1 }}
+                />
+              </View>
 
-            {signupStep === 3 && (
-              <>
-                <View style={styles.headerGroup}>
-                  <Text style={[styles.questionTitle, { color: theme.text }]}>
-                    D’où pars-tu le plus souvent ?
-                  </Text>
-                  <Text style={[styles.questionSub, { color: theme.textMuted }]}>
-                    Ta gare principale permettra de calculer instantanément tes temps de trajet en train.
-                  </Text>
-                </View>
+              <Input
+                variant="outlined"
+                label="Gare préférée (Optionnel)"
+                value={selectedStation}
+                onChangeText={setSelectedStation}
+                placeholder="Paris Gare de Lyon"
+              />
 
-                <View style={styles.stationsGrid}>
-                  {PARIS_STATIONS.map((station) => {
-                    const isSelected = selectedStation === station;
-                    return (
-                      <Pressable
-                        key={station}
-                        onPress={() => setSelectedStation(station)}
-                        style={[
-                          styles.stationCard,
-                          {
-                            backgroundColor: theme.card,
-                            borderColor: isSelected ? theme.primary : theme.border,
-                            borderWidth: isSelected ? 2 : 1,
-                          },
-                        ]}>
-                        <Train size={20} color={isSelected ? theme.primary : theme.textMuted} />
-                        <Text
-                          style={[
-                            styles.stationText,
-                            { color: theme.text, fontFamily: isSelected ? 'BricolageGrotesque-Bold' : 'Satoshi-Medium' },
-                          ]}>
-                          {station}
-                        </Text>
-                        {isSelected && (
-                          <View style={[styles.checkCircle, { backgroundColor: theme.primary }]}>
-                            <Check size={12} color="#FFFFFF" />
-                          </View>
-                        )}
-                      </Pressable>
-                    );
-                  })}
-                </View>
-              </>
-            )}
+              <Button
+                title="Terminer et démarrer"
+                onPress={handleSignupSubmit}
+                loading={isLoading}
+                style={styles.actionBtn}
+              />
+            </View>
+
+            <View style={styles.footerLegal}>
+              <Text style={[styles.legalText, { color: theme.textMuted }]}>
+                En continuant, vous acceptez nos{' '}
+                <Text style={[styles.legalLink, { color: theme.text }]}>
+                  Conditions d’utilisation
+                </Text>{' '}
+                et notre{' '}
+                <Text style={[styles.legalLink, { color: theme.text }]}>
+                  Politique de confidentialité
+                </Text>
+                .
+              </Text>
+            </View>
+          </View>
+        ) : null}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE 4: EXISTING USER LOGIN / PASSWORD (Frame 481:6713) */}
+        {/* ---------------------------------------------------- */}
+        {authMode === 'login' ? (
+          <View style={styles.contentFlex}>
+            <View style={styles.headerTextGroup}>
+              <Text style={[styles.headingTitle, { color: theme.text }]}>
+                Ravi de vous revoir !
+              </Text>
+              <Text style={[styles.headingSubtitle, { color: theme.textMuted }]}>
+                Entrez votre mot de passe pour vous connecter à {email}.
+              </Text>
+            </View>
+
+            <View style={styles.formGroup}>
+              <Input
+                variant="outlined"
+                label="Mot de passe"
+                placeholder="Tapez votre mot de passe"
+                value={password}
+                onChangeText={setPassword}
+                isPassword
+              />
+
+              <Pressable onPress={() => setErrorMsg('Un lien de réinitialisation vous a été envoyé.')}>
+                <Text style={[styles.forgotPassLink, { color: theme.primary }]}>
+                  Mot de passe oublié ?
+                </Text>
+              </Pressable>
+
+              <Button
+                title="Se connecter"
+                onPress={handleLoginSubmit}
+                loading={isLoading}
+                style={styles.actionBtn}
+              />
+            </View>
+          </View>
+        ) : null}
+
+        {/* ---------------------------------------------------- */}
+        {/* MODE 5: WELCOME / ACCOUNT CREATED SUCCESS (Frame 482:7062) */}
+        {/* ---------------------------------------------------- */}
+        {authMode === 'welcome' ? (
+          <View style={[styles.contentFlex, { justifyContent: 'center', alignItems: 'center' }]}>
+            <View style={[styles.successIconBadge, { backgroundColor: theme.card }]}>
+              <Sparkles size={48} color={theme.primary} />
+            </View>
+
+            <View style={[styles.headerTextGroup, { alignItems: 'center', marginVertical: 24 }]}>
+              <Text style={[styles.headingTitle, { color: theme.text, textAlign: 'center' }]}>
+                Bienvenue sur Névé !
+              </Text>
+              <Text style={[styles.headingSubtitle, { color: theme.textMuted, textAlign: 'center' }]}>
+                Votre compte est prêt. Préparez vos prochaines randonnées accessibles en train dès aujourd'hui.
+              </Text>
+            </View>
 
             <Button
-              title={
-                isLoading
-                  ? 'Création...'
-                  : signupStep === 3
-                  ? 'Terminer et démarrer'
-                  : 'Continuer'
-              }
-              variant="primary"
-              icon={signupStep < 3 ? <ArrowRight size={18} color="#FFFFFF" /> : undefined}
-              iconPosition="right"
-              onPress={handleSignupNext}
-              disabled={isLoading}
-              style={styles.submitBtn}
+              title="Explorer les randonnées"
+              onPress={() => router.replace('/(tabs)')}
+              style={styles.actionBtn}
             />
           </View>
-        )}
+        ) : null}
+
       </ScrollView>
     </KeyboardAvoidingView>
   );
@@ -445,208 +451,118 @@ const styles = StyleSheet.create({
   container: {
     flexGrow: 1,
     paddingHorizontal: 24,
+    justifyContent: 'space-between',
   },
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 16,
+  topbar: {
+    height: 48,
+    justifyContent: 'center',
     marginBottom: 16,
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+  circularBackBtn: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  progressContainer: {
-    flex: 1,
-    gap: 6,
-  },
-  progressTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: 'rgba(150,150,150,0.2)',
-    overflow: 'hidden',
-  },
-  progressFill: {
-    height: '100%',
-    borderRadius: 3,
-  },
-  stepCounterText: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 12,
-  },
-  errorBox: {
+  errorBanner: {
     padding: 12,
-    borderRadius: 12,
+    borderRadius: 10,
     borderWidth: 1,
-    marginBottom: 20,
+    marginBottom: 16,
   },
   errorText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
+    textAlign: 'center',
   },
-  swarmCenterBlock: {
+  contentFlex: {
     flex: 1,
-    alignItems: 'center',
-    paddingTop: 20,
+    justifyContent: 'space-between',
+    gap: 24,
   },
   logoRow: {
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    marginBottom: 40,
+    marginTop: 20,
+    marginBottom: 10,
   },
-  logoText: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 32,
-    letterSpacing: -0.5,
-  },
-  logoDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    marginTop: 10,
-  },
-  swarmTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 28,
-    lineHeight: 36,
-    textAlign: 'center',
-    marginBottom: 32,
-    paddingHorizontal: 12,
-  },
-  swarmInputBox: {
-    width: '100%',
-    height: 56,
+  logoOfficialImage: {
+    width: 64,
+    height: 64,
     borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 18,
-    marginBottom: 16,
-    justifyContent: 'center',
   },
-  swarmInput: {
+  mainBlock: {
+    gap: 20,
+  },
+  headerTextGroup: {
+    gap: 10,
+    marginVertical: 8,
+  },
+  headingTitle: {
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 26,
+    lineHeight: 32,
+  },
+  headingSubtitle: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
-    height: '100%',
+    fontSize: 15,
+    lineHeight: 22,
   },
-  fullWidthBtn: {
-    width: '100%',
-    height: 52,
-    marginBottom: 24,
+  formGroup: {
+    gap: 14,
+    marginVertical: 8,
   },
-  swarmDividerRow: {
+  inlineInputsRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  actionBtn: {
+    marginTop: 8,
+  },
+  dividerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
-    width: '100%',
-    marginBottom: 28,
+    marginVertical: 8,
   },
-  swarmDividerLine: {
+  dividerLine: {
     flex: 1,
     height: 1,
   },
-  swarmDividerText: {
+  dividerText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
   },
-  socialStack: {
-    width: '100%',
-    gap: 12,
-    marginBottom: 40,
+  socialButtonsGroup: {
+    gap: 10,
   },
-  socialButton: {
-    width: '100%',
-    height: 52,
-    borderRadius: 14,
+  forgotPassLink: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
+    textAlign: 'right',
+    marginTop: 2,
   },
-  socialButtonText: {
-    fontFamily: 'BricolageGrotesque-SemiBold',
-    fontSize: 15,
+  footerLegal: {
+    marginTop: 'auto',
+    paddingVertical: 12,
+    alignItems: 'center',
   },
-  legalDisclaimer: {
+  legalText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 12,
     lineHeight: 18,
     textAlign: 'center',
-    marginTop: 'auto',
-    paddingHorizontal: 16,
   },
   legalLink: {
     fontFamily: 'Satoshi-Bold',
     textDecorationLine: 'underline',
   },
-  stepContent: {
-    flex: 1,
-  },
-  headerGroup: {
-    marginBottom: 28,
-  },
-  questionTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 30,
-    lineHeight: 38,
-    marginBottom: 8,
-  },
-  questionSub: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
-    lineHeight: 24,
-  },
-  inputGroup: {
-    gap: 8,
-    marginBottom: 28,
-  },
-  label: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 14,
-  },
-  inputContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderRadius: 14,
-    height: 54,
-    paddingHorizontal: 16,
-  },
-  inputIcon: {
-    marginRight: 12,
-  },
-  input: {
-    flex: 1,
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 17,
-    height: '100%',
-  },
-  eyeBtn: {
-    padding: 4,
-  },
-  stationsGrid: {
-    gap: 12,
-    marginBottom: 28,
-  },
-  stationCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    borderRadius: 14,
-    gap: 12,
-  },
-  stationText: {
-    flex: 1,
-    fontSize: 15,
-  },
-  checkCircle: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+  successIconBadge: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  submitBtn: {
-    height: 52,
-    marginTop: 8,
+    marginTop: 40,
   },
 });
