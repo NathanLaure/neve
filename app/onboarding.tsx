@@ -327,6 +327,7 @@ export default function OnboardingScreen() {
         ]}>
         <Button
           title="Commencer gratuitement"
+          colorScheme="light"
           variant="secondary"
           onPress={finishOnboarding}
           style={styles.ctaButton}

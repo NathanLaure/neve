@@ -1,10 +1,13 @@
 {
   "expo": {
-    "name": "neve",
+    "name": "Névé Rando",
     "slug": "neve",
     "version": "1.0.0",
     "scheme": "neve",
-    "platforms": ["ios", "android"],
+    "platforms": [
+      "ios",
+      "android"
+    ],
     "web": {
       "bundler": "metro",
       "output": "static",
@@ -34,7 +37,9 @@
         "backgroundColor": "#111111"
       }
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true
     },
@@ -43,7 +48,11 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "monochromeImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFF7F2"
-      }
+      },
+      "package": "com.anonymous.neve",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     }
   }
 }

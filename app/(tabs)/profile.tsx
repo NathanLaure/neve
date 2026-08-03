@@ -35,6 +35,12 @@ export default function ProfileScreen() {
   // Track the override locally to update segmented buttons immediately
   const [activeTheme, setActiveTheme] = useState<'light' | 'dark' | null>(() => getThemeOverride());
 
+  useEffect(() => {
+    if (isFocused) {
+      setActiveTheme(getThemeOverride());
+    }
+  }, [isFocused]);
+
   const handleThemeChange = (mode: 'light' | 'dark' | null) => {
     setThemeOverride(mode);
     setActiveTheme(mode);
@@ -42,7 +48,7 @@ export default function ProfileScreen() {
 
   const handleSignOut = async () => {
     await signOut();
-    router.replace('/onboarding');
+    router.replace('/(auth)/register');
   };
 
   const displayName = profile?.fullName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Nathan Laure';

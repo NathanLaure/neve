@@ -45,6 +45,17 @@ export const IconButton = forwardRef<View, IconButtonProps>(
 
     // Build default variant styles
     const getVariantStyle = () => {
+      if (disabled) {
+        return [
+          variant === 'circle' ? styles.circleButton : variant === 'square' ? styles.squareButton : styles.plainButton,
+          {
+            backgroundColor: variant === 'plain' ? 'transparent' : theme.buttonDisabled || '#222222',
+            borderColor: 'transparent',
+            opacity: 0.6,
+          },
+        ];
+      }
+
       switch (variant) {
         case 'circle':
           return [
@@ -52,7 +63,7 @@ export const IconButton = forwardRef<View, IconButtonProps>(
             {
               backgroundColor: theme.card,
               shadowColor: '#000',
-              opacity: disabled ? 0.5 : 1,
+              opacity: 1,
             },
           ];
         case 'square':
@@ -61,7 +72,7 @@ export const IconButton = forwardRef<View, IconButtonProps>(
             {
               backgroundColor: theme.card,
               borderColor: theme.border,
-              opacity: disabled ? 0.5 : 1,
+              opacity: 1,
             },
           ];
         case 'plain':
@@ -69,10 +80,28 @@ export const IconButton = forwardRef<View, IconButtonProps>(
           return [
             styles.plainButton,
             {
-              opacity: disabled ? 0.4 : 1,
+              opacity: 1,
             },
           ];
       }
+    };
+
+    // Auto-apply icon color for circle/square variants to contrast with buttonBgIcon
+    const renderIcon = () => {
+      if (!icon) return null;
+      if ((variant === 'circle' || variant === 'square') && React.isValidElement(icon)) {
+        const iconColor = disabled
+          ? (theme.buttonTextDisabled || '#7C7C7C')
+          : theme.text;
+        // Only override if the icon doesn't already have a custom fill (e.g. Heart favorite)
+        const existingColor = (icon.props as any)?.color;
+        const existingFill = (icon.props as any)?.fill;
+        const hasCustomFill = existingFill && existingFill !== 'none';
+        return React.cloneElement(icon as React.ReactElement<any>, {
+          color: hasCustomFill ? existingColor : iconColor,
+        });
+      }
+      return icon;
     };
 
     return (
@@ -89,7 +118,7 @@ export const IconButton = forwardRef<View, IconButtonProps>(
         ]}
         {...pressableProps}>
         <View style={styles.contentWrapper}>
-          {icon}
+          {renderIcon()}
           {badgeCount > 0 && (
             <View style={[styles.badgeContainer, { backgroundColor: theme.primary }]}>
               <Text style={styles.badgeText}>{badgeCount}</Text>

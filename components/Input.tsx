@@ -1,4 +1,4 @@
-import React, { forwardRef, useState } from 'react';
+import React, { forwardRef, useState, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -8,6 +8,7 @@ import {
   ViewStyle,
   TextStyle,
   Pressable,
+  Animated,
 } from 'react-native';
 import { Eye, EyeOff, X } from 'lucide-react-native';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -16,6 +17,7 @@ import Colors from '@/constants/Colors';
 export interface InputProps extends TextInputProps {
   label?: string;
   error?: string;
+  isSuccess?: boolean;
   icon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   variant?: 'default' | 'outlined';
@@ -30,6 +32,7 @@ export const Input = forwardRef<TextInput, InputProps>(
     {
       label,
       error,
+      isSuccess = false,
       icon,
       rightIcon,
       variant = 'outlined',
@@ -42,6 +45,7 @@ export const Input = forwardRef<TextInput, InputProps>(
       style,
       onFocus,
       onBlur,
+      placeholder,
       ...textInputProps
     },
     ref
@@ -50,6 +54,19 @@ export const Input = forwardRef<TextInput, InputProps>(
     const theme = Colors[colorScheme];
     const [isFocused, setIsFocused] = useState(false);
     const [secureText, setSecureText] = useState(isPassword);
+
+    const hasValue = Boolean(value && value.length > 0);
+    const isFloating = isFocused || hasValue;
+
+    const animatedIsFocused = useRef(new Animated.Value(isFloating ? 1 : 0)).current;
+
+    useEffect(() => {
+      Animated.timing(animatedIsFocused, {
+        toValue: isFloating ? 1 : 0,
+        duration: 180,
+        useNativeDriver: false,
+      }).start();
+    }, [isFloating]);
 
     const handleFocus = (e: any) => {
       setIsFocused(true);
@@ -63,17 +80,43 @@ export const Input = forwardRef<TextInput, InputProps>(
 
     const borderColor = error
       ? theme.statusTextError || '#E63946'
+      : isSuccess
+      ? theme.statusBgSuccess
       : isFocused
       ? theme.primary
+      : hasValue
+      ? theme.borderLight
       : theme.border;
 
     const labelColor = error
       ? theme.statusTextError || '#E63946'
+      : isSuccess
+      ? theme.statusBgSuccess
       : isFocused
       ? theme.primary
+      : hasValue
+      ? theme.text
       : theme.textMuted;
 
-    const hasValue = Boolean(value && value.length > 0);
+    const floatingTop = animatedIsFocused.interpolate({
+      inputRange: [0, 1],
+      outputRange: [16, -10],
+    });
+
+    const floatingFontSize = animatedIsFocused.interpolate({
+      inputRange: [0, 1],
+      outputRange: [16, 12],
+    });
+
+    const floatingLeft = animatedIsFocused.interpolate({
+      inputRange: [0, 1],
+      outputRange: [icon ? 44 : 16, 12],
+    });
+
+    const floatingBgColor = animatedIsFocused.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['transparent', theme.background],
+    });
 
     return (
       <View style={[styles.wrapper, containerStyle]}>
@@ -87,15 +130,32 @@ export const Input = forwardRef<TextInput, InputProps>(
             {
               backgroundColor: variant === 'outlined' ? 'transparent' : theme.card,
               borderColor,
-              borderWidth: isFocused ? 2 : 1.5,
+              borderWidth: isFocused || isSuccess ? 2 : 1.5,
             },
           ]}>
           {label && variant === 'outlined' ? (
-            <View style={[styles.floatingLabelBadge, { backgroundColor: theme.background }]}>
-              <Text style={[styles.floatingLabelText, { color: labelColor }]}>
+            <Animated.View
+              pointerEvents="none"
+              style={[
+                styles.floatingLabelBadge,
+                {
+                  top: floatingTop,
+                  left: floatingLeft,
+                  backgroundColor: floatingBgColor,
+                },
+              ]}>
+              <Animated.Text
+                style={[
+                  styles.floatingLabelText,
+                  {
+                    color: labelColor,
+                    fontSize: floatingFontSize,
+                    fontFamily: (hasValue || isFocused) ? 'Satoshi-Bold' : 'Satoshi-Medium',
+                  },
+                ]}>
                 {label}
-              </Text>
-            </View>
+              </Animated.Text>
+            </Animated.View>
           ) : null}
 
           {icon ? <View style={styles.iconWrapper}>{icon}</View> : null}
@@ -106,6 +166,7 @@ export const Input = forwardRef<TextInput, InputProps>(
             onChangeText={onChangeText}
             secureTextEntry={isPassword ? secureText : textInputProps.secureTextEntry}
             style={[styles.input, { color: theme.text }, inputStyle, style]}
+            placeholder={isFloating ? placeholder : undefined}
             placeholderTextColor={theme.textMuted}
             onFocus={handleFocus}
             onBlur={handleBlur}
@@ -118,7 +179,7 @@ export const Input = forwardRef<TextInput, InputProps>(
             </Pressable>
           ) : null}
 
-          {isPassword ? (
+          {isPassword && hasValue ? (
             <Pressable
               onPress={() => setSecureText(!secureText)}
               hitSlop={10}

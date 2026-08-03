@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { View, ActivityIndicator, StyleSheet, Text } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
+import { CheckCircle2 } from 'lucide-react-native';
 import { supabase } from '@/utils/supabase';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -35,6 +36,7 @@ export default function AuthCallbackScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
     const handleCallback = async () => {
@@ -47,11 +49,17 @@ export default function AuthCallbackScreen() {
               access_token: parsed.access_token,
               refresh_token: parsed.refresh_token,
             });
-            router.replace('/(tabs)');
+            setIsSuccess(true);
+            setTimeout(() => {
+              router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
+            }, 1800);
             return;
           } else if (parsed.code) {
             await supabase.auth.exchangeCodeForSession(parsed.code);
-            router.replace('/(tabs)');
+            setIsSuccess(true);
+            setTimeout(() => {
+              router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
+            }, 1800);
             return;
           }
         }
@@ -60,13 +68,18 @@ export default function AuthCallbackScreen() {
           data: { session },
         } = await supabase.auth.getSession();
         if (session) {
-          router.replace('/(tabs)');
+          setIsSuccess(true);
+          setTimeout(() => {
+            router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
+          }, 1800);
           return;
         }
       } catch (e) {
         console.error('Error handling auth callback:', e);
       }
-      router.replace('/(tabs)');
+      setTimeout(() => {
+        router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
+      }, 1500);
     };
 
     handleCallback();
@@ -74,10 +87,26 @@ export default function AuthCallbackScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <ActivityIndicator size="large" color={theme.primary} />
-      <Text style={[styles.text, { color: theme.textMuted }]}>
-        Confirmation de votre compte Névé...
-      </Text>
+      {isSuccess ? (
+        <>
+          <View style={[styles.iconCircle, { backgroundColor: theme.statusBgSuccessSubtle || '#F2F6F3' }]}>
+            <CheckCircle2 size={48} color={theme.statusBgSuccess || '#386641'} />
+          </View>
+          <Text style={[styles.titleText, { color: theme.text }]}>
+            E-mail confirmé avec succès ! 🎉
+          </Text>
+          <Text style={[styles.subtitleText, { color: theme.textMuted }]}>
+            Redirection vers votre aventure Névé...
+          </Text>
+        </>
+      ) : (
+        <>
+          <ActivityIndicator size="large" color={theme.primary} />
+          <Text style={[styles.text, { color: theme.textMuted }]}>
+            Confirmation de votre compte Névé...
+          </Text>
+        </>
+      )}
     </View>
   );
 }
@@ -87,7 +116,26 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 32,
     gap: 16,
+  },
+  iconCircle: {
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  titleText: {
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 22,
+    textAlign: 'center',
+  },
+  subtitleText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 15,
+    textAlign: 'center',
   },
   text: {
     fontFamily: 'Satoshi-Medium',

@@ -173,10 +173,9 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Automatically fetch location and hikes on startup
+  // Automatically fetch hikes on startup (Location permission requested in Onboarding Swarm or manually)
   useEffect(() => {
     Promise.resolve().then(() => {
-      refreshUserLocation();
       loadHikes();
     });
   }, []);

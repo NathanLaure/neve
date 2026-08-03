@@ -16,6 +16,7 @@ export default {
     border: '#BDBDBD', // neutral-200
     borderLight: '#DCDCDC', // neutral-100
     borderStrong: '#989898',
+    borderDisabled: '#BDBDBD',
     textMuted: '#525252', // neutral-600
     greenBadge: '#F2F6F3', // status-bg-success-subtle
     blueBadge: '#F1F5F7', // status-bg-info-subtle
@@ -25,11 +26,14 @@ export default {
 
     // Figma Button Color Tokens (Node 42:303)
     buttonPrimary: '#EB490B',
-    buttonSecondary: '#3D3D3D',
-    buttonTertiary: '#FFFFFF',
+    buttonSecondary: '#111111',
+    buttonSecondaryText: '#EFEFEF',
+    buttonTertiary: '#C3350B',
     buttonDisabled: '#DCDCDC',
     buttonTextDisabled: '#7C7C7C',
     buttonTextOnBrand: '#FFFFFF',
+    buttonBgIcon: '#FFFFFF',
+    buttonIconColor: '#111111',
 
     // Figma Status Semantic Colors
     statusBgSuccess: '#386641',
@@ -56,10 +60,11 @@ export default {
     secondary: '#98C1D9', // blue-500
     warning: '#E9C46A', // amber-500
     card: '#222222', // neutral-950
-    border: '#141414ff', // neutral-800
-    borderLight: '#252525ff', // neutral-600
-    borderStrong: '#3D3D3D',
-    textMuted: '#989898', // neutral-300
+    border: '#3D3D3D', // neutral-800
+    borderLight: '#989898', // neutral-600
+    borderStrong: '#222222',
+    borderDisabled: '#3D3D3D',
+    textMuted: '#BDBDBD', // neutral-300
     greenBadge: '#0D1F11', // status-bg-success-subtle
     blueBadge: '#0A192F', // status-bg-info-subtle
     orangeBadge: '#241800', // status-bg-warning-subtle
@@ -68,11 +73,14 @@ export default {
 
     // Figma Button Color Tokens (Node 42:303)
     buttonPrimary: '#FA6415',
-    buttonSecondary: '#111111',
-    buttonTertiary: '#222222',
-    buttonDisabled: '#2A2A2A',
+    buttonSecondary: '#EFEFEF',
+    buttonSecondaryText: '#111111',
+    buttonTertiary: '#EB490B',
+    buttonDisabled: '#222222',
     buttonTextDisabled: '#7C7C7C',
     buttonTextOnBrand: '#FFFFFF',
+    buttonBgIcon: '#111111',
+    buttonIconColor: '#FFFFFF',
 
     // Figma Status Semantic Colors
     statusBgSuccess: '#6A994E',

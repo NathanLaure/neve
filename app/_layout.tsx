@@ -15,6 +15,8 @@ import { useColorScheme, setThemeOverride } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { AuthProvider } from '@/context/AuthContext';
 import { SplashScreenView } from '@/components/SplashScreenView';
+import Toast from 'react-native-toast-message';
+import { toastConfig } from '@/components/ToastConfig';
 
 // Suppress known upstream library deprecation warnings in React Native 0.85+
 LogBox.ignoreLogs(['InteractionManager has been deprecated']);
@@ -38,7 +40,7 @@ if (__DEV__) {
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
+  initialRouteName: 'index',
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -93,7 +95,14 @@ export default function RootLayout() {
                 <View style={{ flex: 1 }}>
                   <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} animated />
                   <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
-                    <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+                    <Stack.Screen name="index" options={{ headerShown: false, animation: 'fade' }} />
+                    <Stack.Screen
+                      name="(tabs)"
+                      options={{
+                        headerShown: false,
+                        animation: 'fade_from_bottom',
+                      }}
+                    />
                     <Stack.Screen
                       name="onboarding"
                       options={{
@@ -126,6 +135,7 @@ export default function RootLayout() {
                       }}
                     />
                   </Stack>
+                  <Toast config={toastConfig} />
                 </View>
               </ThemeProvider>
             </SafeAreaProvider>

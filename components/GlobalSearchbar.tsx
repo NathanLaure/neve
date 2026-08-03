@@ -50,7 +50,7 @@ export default function GlobalSearchbar({ searchQuery, onPress, style, onBack, o
           styles.floatingSearchButton,
           {
             backgroundColor: theme.background,
-            borderColor: theme.border,
+            borderColor: theme.borderStrong,
             borderWidth: colorScheme === 'dark' ? 2 : 0,
             shadowColor: '#000',
           },

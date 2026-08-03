@@ -1,5 +1,5 @@
-import React, { useEffect, useRef } from 'react';
-import { StyleSheet, Text, View, Animated, Easing, Image } from 'react-native';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { StyleSheet, View, Animated, Easing } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 
@@ -20,17 +20,32 @@ export function SplashScreenView({
   const theme = Colors[colorScheme];
 
   // Container Fade Out
-  const containerOpacity = useRef(new Animated.Value(1)).current;
+  const [containerOpacity] = useState(() => new Animated.Value(1));
 
   // Phase 1: Logo Scale & Fade
-  const logoScale = useRef(new Animated.Value(0.7)).current;
-  const logoOpacity = useRef(new Animated.Value(0)).current;
+  const [logoScale] = useState(() => new Animated.Value(0.7));
+  const [logoOpacity] = useState(() => new Animated.Value(0));
 
   // Phase 2: "Névé" Text Slide & Fade Up (Splash 02)
-  const textTranslateY = useRef(new Animated.Value(20)).current;
-  const textOpacity = useRef(new Animated.Value(0)).current;
+  const [textTranslateY] = useState(() => new Animated.Value(20));
+  const [textOpacity] = useState(() => new Animated.Value(0));
 
   const animationFinishedRef = useRef(false);
+
+  const checkFinish = useCallback(() => {
+    if (animationFinishedRef.current && isReady) {
+      // Smooth fade out container overlay
+      Animated.timing(containerOpacity, {
+        toValue: 0,
+        duration: 400,
+        useNativeDriver: true,
+      }).start(() => {
+        if (onFinish) {
+          onFinish();
+        }
+      });
+    }
+  }, [containerOpacity, isReady, onFinish]);
 
   useEffect(() => {
     // Sequence Phase 1: Logo Fade & Scale in
@@ -75,26 +90,11 @@ export function SplashScreenView({
       clearTimeout(textTimer);
       clearTimeout(minTimer);
     };
-  }, [logoOpacity, logoScale, minDuration, textOpacity, textTranslateY]);
-
-  const checkFinish = () => {
-    if (animationFinishedRef.current && isReady) {
-      // Smooth fade out container overlay
-      Animated.timing(containerOpacity, {
-        toValue: 0,
-        duration: 400,
-        useNativeDriver: true,
-      }).start(() => {
-        if (onFinish) {
-          onFinish();
-        }
-      });
-    }
-  };
+  }, [checkFinish, logoOpacity, logoScale, minDuration, textOpacity, textTranslateY]);
 
   useEffect(() => {
     checkFinish();
-  }, [isReady]);
+  }, [checkFinish, isReady]);
 
   return (
     <Animated.View
@@ -133,31 +133,25 @@ export function SplashScreenView({
 
 const styles = StyleSheet.create({
   container: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    zIndex: 9999,
-    alignItems: 'center',
+    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 99999,
     justifyContent: 'center',
+    alignItems: 'center',
   },
   centerContainer: {
+    flex: 1,
+    width: '100%',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 0,
   },
   logoWrapper: {
-    width: 160,
-    height: 160,
     alignItems: 'center',
     justifyContent: 'center',
   },
   textWrapper: {
-    width: 140,
-    height: 140,
+    marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: -20,
   },
 });

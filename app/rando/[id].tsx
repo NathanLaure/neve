@@ -43,6 +43,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
+import Chip from '@/components/Chip';
 import { IconButton } from '@/components/IconButton';
 import Tag from '@/components/Tag';
 import Reanimated, { FadeInDown } from 'react-native-reanimated';
@@ -109,8 +110,8 @@ export default function RandoDetailScreen() {
   const headerBgColor = scrollY.interpolate({
     inputRange: [0, 150],
     outputRange: [
-      colorScheme === 'dark' ? 'rgba(27, 27, 27, 0)' : 'rgba(239, 239, 239, 0)',
-      theme.card,
+      colorScheme === 'dark' ? 'rgba(17, 17, 17, 0)' : 'rgba(255, 255, 255, 0)',
+      theme.background,
     ],
     extrapolate: 'clamp',
   });
@@ -341,15 +342,10 @@ export default function RandoDetailScreen() {
         style={[
           styles.headerBar,
           {
-            height: insets.top + 56,
+            height: insets.top + 60
+            ,
             paddingTop: insets.top,
             backgroundColor: headerBgColor,
-            borderBottomColor: headerBorderColor,
-            borderBottomWidth: scrollY.interpolate({
-              inputRange: [0, 150],
-              outputRange: [0, StyleSheet.hairlineWidth],
-              extrapolate: 'clamp',
-            }),
           },
         ]}>
         <View style={styles.headerBarContent}>
@@ -638,9 +634,7 @@ export default function RandoDetailScreen() {
           </View>
           <View style={styles.categoriesWrapRow}>
             {categories.map((cat, index) => (
-              <View key={index} style={[styles.categoryChip, { backgroundColor: theme.card, borderColor: theme.border }]}>
-                <Text style={[styles.categoryChipText, { color: theme.text }]}>{cat}</Text>
-              </View>
+              <Chip key={index} text={cat} size="small" />
             ))}
           </View>
 
@@ -659,11 +653,9 @@ export default function RandoDetailScreen() {
 
           {/* Write a review Button */}
           <Button
-            variant="secondary"
+            variant="tertiary"
             title="Laisser un avis sur cette randonnée"
             onPress={() => Alert.alert('Laisser un avis', 'Formulaire de notation en cours de développement.')}
-            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0, marginBottom: 40 }]}
-            textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
           />
 
           {/* Reviews List */}
@@ -699,11 +691,9 @@ export default function RandoDetailScreen() {
 
           {/* View all reviews Button */}
           <Button
-            variant="secondary"
+            variant="tertiary"
             title="Afficher tous les avis"
             onPress={() => Alert.alert('Tous les avis', 'Affichage de la liste complète des avis.')}
-            style={[styles.actionBtn, { backgroundColor: theme.card, borderWidth: 0, marginTop: 40 }]}
-            textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
           />
 
         </View>
@@ -715,7 +705,7 @@ export default function RandoDetailScreen() {
           styles.floatingBottom,
           {
             backgroundColor: theme.background,
-            borderTopColor: theme.border,
+            borderTopColor: theme.borderStrong,
             paddingBottom: Math.max(insets.bottom, 12),
           },
         ]}>
@@ -725,20 +715,18 @@ export default function RandoDetailScreen() {
           <Button
             variant="secondary"
             title="Naviguer"
-            icon={<Navigation size={20} color={theme.text} />}
+            icon={<Navigation/>}
             onPress={() => Alert.alert('Navigation', 'Lancement de l’itinéraire GPX vers le point de départ.')}
-            style={[styles.bottomBtnSecondary, { backgroundColor: theme.card, borderWidth: 0 }]}
-            textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
+            style={{ flex: 1 }}
           />
 
           {/* Plan/Book Button */}
           <Button
             variant="primary"
             title="Planifier"
-            icon={<Calendar size={20} color="#efefef" />}
+            icon={<Calendar/>}
             onPress={() => router.push(`/plan?randoId=${rando.id}`)}
-            style={[styles.bottomBtnPrimary, { backgroundColor: theme.primary, borderWidth: 0 }]}
-            textStyle={{ color: '#efefef', fontFamily: 'BricolageGrotesque-Medium', fontSize: 16 }}
+            style={{ flex: 1 }}
           />
 
         </View>
@@ -1388,16 +1376,7 @@ const styles = StyleSheet.create({
     gap: 8,
     marginBottom: 40,
   },
-  categoryChip: {
-    borderWidth: 1,
-    borderRadius: 4,
-    paddingHorizontal: 9,
-    paddingVertical: 8,
-  },
-  categoryChipText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 11,
-  },
+
   reviewsSummaryRow: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -1503,43 +1482,7 @@ const styles = StyleSheet.create({
     width: '100%',
     gap: 12,
   },
-  bottomBtnSecondary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    paddingHorizontal: 0,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1.5,
-    elevation: 3,
-  },
-  bottomBtnSecondaryText: {
-    fontFamily: 'BricolageGrotesque-Medium',
-    fontSize: 16,
-  },
-  bottomBtnPrimary: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    height: 48,
-    paddingHorizontal: 0,
-    borderRadius: 12,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 1.5,
-    elevation: 3,
-  },
-  bottomBtnPrimaryText: {
-    fontFamily: 'BricolageGrotesque-Medium',
-    color: '#efefef',
-    fontSize: 16,
-  },
+
   instructionsContainer: {
     marginTop: 4,
   },

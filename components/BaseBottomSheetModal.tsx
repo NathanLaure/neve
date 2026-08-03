@@ -173,9 +173,11 @@ const styles = StyleSheet.create({
   contentContainer: {
     paddingHorizontal: 24,
     flex: 1,
+    paddingBottom: 30,
   },
   childWrapper: {
     flex: 1,
+    paddingTop: 8,
   },
   headingRow: {
     flexDirection: 'row',

@@ -194,18 +194,18 @@ export default function FiltersForm({
               if (diff === 'Facile') {
                 diffStyle = isSelected
                   ? { backgroundColor: theme.statusBgSuccess, borderColor: theme.statusBgSuccess }
-                  : { backgroundColor: theme.statusBgSuccessSubtle, borderColor: theme.statusBgSuccess };
-                diffTextStyle = { color: isSelected ? theme.card : theme.statusTextSuccess };
+                  : { backgroundColor: theme.statusBgSuccessSubtle, borderColor: theme.statusBgSuccess, borderWidth: 1 };
+                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextSuccess };
               } else if (diff === 'Modéré') {
                 diffStyle = isSelected
                   ? { backgroundColor: theme.statusBgWarning, borderColor: theme.statusBgWarning }
-                  : { backgroundColor: theme.statusBgWarningSubtle, borderColor: theme.statusBgWarning };
-                diffTextStyle = { color: isSelected ? theme.card : theme.statusTextWarning };
+                  : { backgroundColor: theme.statusBgWarningSubtle, borderColor: theme.statusBgWarning, borderWidth: 1 };
+                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextWarning };
               } else {
                 diffStyle = isSelected
                   ? { backgroundColor: theme.statusBgError, borderColor: theme.statusBgError }
-                  : { backgroundColor: theme.statusBgErrorSubtle, borderColor: theme.statusBgError };
-                diffTextStyle = { color: isSelected ? theme.card : theme.statusTextError };
+                  : { backgroundColor: theme.statusBgErrorSubtle, borderColor: theme.statusBgError, borderWidth: 1 };
+                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextError };
               }
 
               return (
@@ -214,8 +214,8 @@ export default function FiltersForm({
                   text={diff}
                   selected={isSelected}
                   onPress={() => toggleDifficulty(diff)}
-                  style={{ ...diffStyle, borderWidth: 2 }}
-                  textStyle={{ ...diffTextStyle, fontFamily: 'Satoshi-Bold' }}
+                  style={diffStyle}
+                  textStyle={diffTextStyle}
                 />
               );
             })}
@@ -366,14 +366,6 @@ export default function FiltersForm({
                   text={act}
                   selected={isSelected}
                   onPress={() => toggleActivity(act)}
-                  style={
-                    isSelected
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.background, borderColor: theme.border }
-                  }
-                  textStyle={
-                    isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                  }
                 />
               );
             })}
@@ -396,14 +388,6 @@ export default function FiltersForm({
                   text={poi}
                   selected={isSelected}
                   onPress={() => togglePOI(poi)}
-                  style={
-                    isSelected
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.background, borderColor: theme.border }
-                  }
-                  textStyle={
-                    isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                  }
                 />
               );
             })}
@@ -426,14 +410,6 @@ export default function FiltersForm({
                   text={type}
                   selected={isSelected}
                   onPress={() => toggleParcoursType(type)}
-                  style={
-                    isSelected
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.background, borderColor: theme.border }
-                  }
-                  textStyle={
-                    isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                  }
                 />
               );
             })}
@@ -456,14 +432,6 @@ export default function FiltersForm({
                   text={freq}
                   selected={isSelected}
                   onPress={() => toggleFrequentation(freq)}
-                  style={
-                    isSelected
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.background, borderColor: theme.border }
-                  }
-                  textStyle={
-                    isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                  }
                 />
               );
             })}
@@ -486,14 +454,6 @@ export default function FiltersForm({
                   text={`${note}★ et plus`}
                   selected={isSelected}
                   onPress={() => setCommunityNote(isSelected ? null : note)}
-                  style={
-                    isSelected
-                      ? { backgroundColor: theme.primary, borderColor: theme.primary }
-                      : { backgroundColor: theme.background, borderColor: theme.border }
-                  }
-                  textStyle={
-                    isSelected ? { color: '#FFFFFF' } : { color: theme.text }
-                  }
                 />
               );
             })}
