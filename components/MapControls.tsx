@@ -2,11 +2,17 @@ import React from 'react';
 import { StyleSheet, View, Pressable, Platform, ActivityIndicator, ViewStyle } from 'react-native';
 import { Layers, LocateFixed } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
+import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 
 interface MapControlsProps {
-  compassBearing: number; // degrees — 0 = north up
+  /**
+   * Map heading in degrees (0 = north up), as a shared value so the needle is
+   * driven on the UI thread — the map emits this on every camera frame and
+   * routing it through React state would re-render the whole screen each time.
+   */
+  compassBearing: SharedValue<number>;
   onPressCompass: () => void;
   onPressLayers: () => void;
   onPressLocate: () => void;
@@ -40,9 +46,9 @@ export default function MapControls({
   const theme = Colors[colorScheme];
 
   // Rotate the compass needle opposite to map bearing
-  const compassStyle = {
-    transform: [{ rotate: `${-compassBearing}deg` }],
-  };
+  const compassStyle = useAnimatedStyle(() => ({
+    transform: [{ rotate: `${-compassBearing.value}deg` }],
+  }));
 
   return (
     <View style={[styles.container, style]}>
@@ -52,13 +58,13 @@ export default function MapControls({
         style={[
           styles.compassButton,
           {
-            backgroundColor: theme.background,
+            backgroundColor: theme.card,
             shadowColor: '#000',
           },
         ]}>
-        <View style={compassStyle}>
+        <Animated.View style={compassStyle}>
           <CompassNeedle size={24} />
-        </View>
+        </Animated.View>
       </Pressable>
 
       {/* Layers + GPS — joined pill */}
@@ -66,7 +72,7 @@ export default function MapControls({
         style={[
           styles.pillGroup,
           {
-            backgroundColor: theme.background,
+            backgroundColor: theme.card,
             shadowColor: '#000',
           },
         ]}>

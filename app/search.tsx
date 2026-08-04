@@ -232,11 +232,13 @@ export default function SearchModal() {
             .map((p) => p.trim())
             .join(', ') || '';
 
+        const lat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? 48.8566;
+        const lng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? 2.3522;
         const distance = calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          rando.startStationCoords.latitude,
-          rando.startStationCoords.longitude
+          userLocation?.latitude ?? 48.8566,
+          userLocation?.longitude ?? 2.3522,
+          lat,
+          lng
         );
 
         uniqueLocations.push({
@@ -244,8 +246,8 @@ export default function SearchModal() {
           dept,
           distance,
           coords: {
-            latitude: rando.startStationCoords.latitude,
-            longitude: rando.startStationCoords.longitude,
+            latitude: lat,
+            longitude: lng,
           },
         });
       }
@@ -709,11 +711,13 @@ export default function SearchModal() {
 
         if (isUserLocationSearch) {
           // Filter hikes within 75 km of the user location
+          const rLat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? 48.8566;
+          const rLng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? 2.3522;
           const dist = calculateDistanceKm(
-            userLocation.latitude,
-            userLocation.longitude,
-            rando.startStationCoords.latitude,
-            rando.startStationCoords.longitude
+            userLocation?.latitude ?? 48.8566,
+            userLocation?.longitude ?? 2.3522,
+            rLat,
+            rLng
           );
           if (dist > 75) return false;
         } else {
@@ -777,18 +781,15 @@ export default function SearchModal() {
     const query = localSearch.toLowerCase().trim();
     if (query === 'à proximité' || query === 'a proximité' || query === 'proximité') {
       filtered = [...filtered].sort((a, b) => {
-        const distA = calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          a.startStationCoords.latitude,
-          a.startStationCoords.longitude
-        );
-        const distB = calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          b.startStationCoords.latitude,
-          b.startStationCoords.longitude
-        );
+        const latA = a?.startStationCoords?.latitude ?? (a as any)?.start_lat ?? 48.8566;
+        const lngA = a?.startStationCoords?.longitude ?? (a as any)?.start_lng ?? 2.3522;
+        const latB = b?.startStationCoords?.latitude ?? (b as any)?.start_lat ?? 48.8566;
+        const lngB = b?.startStationCoords?.longitude ?? (b as any)?.start_lng ?? 2.3522;
+        const uLat = userLocation?.latitude ?? 48.8566;
+        const uLng = userLocation?.longitude ?? 2.3522;
+
+        const distA = calculateDistanceKm(uLat, uLng, latA, lngA);
+        const distB = calculateDistanceKm(uLat, uLng, latB, lngB);
         return distA - distB;
       });
     }
@@ -1270,7 +1271,7 @@ export default function SearchModal() {
                     keyboardShouldPersistTaps="handled"
                     showsVerticalScrollIndicator={false}>
                     {/* Recent Searches */}
-                    {recentSearches.length > 0 && (
+                    {recentSearches && recentSearches.filter((item) => item && item.name).length > 0 && (
                       <View style={{ marginBottom: 16 }}>
                         <Text
                           style={[
@@ -1280,97 +1281,18 @@ export default function SearchModal() {
                           Recherches récentes
                         </Text>
                         <View style={styles.suggestionsContainer}>
-                          {recentSearches.map((item, index) => {
-                            const isLast = index === recentSearches.length - 1;
-                            return (
-                              <Pressable
-                                key={`recent-${item.name}`}
-                                onPress={() => handleSuggestionPress(item.name, item.coords)}
-                                style={styles.suggestionRow}>
-                                <View
-                                  style={[
-                                    styles.suggestionIconWrapper,
-                                    { backgroundColor: theme.background },
-                                  ]}>
-                                  <RotateCcw size={18} color={theme.text} />
-                                </View>
-                                <View style={styles.suggestionTextRow}>
-                                  <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                    {item.name}
-                                  </Text>
-                                </View>
-                              </Pressable>
-                            );
-                          })}
-                        </View>
-                      </View>
-                    )}
-
-                    {/* Suggestions */}
-                    <View>
-                      <Text
-                        style={[styles.sectionSubtitle, { color: theme.textMuted, marginTop: 0 }]}>
-                        Suggestions
-                      </Text>
-                      <View style={styles.suggestionsContainer}>
-                        {dynamicSuggestions.map((item, index) => {
-                          const IconComponent = item.icon || MapPin;
-                          const isLast = index === dynamicSuggestions.length - 1;
-
-                          return (
-                            <Pressable
-                              key={`suggest-${item.name}`}
-                              onPress={() => handleSuggestionPress(item.name, item.coords)}
-                              style={styles.suggestionRow}>
-                              <View
-                                style={[
-                                  styles.suggestionIconWrapper,
-                                  { backgroundColor: theme.background },
-                                ]}>
-                                <IconComponent size={18} color={theme.text} />
-                              </View>
-                              <View style={styles.suggestionTextRow}>
-                                <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                  {item.name}
-                                </Text>
-                                {item.dept ? (
-                                  <>
-                                    <Text style={styles.suggestionSeparator}>·</Text>
-                                    <Text
-                                      style={[styles.suggestionDept, { color: theme.textMuted }]}>
-                                      {item.dept}
-                                    </Text>
-                                  </>
-                                ) : null}
-                              </View>
-                            </Pressable>
-                          );
-                        })}
-                      </View>
-                    </View>
-                  </ScrollView>
-                ) : (
-                  <ScrollView
-                    style={{ flex: 1 }}
-                    showsVerticalScrollIndicator={false}
-                    contentContainerStyle={{ paddingBottom: 24 }}>
-                    <View style={{ marginTop: 12 }}>
-                      {/* Recent Searches */}
-                      {recentSearches.length > 0 && (
-                        <View style={{ marginBottom: 16 }}>
-                          <Text
-                            style={[
-                              styles.sectionSubtitle,
-                              { color: theme.textMuted, marginTop: 0 },
-                            ]}>
-                            Recherches récentes
-                          </Text>
-                          <View style={styles.suggestionsContainer}>
-                            {recentSearches.map((item, index) => {
+                          {recentSearches
+                            .filter((item) => item && item.name)
+                            .map((item, index) => {
                               return (
                                 <Pressable
-                                  key={`recent-${item.name}`}
-                                  onPress={() => handleSuggestionPress(item.name, item.coords)}
+                                  key={`recent-${item.name}-${index}`}
+                                  onPress={() =>
+                                    handleSuggestionPress(
+                                      item.name,
+                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                    )
+                                  }
                                   style={styles.suggestionRow}>
                                   <View
                                     style={[
@@ -1387,6 +1309,105 @@ export default function SearchModal() {
                                 </Pressable>
                               );
                             })}
+                        </View>
+                      </View>
+                    )}
+
+                    {/* Suggestions */}
+                    <View>
+                      <Text
+                        style={[styles.sectionSubtitle, { color: theme.textMuted, marginTop: 0 }]}>
+                        Suggestions
+                      </Text>
+                      <View style={styles.suggestionsContainer}>
+                        {dynamicSuggestions &&
+                          dynamicSuggestions
+                            .filter((item) => item && item.name)
+                            .map((item, index) => {
+                              const IconComponent = item.icon || MapPin;
+
+                              return (
+                                <Pressable
+                                  key={`suggest-${item.name}-${index}`}
+                                  onPress={() =>
+                                    handleSuggestionPress(
+                                      item.name,
+                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                    )
+                                  }
+                                  style={styles.suggestionRow}>
+                                  <View
+                                    style={[
+                                      styles.suggestionIconWrapper,
+                                      { backgroundColor: theme.background },
+                                    ]}>
+                                    <IconComponent size={18} color={theme.text} />
+                                  </View>
+                                  <View style={styles.suggestionTextRow}>
+                                    <Text style={[styles.suggestionName, { color: theme.text }]}>
+                                      {item.name}
+                                    </Text>
+                                    {item.dept ? (
+                                      <>
+                                        <Text style={styles.suggestionSeparator}>·</Text>
+                                        <Text
+                                          style={[styles.suggestionDept, { color: theme.textMuted }]}>
+                                          {item.dept}
+                                        </Text>
+                                      </>
+                                    ) : null}
+                                  </View>
+                                </Pressable>
+                              );
+                            })}
+                      </View>
+                    </View>
+                  </ScrollView>
+                ) : (
+                  <ScrollView
+                    style={{ flex: 1 }}
+                    showsVerticalScrollIndicator={false}
+                    contentContainerStyle={{ paddingBottom: 24 }}>
+                    <View style={{ marginTop: 12 }}>
+                      {/* Recent Searches */}
+                      {recentSearches && recentSearches.filter((item) => item && item.name).length > 0 && (
+                        <View style={{ marginBottom: 16 }}>
+                          <Text
+                            style={[
+                              styles.sectionSubtitle,
+                              { color: theme.textMuted, marginTop: 0 },
+                            ]}>
+                            Recherches récentes
+                          </Text>
+                          <View style={styles.suggestionsContainer}>
+                            {recentSearches
+                              .filter((item) => item && item.name)
+                              .map((item, index) => {
+                                return (
+                                  <Pressable
+                                    key={`recent-${item.name}-${index}`}
+                                    onPress={() =>
+                                      handleSuggestionPress(
+                                        item.name,
+                                        item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                      )
+                                    }
+                                    style={styles.suggestionRow}>
+                                    <View
+                                      style={[
+                                        styles.suggestionIconWrapper,
+                                        { backgroundColor: theme.background },
+                                      ]}>
+                                      <RotateCcw size={18} color={theme.text} />
+                                    </View>
+                                    <View style={styles.suggestionTextRow}>
+                                      <Text style={[styles.suggestionName, { color: theme.text }]}>
+                                        {item.name}
+                                      </Text>
+                                    </View>
+                                  </Pressable>
+                                );
+                              })}
                           </View>
                         </View>
                       )}
@@ -1401,39 +1422,46 @@ export default function SearchModal() {
                           Suggestions
                         </Text>
                         <View style={styles.suggestionsContainer}>
-                          {dynamicSuggestions.map((item, index) => {
-                            const IconComponent = item.icon || MapPin;
-                            const isLast = index === dynamicSuggestions.length - 1;
+                          {dynamicSuggestions &&
+                            dynamicSuggestions
+                              .filter((item) => item && item.name)
+                              .map((item, index) => {
+                                const IconComponent = item.icon || MapPin;
 
-                            return (
-                              <Pressable
-                                key={`suggest-${item.name}`}
-                                onPress={() => handleSuggestionPress(item.name, item.coords)}
-                                style={styles.suggestionRow}>
-                                <View
-                                  style={[
-                                    styles.suggestionIconWrapper,
-                                    { backgroundColor: theme.background },
-                                  ]}>
-                                  <IconComponent size={18} color={theme.text} />
-                                </View>
-                                <View style={styles.suggestionTextRow}>
-                                  <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                    {item.name}
-                                  </Text>
-                                  {item.dept ? (
-                                    <>
-                                      <Text style={styles.suggestionSeparator}>·</Text>
-                                      <Text
-                                        style={[styles.suggestionDept, { color: theme.textMuted }]}>
-                                        {item.dept}
+                                return (
+                                  <Pressable
+                                    key={`suggest-${item.name}-${index}`}
+                                    onPress={() =>
+                                      handleSuggestionPress(
+                                        item.name,
+                                        item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                      )
+                                    }
+                                    style={styles.suggestionRow}>
+                                    <View
+                                      style={[
+                                        styles.suggestionIconWrapper,
+                                        { backgroundColor: theme.background },
+                                      ]}>
+                                      <IconComponent size={18} color={theme.text} />
+                                    </View>
+                                    <View style={styles.suggestionTextRow}>
+                                      <Text style={[styles.suggestionName, { color: theme.text }]}>
+                                        {item.name}
                                       </Text>
-                                    </>
-                                  ) : null}
-                                </View>
-                              </Pressable>
-                            );
-                          })}
+                                      {item.dept ? (
+                                        <>
+                                          <Text style={styles.suggestionSeparator}>·</Text>
+                                          <Text
+                                            style={[styles.suggestionDept, { color: theme.textMuted }]}>
+                                            {item.dept}
+                                          </Text>
+                                        </>
+                                      ) : null}
+                                    </View>
+                                  </Pressable>
+                                );
+                              })}
                         </View>
                       </View>
                     </View>

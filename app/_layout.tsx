@@ -131,7 +131,7 @@ export default function RootLayout() {
                       options={{
                         headerShown: false,
                         detachPreviousScreen: false,
-                        animation: 'none',
+                        animation: 'default',
                       }}
                     />
                   </Stack>

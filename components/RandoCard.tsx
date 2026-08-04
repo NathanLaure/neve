@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   Dimensions,
   Image,
@@ -9,6 +9,7 @@ import {
   View,
   useWindowDimensions,
 } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
 import { Star, Route, Heart, Train } from 'lucide-react-native';
 import Tag from '@/components/Tag';
 
@@ -20,6 +21,7 @@ export interface RandoCardProps {
   id?: string;
   title?: string;
   imageUrl?: string;
+  galleryUrls?: string[];
   departureStation?: string;
   distance?: string;
   weatherTemp?: string;
@@ -46,6 +48,7 @@ export default function RandoCard({
   id,
   title = 'Les Balcons de la Vallée de Chevreuse',
   imageUrl = DEFAULT_IMAGE,
+  galleryUrls,
   departureStation = 'Gare de Rambouillet',
   distance = '12 km',
   weatherTemp = '19°C',
@@ -68,6 +71,24 @@ export default function RandoCard({
   const screenWidth = windowWidth > 0 ? windowWidth : Dimensions.get('window').width;
 
   const [isFavorite, setIsFavorite] = useState(false);
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+  const [cardImageWidth, setCardImageWidth] = useState(0);
+
+  const gallery = useMemo(() => {
+    if (galleryUrls && galleryUrls.length > 0) return galleryUrls;
+    return [imageUrl];
+  }, [galleryUrls, imageUrl]);
+
+  const handleImageContainerLayout = (e: any) => {
+    setCardImageWidth(e.nativeEvent.layout.width);
+  };
+
+  const handleGalleryScroll = (e: any) => {
+    const contentOffsetX = e.nativeEvent.contentOffset.x;
+    const width = e.nativeEvent.layoutMeasurement.width || 1;
+    const index = Math.round(contentOffsetX / width);
+    setActiveImageIndex(index);
+  };
 
   // Helper to determine the hike location (town/village, region, country)
   const getHikeLocation = () => {
@@ -114,33 +135,39 @@ export default function RandoCard({
   };
 
   const getMapThumbnailUrl = () => {
-    const defaultLat = startStationCoords?.latitude || 48.6468;
-    const defaultLon = startStationCoords?.longitude || 1.8344;
+    const defaultLat = startStationCoords?.latitude || (gpxTrace && gpxTrace[0]?.latitude) || 44.0;
+    const defaultLon = startStationCoords?.longitude || (gpxTrace && gpxTrace[0]?.longitude) || 6.0;
 
     if (!MAPBOX_TOKEN) {
-      // Fallback if no token is available
-      return 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=150&auto=format&fit=crop';
+      return 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=200&auto=format&fit=crop';
     }
 
-    if (!gpxTrace || gpxTrace.length === 0) {
-      return `https://api.mapbox.com/styles/v1/mapbox/outdoors-v12/static/pin-s-pitch+eb490b(${defaultLon},${defaultLat})/${defaultLon},${defaultLat},11,0/112x112?access_token=${MAPBOX_TOKEN}`;
+    const styleId = colorScheme === 'dark' ? 'mapbox/dark-v11' : 'mapbox/outdoors-v12';
+
+    if (!gpxTrace || gpxTrace.length < 2) {
+      return `https://api.mapbox.com/styles/v1/${styleId}/static/pin-s-pitch+eb490b(${defaultLon.toFixed(4)},${defaultLat.toFixed(4)})/${defaultLon.toFixed(4)},${defaultLat.toFixed(4)},11,0/120x120@2x?access_token=${MAPBOX_TOKEN}`;
     }
 
-    // Calculate center
-    const lats = gpxTrace.map((p) => p.latitude);
-    const lons = gpxTrace.map((p) => p.longitude);
+    // Downsample gpxTrace to max 30 points to ensure URL stays under Mapbox limit (< 2000 chars)
+    const maxPoints = 30;
+    const step = Math.max(1, Math.floor(gpxTrace.length / maxPoints));
+    const sampled = gpxTrace.filter((_, idx) => idx % step === 0 || idx === gpxTrace.length - 1);
+
+    const lats = sampled.map((p) => p.latitude);
+    const lons = sampled.map((p) => p.longitude);
     const minLat = Math.min(...lats);
     const maxLat = Math.max(...lats);
     const minLon = Math.min(...lons);
     const maxLon = Math.max(...lons);
-    const centerLat = (minLat + maxLat) / 2;
-    const centerLon = (minLon + maxLon) / 2;
+    const centerLat = Number(((minLat + maxLat) / 2).toFixed(4));
+    const centerLon = Number(((minLon + maxLon) / 2).toFixed(4));
 
-    // Build GeoJSON path for Mapbox Static API
-    const coordinates = gpxTrace.map((p) => `[${p.longitude},${p.latitude}]`).join(',');
-    const geojson = `{"type":"Feature","properties":{"stroke":"#eb490b","stroke-width":3,"stroke-opacity":0.95},"geometry":{"type":"LineString","coordinates":[${coordinates}]}}`;
+    const coordinates = sampled
+      .map((p) => `[${Number(p.longitude.toFixed(4))},${Number(p.latitude.toFixed(4))}]`)
+      .join(',');
 
-    // Zoom calculation based on layout boundaries
+    const geojson = `{"type":"Feature","properties":{"stroke":"#eb490b","stroke-width":3.5,"stroke-opacity":0.95},"geometry":{"type":"LineString","coordinates":[${coordinates}]}}`;
+
     const latDiff = maxLat - minLat;
     const lonDiff = maxLon - minLon;
     const maxDiff = Math.max(latDiff, lonDiff);
@@ -151,9 +178,7 @@ export default function RandoCard({
     else if (maxDiff > 0.02) zoom = 11.8;
     else zoom = 12.2;
 
-    const styleId = colorScheme === 'dark' ? 'mapbox/dark-v11' : 'mapbox/outdoors-v12';
-
-    return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${encodeURIComponent(geojson)})/${centerLon},${centerLat},${zoom},0/112x112?access_token=${MAPBOX_TOKEN}`;
+    return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${encodeURIComponent(geojson)})/${centerLon},${centerLat},${zoom},0/120x120@2x?access_token=${MAPBOX_TOKEN}`;
   };
 
   const handleFavoritePress = (e: any) => {
@@ -188,7 +213,12 @@ export default function RandoCard({
             {/* Top Section: Header (Title & Rating) + Location */}
             <View style={styles.horizontalTopContainer}>
               <View style={styles.horizontalHeaderRow}>
-                <Text style={[styles.horizontalTitle, { color: theme.text }]}>{title}</Text>
+                <Text
+                  style={[styles.horizontalTitle, { color: theme.text }]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail">
+                  {title}
+                </Text>
                 <View style={styles.horizontalRating}>
                   <Star size={14} color={theme.text} fill={theme.text} />
                   <Text style={[styles.horizontalRatingText, { color: theme.text }]}>
@@ -240,15 +270,38 @@ export default function RandoCard({
       style={({ pressed }) => [styles.pressableWrapper, pressed ? styles.cardPressed : null]}>
       <View style={styles.verticalCard}>
         {/* Image Section */}
-        <View style={styles.imageContainer}>
-          <Image source={{ uri: imageUrl }} style={styles.image} resizeMode="cover" />
+        <View style={styles.imageContainer} onLayout={handleImageContainerLayout}>
+          <ScrollView
+            horizontal
+            pagingEnabled
+            showsHorizontalScrollIndicator={false}
+            scrollEnabled={gallery.length > 1}
+            onScroll={handleGalleryScroll}
+            scrollEventThrottle={16}>
+            {gallery.map((imgUrl, idx) => (
+              <Image
+                key={`gallery-img-${idx}`}
+                source={{ uri: imgUrl }}
+                style={[styles.image, { width: cardImageWidth || undefined }]}
+                resizeMode="cover"
+              />
+            ))}
+          </ScrollView>
 
-          {/* Slider indicators (pagination dots) */}
-          <View style={styles.sliderIndicator}>
-            <View style={styles.dotActive} />
-            <View style={[styles.dotInactive, { backgroundColor: '#BDBDBD' }]} />
-            <View style={[styles.dotInactiveSmall, { backgroundColor: '#BDBDBD' }]} />
-          </View>
+          {gallery.length > 1 && (
+            <View style={styles.sliderIndicator} pointerEvents="none">
+              {gallery.map((_, idx) => (
+                <View
+                  key={`dot-${idx}`}
+                  style={[
+                    styles.dotInactive,
+                    { backgroundColor: 'rgba(255, 255, 255, 0.5)' },
+                    idx === activeImageIndex ? styles.dotActive : null,
+                  ]}
+                />
+              ))}
+            </View>
+          )}
 
           {/* Heart/Favorite Button */}
           <IconButton
@@ -522,11 +575,31 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  horizontalImageContainer: {
+    position: 'relative',
+    width: 88,
+    height: 120,
+  },
   horizontalImage: {
-    width: 80,
+    width: 88,
     height: 120,
     borderTopLeftRadius: 20,
     borderBottomLeftRadius: 20,
+  },
+  horizontalMiniMapContainer: {
+    position: 'absolute',
+    bottom: 6,
+    right: 6,
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    borderWidth: 1.5,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 3,
   },
   horizontalContent: {
     flex: 1,

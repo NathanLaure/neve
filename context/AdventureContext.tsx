@@ -34,12 +34,18 @@ interface AdventureContextType {
   plannedAdventures: PlannedAdventure[];
   hikes: RandoData[];
   isLoadingHikes: boolean;
+  loadHikes: () => Promise<void>;
+  loadHikeDetail: (id: string) => Promise<void>;
   addAdventure: (adventure: Omit<PlannedAdventure, 'id'>) => string;
   updateAdventure: (id: string, updates: Partial<PlannedAdventure>) => void;
   deleteAdventure: (id: string) => void;
   setUserLocationManually: (coords: Coordinates, name: string) => void;
   refreshUserLocation: () => Promise<void>;
-  getTransitInfo: (rando: RandoData) => {
+  /** `fromLocation` overrides the user's tracked position — used to preview a place before committing to it. */
+  getTransitInfo: (
+    rando: RandoData,
+    fromLocation?: Coordinates
+  ) => {
     durationMinutes: number;
     durationText: string;
     distanceKm: number;
@@ -64,7 +70,12 @@ interface AdventureContextType {
   setSelectedActivityTypes: (types: string[]) => void;
   selectedPointsOfInterest: string[];
   setSelectedPointsOfInterest: (pois: string[]) => void;
+  /** Radius in km around the user's location. `null` means no radius limit. */
+  searchRadiusKm: number | null;
+  setSearchRadiusKm: (radius: number | null) => void;
   clearAllFilters: () => void;
+  /** How many filters are currently narrowing the results — drives the searchbar badge. */
+  activeFiltersCount: number;
   filteredHikes: RandoData[];
   recentSearches: { name: string; coords: Coordinates }[];
   addRecentSearch: (name: string, coords: Coordinates) => void;
@@ -96,8 +107,8 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [userLocationName, setUserLocationName] = useState<string>(DEFAULT_LOCATION_NAME);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
-  const [hikes, setHikes] = useState<RandoData[]>(MOCK_RANDOS);
-  const [isLoadingHikes, setIsLoadingHikes] = useState<boolean>(false);
+  const [hikes, setHikes] = useState<RandoData[]>([]);
+  const [isLoadingHikes, setIsLoadingHikes] = useState<boolean>(true);
 
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -109,6 +120,7 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [kidsFriendly, setKidsFriendly] = useState(false);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [selectedPointsOfInterest, setSelectedPointsOfInterest] = useState<string[]>([]);
+  const [searchRadiusKm, setSearchRadiusKm] = useState<number | null>(null);
   const [recentSearches, setRecentSearches] = useState<{ name: string; coords: Coordinates }[]>([]);
 
   const addRecentSearch = (name: string, coords: Coordinates) => {
@@ -118,20 +130,118 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+function mapSupabaseHikeToRandoData(row: any): RandoData {
+  const startLat = row.start_lat ?? row.startStationCoords?.latitude ?? 48.8566;
+  const startLng = row.start_lng ?? row.startStationCoords?.longitude ?? 2.3522;
+  const location = row.location_name || row.location || 'Alpes-de-Haute-Provence, France';
+  const startStation = row.start_station_name || location.split(',')[0].trim() || 'Point de départ';
+
+  const gain = row.elevation_gain_m || 0;
+  const loss = row.elevation_loss_m || 0;
+  let elevationStr = row.elevation || '';
+  if (!elevationStr) {
+    if (gain > 0 && loss > 0) {
+      elevationStr = `+${gain}m / -${loss}m`;
+    } else if (gain > 0) {
+      elevationStr = `+${gain}m`;
+    } else {
+      elevationStr = 'Plat';
+    }
+  }
+
+  const distanceKm = row.distance_km != null ? row.distance_km : (parseFloat(row.distance) || 0);
+  const distanceStr = row.distance || `${distanceKm} km`;
+
+  const durationMin = row.duration_minutes != null ? row.duration_minutes : (row.durationHours ? row.durationHours * 60 : 120);
+  const durationHours = Math.round((durationMin / 60) * 10) / 10;
+
+  let difficulty: 'Facile' | 'Modéré' | 'Difficile' = 'Modéré';
+  const rawDiff = (row.difficulty || '').toLowerCase();
+  if (rawDiff.includes('facile')) difficulty = 'Facile';
+  else if (rawDiff.includes('diffic') || rawDiff.includes('expert')) difficulty = 'Difficile';
+
+  let gpxTrace: { latitude: number; longitude: number }[] = [];
+  if (Array.isArray(row.gpxTrace) && row.gpxTrace.length > 0) {
+    gpxTrace = row.gpxTrace;
+  } else if (row.geometry?.coordinates && Array.isArray(row.geometry.coordinates)) {
+    gpxTrace = row.geometry.coordinates.map((pt: any) => ({
+      longitude: pt[0],
+      latitude: pt[1],
+    }));
+  }
+
+  return {
+    id: String(row.id),
+    title: row.title || 'Randonnée',
+    imageUrl: row.cover_image_url || row.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+    startStation,
+    startStationCoords: { latitude: startLat, longitude: startLng },
+    endStation: row.endStation || startStation,
+    endStationCoords: { latitude: startLat, longitude: startLng },
+    distance: distanceStr,
+    durationHours,
+    difficulty,
+    elevation: elevationStr,
+    weatherTemp: row.weatherTemp || '18°C',
+    weatherIcon: row.weatherIcon || '☀️',
+    trainDurationMinutes: row.trainDurationMinutes || 45,
+    trainType: row.trainType || 'TER / Bus',
+    priceEst: row.priceEst || 0,
+    location,
+    gpxTrace,
+    trainOptionsGo: row.trainOptionsGo || [],
+    trainOptionsBack: row.trainOptionsBack || [],
+    description: row.description || '',
+    dogsAllowed: row.dogsAllowed ?? true,
+    kidsFriendly: row.kidsFriendly ?? true,
+    activityType: row.activity_type || row.activityType || 'Randonnée',
+    pointsOfInterest: row.points_of_interest || row.pointsOfInterest || ['Nature', 'Panorama'],
+    galleryUrls: row.gallery_urls && row.gallery_urls.length > 0 ? row.gallery_urls : [row.cover_image_url || row.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80'],
+    routeType: row.route_type || row.routeType || 'boucle',
+  };
+}
+
+  // Lightweight columns only: full geometry/description are fetched on-demand
+  // via loadHikeDetail when a hike's detail page is actually opened.
+  const HIKES_LIST_COLUMNS =
+    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, start_lat, start_lng, location_name, cover_image_url, gallery_urls';
+
   const loadHikes = async () => {
     setIsLoadingHikes(true);
     try {
-      const { data, error } = await supabase.from('hikes').select('*');
+      const { data, error } = await supabase.from('hikes').select(HIKES_LIST_COLUMNS);
       if (error) {
         throw error;
       }
       if (data && data.length > 0) {
-        setHikes(data as RandoData[]);
+        const mapped = data.map((row) => ({ ...mapSupabaseHikeToRandoData(row), hasFullDetail: false }));
+        setHikes(mapped);
       }
     } catch (error) {
       console.warn('Could not fetch hikes from Supabase, falling back to mock data:', error);
+      setHikes(MOCK_RANDOS.map((r) => ({ ...r, hasFullDetail: true })));
     } finally {
       setIsLoadingHikes(false);
+    }
+  };
+
+  const loadHikeDetail = async (id: string) => {
+    const existing = hikes.find((h) => h.id === id);
+    if (existing?.hasFullDetail) return;
+
+    try {
+      const { data, error } = await supabase.from('hikes').select('*').eq('id', id).single();
+      if (error) {
+        throw error;
+      }
+      if (data) {
+        const mapped = mapSupabaseHikeToRandoData(data);
+        setHikes((prev) => prev.map((h) => (h.id === id ? { ...mapped, hasFullDetail: true } : h)));
+      }
+    } catch (error) {
+      console.warn('Could not fetch hike detail from Supabase:', error);
+      // Avoid getting stuck on the skeleton forever: keep whatever light data we have.
+      setHikes((prev) => prev.map((h) => (h.id === id ? { ...h, hasFullDetail: true } : h)));
     }
   };
 
@@ -173,10 +283,11 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  // Automatically fetch hikes on startup (Location permission requested in Onboarding Swarm or manually)
+  // Automatically fetch hikes and the user's location on startup
   useEffect(() => {
     Promise.resolve().then(() => {
       loadHikes();
+      refreshUserLocation();
     });
   }, []);
 
@@ -207,27 +318,38 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
 
   // Helper to calculate transit time dynamically based on distance
   const getTransitInfo = useCallback(
-    (rando: RandoData) => {
+    (rando: RandoData, fromLocation?: Coordinates) => {
+      const origin = fromLocation ?? userLocation;
+      const userLat = origin?.latitude ?? DEFAULT_COORDS.latitude;
+      const userLng = origin?.longitude ?? DEFAULT_COORDS.longitude;
+
+      const randoLat =
+        rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? DEFAULT_COORDS.latitude;
+      const randoLng =
+        rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? DEFAULT_COORDS.longitude;
+
       const distanceKm = calculateDistanceKm(
-        userLocation.latitude,
-        userLocation.longitude,
-        rando.startStationCoords.latitude,
-        rando.startStationCoords.longitude
+        userLat,
+        userLng,
+        randoLat,
+        randoLng
       );
 
       // If near Paris (within 15km of Notre-Dame/Châtelet), use the default dataset values
       const nearParis =
         calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
+          userLat,
+          userLng,
           DEFAULT_COORDS.latitude,
           DEFAULT_COORDS.longitude
         ) < 15;
 
+      const trainMins = rando?.trainDurationMinutes ?? (rando as any)?.duration_minutes ?? 35;
+
       if (nearParis) {
         return {
-          durationMinutes: rando.trainDurationMinutes,
-          durationText: `${rando.trainDurationMinutes} min`,
+          durationMinutes: trainMins,
+          durationText: `${trainMins} min`,
           distanceKm,
         };
       }
@@ -265,6 +387,28 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     setSelectedPointsOfInterest([]);
   }, []);
 
+  const activeFiltersCount = useMemo(
+    () =>
+      selectedDifficulties.length +
+      (maxTrainDuration !== null ? 1 : 0) +
+      (maxDistance !== null ? 1 : 0) +
+      (maxElevation !== null ? 1 : 0) +
+      (dogsAllowed ? 1 : 0) +
+      (kidsFriendly ? 1 : 0) +
+      selectedActivityTypes.length +
+      selectedPointsOfInterest.length,
+    [
+      selectedDifficulties,
+      maxTrainDuration,
+      maxDistance,
+      maxElevation,
+      dogsAllowed,
+      kidsFriendly,
+      selectedActivityTypes,
+      selectedPointsOfInterest,
+    ]
+  );
+
   const filteredHikes = useMemo(() => {
     let filtered = hikes.filter((rando) => {
       // 1. Text Search query (title, location, startStation, endStation)
@@ -279,11 +423,13 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
 
         if (isUserLocationSearch) {
           // Filter hikes within 75 km of user's location
+          const randoLat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? DEFAULT_COORDS.latitude;
+          const randoLng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? DEFAULT_COORDS.longitude;
           const dist = calculateDistanceKm(
-            userLocation.latitude,
-            userLocation.longitude,
-            rando.startStationCoords.latitude,
-            rando.startStationCoords.longitude
+            userLocation?.latitude ?? DEFAULT_COORDS.latitude,
+            userLocation?.longitude ?? DEFAULT_COORDS.longitude,
+            randoLat,
+            randoLng
           );
           if (dist > 75) return false;
         } else {
@@ -340,6 +486,23 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
         if (!hasMatch) return false;
       }
 
+      // 10. Search radius around the user's location
+      if (searchRadiusKm !== null) {
+        const randoLat =
+          rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? DEFAULT_COORDS.latitude;
+        const randoLng =
+          rando?.startStationCoords?.longitude ??
+          (rando as any)?.start_lng ??
+          DEFAULT_COORDS.longitude;
+        const dist = calculateDistanceKm(
+          userLocation?.latitude ?? DEFAULT_COORDS.latitude,
+          userLocation?.longitude ?? DEFAULT_COORDS.longitude,
+          randoLat,
+          randoLng
+        );
+        if (dist > searchRadiusKm) return false;
+      }
+
       return true;
     });
 
@@ -347,18 +510,15 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     const query = searchQuery.toLowerCase().trim();
     if (query === 'à proximité' || query === 'a proximité' || query === 'proximité') {
       filtered = [...filtered].sort((a, b) => {
-        const distA = calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          a.startStationCoords.latitude,
-          a.startStationCoords.longitude
-        );
-        const distB = calculateDistanceKm(
-          userLocation.latitude,
-          userLocation.longitude,
-          b.startStationCoords.latitude,
-          b.startStationCoords.longitude
-        );
+        const latA = a?.startStationCoords?.latitude ?? (a as any)?.start_lat ?? DEFAULT_COORDS.latitude;
+        const lngA = a?.startStationCoords?.longitude ?? (a as any)?.start_lng ?? DEFAULT_COORDS.longitude;
+        const latB = b?.startStationCoords?.latitude ?? (b as any)?.start_lat ?? DEFAULT_COORDS.latitude;
+        const lngB = b?.startStationCoords?.longitude ?? (b as any)?.start_lng ?? DEFAULT_COORDS.longitude;
+        const uLat = userLocation?.latitude ?? DEFAULT_COORDS.latitude;
+        const uLng = userLocation?.longitude ?? DEFAULT_COORDS.longitude;
+
+        const distA = calculateDistanceKm(uLat, uLng, latA, lngA);
+        const distB = calculateDistanceKm(uLat, uLng, latB, lngB);
         return distA - distB;
       });
     }
@@ -377,6 +537,7 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
     kidsFriendly,
     selectedActivityTypes,
     selectedPointsOfInterest,
+    searchRadiusKm,
     getTransitInfo,
   ]);
 
@@ -389,6 +550,8 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
         plannedAdventures,
         hikes,
         isLoadingHikes,
+        loadHikes,
+        loadHikeDetail,
         addAdventure,
         updateAdventure,
         deleteAdventure,
@@ -413,7 +576,10 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
         setSelectedActivityTypes,
         selectedPointsOfInterest,
         setSelectedPointsOfInterest,
+        searchRadiusKm,
+        setSearchRadiusKm,
         clearAllFilters,
+        activeFiltersCount,
         filteredHikes,
         recentSearches,
         addRecentSearch,

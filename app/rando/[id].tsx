@@ -12,6 +12,8 @@ import {
   Animated,
   Modal,
   StatusBar,
+  RefreshControl,
+  Dimensions,
 } from 'react-native';
 import { Host, Switch } from '@expo/ui';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -21,6 +23,8 @@ import {
   Heart,
   MoreVertical,
   RefreshCw,
+  ArrowLeftRight,
+  ArrowRight,
   Star,
   CheckCircle2,
   Download,
@@ -46,17 +50,24 @@ import { Button } from '@/components/Button';
 import Chip from '@/components/Chip';
 import { IconButton } from '@/components/IconButton';
 import Tag from '@/components/Tag';
-import Reanimated, { FadeInDown } from 'react-native-reanimated';
+import Reanimated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import ItemButton from '@/components/ItemButton';
 import WeatherIcon, { WeatherIconType } from '@/components/WeatherIcon';
 import ExplorerMap, { MapStyleType, ExplorerMapRef } from '@/components/ExplorerMap';
+import RandoDetailSkeleton from '@/components/RandoDetailSkeleton';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const iosTint = Platform.OS === 'ios' ? require('@expo/ui/swift-ui/modifiers').tint : null;
 const AndroidSwitch = Platform.OS === 'android' ? require('@expo/ui/jetpack-compose').Switch : null;
 /* eslint-enable @typescript-eslint/no-require-imports */
+
+const formatHikeDuration = (hours: number) => {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`;
+};
 
 export default function RandoDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -65,14 +76,54 @@ export default function RandoDetailScreen() {
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
 
-  const { getTransitInfo, userLocationName, hikes } = useAdventure();
+  const { userLocationName, hikes, loadHikes, loadHikeDetail, isLoadingHikes } = useAdventure();
 
   // Local interactive states
+  const [refreshing, setRefreshing] = useState(false);
   const [isFavorite, setIsFavorite] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
+  const [hasOpenedMapModal, setHasOpenedMapModal] = useState(false);
   const [fullMapStyle, setFullMapStyle] = useState<MapStyleType>('default');
   const [mapBearing, setMapBearing] = useState(0);
+  const [isDescriptionExpanded, setIsDescriptionExpanded] = useState(false);
+  const [descriptionLineCount, setDescriptionLineCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (id) {
+      loadHikeDetail(String(id));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  // Always paint the lightweight skeleton first, even when the hike's full
+  // detail is already cached (e.g. a repeat visit): mounting the heavy tree
+  // (images, Mapbox, weather, reviews) synchronously on the very first render
+  // blocks the JS thread long enough to stall the push/back transition.
+  const [readyToRenderFull, setReadyToRenderFull] = useState(false);
+
+  useEffect(() => {
+    setReadyToRenderFull(false);
+    // native-stack drives the push/pop animation natively, so it never
+    // registers an InteractionManager handle — a fixed delay roughly
+    // matching the platform transition duration is what actually keeps
+    // the heavy mount from competing with the slide animation for frames.
+    const timer = setTimeout(() => {
+      setReadyToRenderFull(true);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [id]);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await loadHikes();
+    } catch (error) {
+      console.warn('Could not refresh hike details:', error);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadHikes]);
 
   const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const mapLayerSheetRef = useRef<BaseBottomSheetModalRef>(null);
@@ -113,13 +164,6 @@ export default function RandoDetailScreen() {
       colorScheme === 'dark' ? 'rgba(17, 17, 17, 0)' : 'rgba(255, 255, 255, 0)',
       theme.background,
     ],
-    extrapolate: 'clamp',
-  });
-
-  // Header border bottom animation
-  const headerBorderColor = scrollY.interpolate({
-    inputRange: [120, 150],
-    outputRange: ['rgba(0,0,0,0)', theme.border],
     extrapolate: 'clamp',
   });
 
@@ -164,21 +208,6 @@ export default function RandoDetailScreen() {
   // Find the hike
   const rando = hikes.find((r) => r.id === id);
 
-  if (!rando) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>Randonnée introuvable</Text>
-        <Pressable
-          onPress={() => router.back()}
-          style={[styles.backBtn, { backgroundColor: theme.tint }]}>
-          <Text style={styles.backBtnText}>{"Retourner à l'accueil"}</Text>
-        </Pressable>
-      </View>
-    );
-  }
-
-  const transit = getTransitInfo(rando);
-
   const getDifficultyStatus = (difficulty: string): 'Success' | 'Warning' | 'Error' => {
     switch (difficulty) {
       case 'Facile':
@@ -188,17 +217,6 @@ export default function RandoDetailScreen() {
       case 'Modéré':
       default:
         return 'Warning';
-    }
-  };
-
-  // Handler for sharing
-  const handleShare = async () => {
-    try {
-      await Share.share({
-        message: `Découvrez cette superbe randonnée sur Névé : ${rando.title} !`,
-      });
-    } catch (error) {
-      console.error(error);
     }
   };
 
@@ -331,90 +349,169 @@ export default function RandoDetailScreen() {
     'Fréquenté',
   ];
 
+  const gallery = useMemo(() => {
+    if (rando?.galleryUrls && rando.galleryUrls.length > 0) {
+      return rando.galleryUrls;
+    }
+    return rando?.imageUrl ? [rando.imageUrl] : [];
+  }, [rando]);
+
+  const [activeImageIndex, setActiveImageIndex] = useState(0);
+
+  const handleGalleryScroll = (e: any) => {
+    const contentOffsetX = e.nativeEvent.contentOffset.x;
+    const width = Dimensions.get('window').width || 375;
+    const index = Math.round(contentOffsetX / width);
+    setActiveImageIndex(index);
+  };
+
+  if (isLoadingHikes) {
+    return <RandoDetailSkeleton />;
+  }
+
+  if (!rando) {
+    return (
+      <View style={[styles.centered, { backgroundColor: theme.background }]}>
+        <Text style={[styles.errorText, { color: theme.text }]}>Randonnée introuvable</Text>
+        <Pressable
+          onPress={() => router.back()}
+          style={[styles.backBtn, { backgroundColor: theme.tint }]}>
+          <Text style={styles.backBtnText}>{"Retourner à l'accueil"}</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (!rando.hasFullDetail || !readyToRenderFull) {
+    return <RandoDetailSkeleton />;
+  }
+
+  const getRouteTypeInfo = (routeType?: string) => {
+    switch (routeType) {
+      case 'aller_retour':
+        return { label: 'Aller-retour', Icon: ArrowLeftRight };
+      case 'point_a_point':
+        return { label: 'Point à point', Icon: ArrowRight };
+      case 'boucle':
+      default:
+        return { label: 'Boucle', Icon: RefreshCw };
+    }
+  };
+
+  // Handler for sharing
+  const handleShare = async () => {
+    try {
+      await Share.share({
+        message: `Découvrez cette superbe randonnée sur Névé : ${rando.title} !`,
+      });
+    } catch (error) {
+      console.error(error);
+    }
+  };
+
   return (
-    <Reanimated.View
-      entering={FadeInDown.duration(220)}
-      style={[styles.root, { backgroundColor: theme.background }]}>
+    <Reanimated.View entering={FadeIn.duration(180)} style={[styles.root, { backgroundColor: theme.background }]}>
       <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-      {/* Animated Collapsing Top Header Bar */}
+      {/* Floating Animated Header Bar */}
       <Animated.View
         style={[
-          styles.headerBar,
+          styles.headerOverlay,
           {
-            height: insets.top + 60
-            ,
-            paddingTop: insets.top,
+            paddingTop: insets.top + 8,
             backgroundColor: headerBgColor,
+            left: 0,
+            right: 0,
+            paddingHorizontal: 24,
+            top: 0,
+            zIndex: 10,
           },
         ]}>
-        <View style={styles.headerBarContent}>
-          {/* Left Arrow */}
-          <IconButton
-            variant="circle"
-            icon={<ArrowLeft size={20} color={theme.text} />}
-            onPress={() => router.back()}
-          />
+        <IconButton
+          variant="circle"
+          icon={<ArrowLeft size={20} color={theme.text} />}
+          onPress={() => router.back()}
+        />
 
-          {/* Centered Title (fades in on scroll) */}
-          <Animated.View style={[styles.headerTitleContainer, { opacity: headerTitleOpacity }]}>
-            <Text style={[styles.headerTitleText, { color: theme.text }]} numberOfLines={1}>
-              {rando.title}
-            </Text>
+        <Animated.Text
+          style={[{ fontFamily: 'BricolageGrotesque-SemiBold', fontSize: 16, flex: 1, textAlign: 'center', marginHorizontal: 12 }, { color: theme.text, opacity: headerTitleOpacity }]}
+          numberOfLines={1}>
+          {rando.title}
+        </Animated.Text>
+
+        <View style={styles.headerRight}>
+          {/* All buttons: fade OUT on scroll */}
+          <Animated.View style={[styles.headerRight, { opacity: extraButtonsOpacity, position: 'absolute', right: 0 }]}
+            pointerEvents="box-none">
+            <IconButton
+              variant="circle"
+              icon={<ShareIcon size={20} color={theme.text} />}
+              onPress={handleShare}
+            />
+            <IconButton
+              variant="circle"
+              icon={
+                <Heart
+                  size={20}
+                  color={isFavorite ? '#EF4444' : theme.text}
+                  fill={isFavorite ? '#EF4444' : 'none'}
+                />
+              }
+              onPress={() => setIsFavorite(!isFavorite)}
+            />
+            <IconButton
+              variant="circle"
+              icon={<MoreVertical size={20} color={theme.text} />}
+              onPress={() => actionsSheetRef.current?.present()}
+            />
           </Animated.View>
 
-          {/* Right: Both groups rendered, cross-fading */}
-          <View style={styles.headerRight}>
-            {/* Single options button (fades IN on scroll) */}
-            <Animated.View style={{ opacity: optionsOnlyOpacity, position: 'absolute', right: 0 }}
-              pointerEvents="box-none">
-              <IconButton
-                variant="circle"
-                icon={<MoreVertical size={20} color={theme.text} />}
-                onPress={() => actionsSheetRef.current?.present()}
-              />
-            </Animated.View>
-
-            {/* All buttons (fades OUT on scroll) */}
-            <Animated.View style={[styles.headerRight, { opacity: extraButtonsOpacity }]}
-              pointerEvents="box-none">
-              <IconButton
-                variant="circle"
-                icon={<ShareIcon size={20} color={theme.text} />}
-                onPress={handleShare}
-              />
-              <IconButton
-                variant="circle"
-                icon={
-                  <Heart
-                    size={20}
-                    color={isFavorite ? '#EF4444' : theme.text}
-                    fill={isFavorite ? '#EF4444' : 'none'}
-                  />
-                }
-                onPress={() => setIsFavorite(!isFavorite)}
-              />
-              <IconButton
-                variant="circle"
-                icon={<MoreVertical size={20} color={theme.text} />}
-                onPress={() => actionsSheetRef.current?.present()}
-              />
-            </Animated.View>
-          </View>
+          {/* Single options button: fades IN on scroll */}
+          <Animated.View style={{ opacity: optionsOnlyOpacity }}
+            pointerEvents="box-none">
+            <IconButton
+              variant="circle"
+              icon={<MoreVertical size={20} color={theme.text} />}
+              onPress={() => actionsSheetRef.current?.present()}
+            />
+          </Animated.View>
         </View>
       </Animated.View>
 
-      {/* Fixed Header Image behind ScrollView */}
+      {/* Fixed Header Image Carousel behind ScrollView */}
       <View style={styles.imageContainer}>
-        <Image source={{ uri: rando.imageUrl }} style={styles.image} />
-        <View style={styles.imageGradientOverlay} />
+        <ScrollView
+          horizontal
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={handleGalleryScroll}
+          scrollEventThrottle={16}>
+          {gallery.map((imgUrl, idx) => (
+            <Image
+              key={`gallery-img-${idx}`}
+              source={{ uri: imgUrl }}
+              style={[styles.image, { width: Dimensions.get('window').width }]}
+            />
+          ))}
+        </ScrollView>
+        <View style={styles.imageGradientOverlay} pointerEvents="none" />
 
-        {/* Dots Indicator overlay */}
-        <View style={styles.sliderIndicator}>
-          <View style={[styles.dot, styles.dotActive]} />
-          <View style={[styles.dot, { backgroundColor: theme.border }]} />
-          <View style={[styles.dot, { backgroundColor: theme.border, width: 4, height: 4 }]} />
-        </View>
+        {/* Dynamic Dots Indicator overlay */}
+        {gallery.length > 1 && (
+          <View style={styles.sliderIndicator} pointerEvents="none">
+            {gallery.map((_, idx) => (
+              <View
+                key={`dot-${idx}`}
+                style={[
+                  styles.dot,
+                  idx === activeImageIndex
+                    ? styles.dotActive
+                    : { backgroundColor: 'rgba(255, 255, 255, 0.5)' },
+                ]}
+              />
+            ))}
+          </View>
+        )}
       </View>
 
       <Animated.ScrollView
@@ -425,10 +522,19 @@ export default function RandoDetailScreen() {
           { useNativeDriver: false }
         )}
         scrollEventThrottle={16}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.primary}
+            colors={['#FA6415', '#EB490B']}
+            progressViewOffset={60}
+          />
+        }
         contentContainerStyle={{ paddingBottom: 120 }}>
 
         {/* Transparent Spacer to reveal the fixed image underneath */}
-        <View style={{ height: 284 }} />
+        <View style={{ height: 380 }} />
 
         {/* Bottom Sheet Card Style Body */}
         <View style={[styles.sheetContainer, { backgroundColor: theme.background }]}>
@@ -447,10 +553,15 @@ export default function RandoDetailScreen() {
                   textStyle={{ fontFamily: 'Satoshi-Bold' }}
                 />
                 <View style={styles.routeType}>
-                  <RefreshCw size={16} color={theme.text} />
-                  <Text style={[styles.routeTypeText, { color: theme.text }]}>
-                    Boucle
-                  </Text>
+                  {(() => {
+                    const { label, Icon } = getRouteTypeInfo(rando.routeType);
+                    return (
+                      <>
+                        <Icon size={16} color={theme.text} />
+                        <Text style={[styles.routeTypeText, { color: theme.text }]}>{label}</Text>
+                      </>
+                    );
+                  })()}
                 </View>
               </View>
 
@@ -471,12 +582,29 @@ export default function RandoDetailScreen() {
             </Text>
 
             {/* Description Description */}
-            <Text style={[styles.description, { color: theme.text }]}>
+            <Text
+              style={[styles.description, { color: theme.text }]}
+              numberOfLines={descriptionLineCount === null || isDescriptionExpanded ? undefined : 3}
+              onTextLayout={(e) => {
+                if (descriptionLineCount === null) {
+                  setDescriptionLineCount(e.nativeEvent.lines.length);
+                }
+              }}>
               {rando.description}
             </Text>
 
+            {descriptionLineCount !== null && descriptionLineCount > 3 && (
+              <Pressable
+                onPress={() => setIsDescriptionExpanded((v) => !v)}
+                style={{ marginTop: 4, alignSelf: 'flex-start' }}>
+                <Text style={[styles.descriptionToggle, { color: theme.tint }]}>
+                  {isDescriptionExpanded ? 'Afficher moins' : 'Afficher plus'}
+                </Text>
+              </Pressable>
+            )}
+
             {/* Navigo Sticker */}
-            {rando.trainType?.toLowerCase().includes('navigo') || rando.priceEst < 10 ? (
+            {rando.trainType?.toLowerCase().includes('navigo') ? (
               <Tag
                 statut="Success"
                 size="md"
@@ -492,7 +620,7 @@ export default function RandoDetailScreen() {
             <View style={styles.specCol}>
               <Text style={[styles.specLabel, { color: theme.textMuted }]}>Durée</Text>
               <Text style={[styles.specVal, { color: theme.text }]}>
-                {rando.durationHours}h {Math.floor((rando.durationHours % 1) * 60) > 0 ? `${Math.floor((rando.durationHours % 1) * 60)}min` : ''}
+                {formatHikeDuration(rando.durationHours)}
               </Text>
             </View>
             <View style={styles.specCol}>
@@ -553,17 +681,25 @@ export default function RandoDetailScreen() {
 
           <View style={styles.inlineMapCardContainer}>
             <ExplorerMap
-              userLocation={rando.startStationCoords}
-              userLocationName={rando.startStation}
+              userLocation={
+                rando?.startStationCoords || {
+                  latitude: (rando as any)?.start_lat || 48.8566,
+                  longitude: (rando as any)?.start_lng || 2.3522,
+                }
+              }
+              userLocationName={rando?.startStation || rando?.location || ''}
               hikes={[rando]}
-              selectedHikeId={rando.id}
+              selectedHikeId={rando?.id || null}
               showGpxTrace={true}
               style={styles.inlineMapStyle}
             />
 
             {/* Floating Maximize Button in Top-Right */}
             <Pressable
-              onPress={() => setIsMapModalVisible(true)}
+              onPress={() => {
+                setHasOpenedMapModal(true);
+                setIsMapModalVisible(true);
+              }}
               style={[styles.mapMaximizeBtn, { backgroundColor: theme.card }]}>
               <Maximize2 size={16} color={theme.text} />
             </Pressable>
@@ -705,7 +841,7 @@ export default function RandoDetailScreen() {
           styles.floatingBottom,
           {
             backgroundColor: theme.background,
-            borderTopColor: theme.borderStrong,
+            borderTopColor: theme.borderLight,
             paddingBottom: Math.max(insets.bottom, 12),
           },
         ]}>
@@ -811,14 +947,20 @@ export default function RandoDetailScreen() {
         animationType="slide"
         statusBarTranslucent
         onRequestClose={() => setIsMapModalVisible(false)}>
+        {hasOpenedMapModal && (
         <BottomSheetModalProvider>
           <View style={[styles.fullMapContainer, { backgroundColor: theme.background }]}>
             <ExplorerMap
               ref={fullMapRef}
-              userLocation={rando.startStationCoords}
-              userLocationName={rando.startStation}
+              userLocation={
+                rando?.startStationCoords || {
+                  latitude: (rando as any)?.start_lat || 48.8566,
+                  longitude: (rando as any)?.start_lng || 2.3522,
+                }
+              }
+              userLocationName={rando?.startStation || rando?.location || ''}
               hikes={[rando]}
-              selectedHikeId={rando.id}
+              selectedHikeId={rando?.id || null}
               showGpxTrace={true}
               mapStyle={fullMapStyle}
               onBearingChange={setMapBearing}
@@ -922,6 +1064,7 @@ export default function RandoDetailScreen() {
             </BaseBottomSheetModal>
           </View>
         </BottomSheetModalProvider>
+        )}
       </Modal>
     </Reanimated.View>
   );
@@ -1015,7 +1158,7 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   imageContainer: {
-    height: 304,
+    height: 400,
     width: '100%',
     position: 'absolute',
     top: 0,
@@ -1027,7 +1170,7 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   imageGradientOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.15)',
   },
   headerOverlay: {
@@ -1037,6 +1180,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingBottom: 12,
     zIndex: 10,
   },
 
@@ -1126,6 +1270,10 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginBottom: 8,
   },
+  descriptionToggle: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
+  },
 
   specsRow: {
     flexDirection: 'row',
@@ -1177,7 +1325,7 @@ const styles = StyleSheet.create({
     marginBottom: 40,
   },
   topoGrid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0.3,
   },
   topoLine: {
@@ -1189,7 +1337,7 @@ const styles = StyleSheet.create({
     borderLeftWidth: 1,
   },
   gpxTraceContainer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   svgMockContainer: {
     flex: 1,

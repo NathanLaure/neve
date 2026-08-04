@@ -3,44 +3,30 @@ import { StyleSheet, Text, View, Pressable, Platform } from 'react-native';
 import { Search, SlidersHorizontal, ArrowLeft } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useAdventure } from '@/context/AdventureContext';
 
 interface GlobalSearchbarProps {
   searchQuery: string;
   onPress: () => void;
   style?: any;
   onBack?: () => void;
-  onPressFilter?: () => void;
   isStatic?: boolean;
+  /** Omit to hide the filters button entirely — screens that surface filters as chips do. */
+  onPressFilter?: () => void;
+  /** Badge shown on the filters button; ignored when `onPressFilter` is omitted. */
+  activeFiltersCount?: number;
 }
 
-export default function GlobalSearchbar({ searchQuery, onPress, style, onBack, onPressFilter, isStatic }: GlobalSearchbarProps) {
+export default function GlobalSearchbar({
+  searchQuery,
+  onPress,
+  style,
+  onBack,
+  isStatic,
+  onPressFilter,
+  activeFiltersCount = 0,
+}: GlobalSearchbarProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-
-  const {
-    selectedDifficulties,
-    maxTrainDuration,
-    maxDistance,
-    maxElevation,
-    dogsAllowed,
-    kidsFriendly,
-    selectedActivityTypes,
-    selectedPointsOfInterest,
-  } = useAdventure();
-
-  const activeFiltersCount = isStatic
-    ? 0
-    : selectedDifficulties.length +
-      (maxTrainDuration !== null ? 1 : 0) +
-      (maxDistance !== null ? 1 : 0) +
-      (maxElevation !== null ? 1 : 0) +
-      (dogsAllowed ? 1 : 0) +
-      (kidsFriendly ? 1 : 0) +
-      selectedActivityTypes.length +
-      selectedPointsOfInterest.length;
-
-
 
   return (
     <View style={[styles.floatingSearchContainer, style]}>
@@ -49,9 +35,7 @@ export default function GlobalSearchbar({ searchQuery, onPress, style, onBack, o
         style={[
           styles.floatingSearchButton,
           {
-            backgroundColor: theme.background,
-            borderColor: theme.borderStrong,
-            borderWidth: colorScheme === 'dark' ? 2 : 0,
+            backgroundColor: theme.card,
             shadowColor: '#000',
           },
         ]}>
@@ -66,33 +50,24 @@ export default function GlobalSearchbar({ searchQuery, onPress, style, onBack, o
           <Search size={24} color={theme.text} />
         )}
 
-        <View style={[styles.floatingSearchTextColumn, isStatic && { alignItems: 'center' }]}>
-          <Text
-            style={[
-              styles.floatingSearchTitle,
-              { color: theme.text },
-              isStatic && { textAlign: 'center' },
-            ]}
-            numberOfLines={1}>
+        <View style={styles.floatingSearchTextColumn}>
+          <Text style={[styles.floatingSearchTitle, { color: theme.text }]} numberOfLines={1}>
             {isStatic ? 'Où va-t-on ?' : searchQuery ? searchQuery : 'Où va-t-on ?'}
           </Text>
-          {isStatic && (
-            <Text style={[styles.floatingSearchSub, { color: theme.textMuted }]} numberOfLines={1}>
-              Lieu · Difficulté · Durée
-            </Text>
-          )}
         </View>
 
-        <Pressable onPress={onPressFilter ?? onPress} style={styles.floatingSearchFilterBtn}>
-          <View>
-            <SlidersHorizontal size={24} color={theme.text} />
-            {activeFiltersCount > 0 && (
-              <View style={[styles.badgeContainer, { backgroundColor: theme.primary }]}>
-                <Text style={styles.badgeText}>{activeFiltersCount}</Text>
-              </View>
-            )}
-          </View>
-        </Pressable>
+        {onPressFilter && (
+          <Pressable onPress={onPressFilter} style={styles.floatingSearchFilterBtn}>
+            <View>
+              <SlidersHorizontal size={24} color={theme.text} />
+              {activeFiltersCount > 0 && (
+                <View style={[styles.badgeContainer, { backgroundColor: theme.primary }]}>
+                  <Text style={styles.badgeText}>{activeFiltersCount}</Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        )}
       </Pressable>
     </View>
   );
@@ -113,7 +88,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 12,
     gap: 12,
-    borderWidth: 2,
     ...Platform.select({
       ios: {
         shadowOffset: { width: 0, height: 10 },
@@ -136,12 +110,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     textAlign: 'left',
     lineHeight: 24,
-  },
-  floatingSearchSub: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 11,
-    textAlign: 'center',
-    lineHeight: 15,
   },
   floatingSearchFilterBtn: {
     padding: 4,

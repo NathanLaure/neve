@@ -38,6 +38,10 @@ export interface RandoData {
   kidsFriendly?: boolean;
   activityType?: string;
   pointsOfInterest?: string[];
+  galleryUrls?: string[];
+  routeType?: 'boucle' | 'aller_retour' | 'point_a_point';
+  /** False when only lightweight list data has been fetched (e.g. gpxTrace/description not loaded yet). */
+  hasFullDetail?: boolean;
 }
 
 export const MOCK_RANDOS: RandoData[] = [

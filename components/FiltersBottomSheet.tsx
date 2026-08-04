@@ -140,11 +140,13 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
           query === locName;
 
         if (isUserLocationSearch) {
+          const lat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? 48.8566;
+          const lng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? 2.3522;
           const dist = calculateDistanceKm(
-            userLocation.latitude,
-            userLocation.longitude,
-            rando.startStationCoords.latitude,
-            rando.startStationCoords.longitude
+            userLocation?.latitude ?? 48.8566,
+            userLocation?.longitude ?? 2.3522,
+            lat,
+            lng
           );
           if (dist > 75) return false;
         } else {

@@ -10,6 +10,7 @@ export interface ChipProps {
   disabled?: boolean;
   size?: 'default' | 'small';
   icon?: React.ReactNode;
+  trailingIcon?: React.ReactNode;
   onPress?: () => void;
   style?: ViewStyle | ViewStyle[] | any;
   textStyle?: TextStyle | TextStyle[] | any;
@@ -22,6 +23,7 @@ export default function Chip({
   disabled = false,
   size = 'default',
   icon,
+  trailingIcon,
   onPress,
   style,
   textStyle,
@@ -83,6 +85,7 @@ export default function Chip({
           {chipLabel}
         </Text>
       ) : null}
+      {trailingIcon && <View style={styles.trailingIconWrapper}>{trailingIcon}</View>}
     </Pressable>
   );
 }
@@ -97,6 +100,11 @@ const styles = StyleSheet.create({
   },
   iconWrapper: {
     marginRight: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  trailingIconWrapper: {
+    marginLeft: 6,
     alignItems: 'center',
     justifyContent: 'center',
   },

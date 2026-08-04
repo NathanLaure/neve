@@ -16,6 +16,7 @@ import {
   InteractionManager,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import Colors from '@/constants/Colors';
@@ -26,6 +27,10 @@ import ExplorerMap, { type ExplorerMapRef } from '@/components/ExplorerMap';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
+import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
+import RadiusBottomSheet, { type RadiusBottomSheetRef } from '@/components/RadiusBottomSheet';
+import FilterChipsBar from '@/components/FilterChipsBar';
+import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 
 export type MapStyleType = 'default' | 'satellite';
@@ -63,6 +68,7 @@ export default function ExplorerScreen() {
     setUserLocationManually,
     getTransitInfo,
     hikes,
+    filteredHikes,
     isLoadingHikes,
     searchQuery,
     selectedDifficulties,
@@ -80,6 +86,8 @@ export default function ExplorerScreen() {
   const [sheetIndex, setSheetIndex] = useState<number>(0);
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
+  const filtersSheetRef = useRef<FiltersBottomSheetRef>(null);
+  const radiusSheetRef = useRef<RadiusBottomSheetRef>(null);
   const layerSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
@@ -139,9 +147,12 @@ export default function ExplorerScreen() {
   );
 
   const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
-  const [compassBearing, setCompassBearing] = useState(0);
 
-  const filteredRandos = hikes;
+  // Shared value, not state: the map emits a bearing on every camera frame and
+  // re-rendering this screen that often made the compass needle visibly lag.
+  const compassBearing = useSharedValue(0);
+
+  const filteredRandos = filteredHikes;
 
   const handleSelectHike = (id: string) => {
     setSelectedHikeId(id);
@@ -166,7 +177,9 @@ export default function ExplorerScreen() {
           hikes={filteredRandos}
           selectedHikeId={selectedHikeId}
           onSelectHike={handleSelectHike}
-          onBearingChange={setCompassBearing}
+          onBearingChange={(bearing) => {
+            compassBearing.value = bearing;
+          }}
           mapStyle={mapStyle}
           style={styles.mapContainerFullScreen}
         />
@@ -188,6 +201,17 @@ export default function ExplorerScreen() {
             router.push('/search');
           }}
           style={{ top: Math.max(insets.top, 16), zIndex: 30, elevation: 30 }}
+        />
+
+        {/* Floating Filters / Radius Chips, right below the searchbar */}
+        <FilterChipsBar
+          onPressFilters={() => filtersSheetRef.current?.present()}
+          onPressRadius={() => radiusSheetRef.current?.present()}
+          style={{
+            top: Math.max(insets.top, 16) + 56 + MAP_CHIPS_BAR_GAP,
+            zIndex: 30,
+            elevation: 30,
+          }}
         />
 
         {/* Floating Location Simulator Bar */}
@@ -258,7 +282,7 @@ export default function ExplorerScreen() {
           compassBearing={compassBearing}
           onPressCompass={() => mapRef.current?.resetNorth()}
           onPressLayers={() => layerSheetRef.current?.present()}
-          onPressLocate={refreshUserLocation}
+          onPressLocate={() => mapRef.current?.centerOnUser()}
           isLocating={isLocating}
           style={{
             bottom: filteredRandos.length > 0 ? 240 : 96,
@@ -313,6 +337,7 @@ export default function ExplorerScreen() {
           getTransitInfo={getTransitInfo}
           onSelectHike={handleSelectHike}
           onChange={setSheetIndex}
+          expandedTopOffset={MAP_CHIPS_BAR_HEIGHT + MAP_CHIPS_BAR_GAP}
         />
 
         {/* Map Layer Sheet Modal */}
@@ -363,6 +388,12 @@ export default function ExplorerScreen() {
             })}
           </View>
         </BaseBottomSheetModal>
+
+        {/* Filters Bottom Sheet Modal */}
+        <FiltersBottomSheet ref={filtersSheetRef} />
+
+        {/* Search Radius Bottom Sheet Modal */}
+        <RadiusBottomSheet ref={radiusSheetRef} />
       </View>
     </Animated.View>
   );
@@ -421,7 +452,7 @@ const styles = StyleSheet.create({
     bottom: 85,
     left: 0,
     right: 0,
-    zIndex: 8,
+    zIndex: 5,
   },
   carouselScroll: {
     paddingHorizontal: 24,

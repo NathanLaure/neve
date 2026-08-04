@@ -10,10 +10,8 @@ import {
   StyleSheet,
   Text,
   View,
-  ActivityIndicator,
   Pressable,
 } from 'react-native';
-import { ScrollView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AlertCircle, Map } from 'lucide-react-native';
 import BottomSheet, { BottomSheetFlatList } from '@gorhom/bottom-sheet';
@@ -27,25 +25,8 @@ import Animated, {
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
-import Chip from '@/components/Chip';
+import RandoCardSkeleton from '@/components/RandoCardSkeleton';
 import { type RandoData } from '@/constants/RandosData';
-
-// Category tags from Figma design
-const CATEGORIES = [
-  'A proximité',
-  'Forêt',
-  'Fleurs',
-  'Lac',
-  'Rivière',
-  'Cascade',
-  'Faune sauvage',
-  'Plage',
-  'Grotte',
-  'Sources chaudes',
-  'Site historique',
-  'Voies vertes',
-  'Balade en ville',
-];
 
 export interface HikesBottomSheetRef {
   snapToIndex: (index: number) => void;
@@ -63,6 +44,8 @@ interface HikesBottomSheetProps {
   onSelectHike: (id: string) => void;
   onChange?: (index: number) => void;
   initialIndex?: number;
+  /** Extra top space reserved at full expansion for floating overlays below the searchbar. */
+  expandedTopOffset?: number;
 }
 
 const AnimatedFlatList = Animated.createAnimatedComponent(BottomSheetFlatList);
@@ -76,13 +59,23 @@ const formatHikeDuration = (hours: number) => {
 const HikesBottomSheetRender: React.ForwardRefRenderFunction<
   HikesBottomSheetRef,
   HikesBottomSheetProps
-> = ({ hikes, isLoadingHikes, getTransitInfo, onSelectHike, onChange, initialIndex = 0 }, ref) => {
+> = (
+  {
+    hikes,
+    isLoadingHikes,
+    getTransitInfo,
+    onSelectHike,
+    onChange,
+    initialIndex = 0,
+    expandedTopOffset = 0,
+  },
+  ref
+) => {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
 
   const [sheetIndex, setSheetIndex] = useState<number>(initialIndex);
-  const [selectedCategory, setSelectedCategory] = useState<string>('A proximité');
   const bottomSheetRef = useRef<BottomSheet>(null);
   const animatedIndex = useSharedValue(-1);
 
@@ -92,7 +85,8 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     const desiredGap = 12;
     // offsetCorrection compensates for the BottomSheet handle container height and margins
     const offsetCorrection = 34;
-    const targetHeight = searchbarTop + searchbarHeight + desiredGap - offsetCorrection;
+    const targetHeight =
+      searchbarTop + searchbarHeight + desiredGap + expandedTopOffset - offsetCorrection;
 
     const height = interpolate(animatedIndex.value, [1, 2], [0, targetHeight], 'clamp');
     return {
@@ -112,19 +106,6 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
       right: 0,
       alignItems: 'center',
       justifyContent: 'center',
-    };
-  });
-
-  const expandedHeaderStyle = useAnimatedStyle(() => {
-    const opacity = interpolate(animatedIndex.value, [0.2, 0.8], [0, 1], 'clamp');
-    const translateY = interpolate(animatedIndex.value, [0, 1], [15, 0], 'clamp');
-    const height = interpolate(animatedIndex.value, [0, 0.5], [0, 48], 'clamp');
-    const overflow = animatedIndex.value < 0.5 ? 'hidden' : 'visible';
-    return {
-      opacity,
-      transform: [{ translateY }],
-      height,
-      overflow,
     };
   });
 
@@ -157,18 +138,6 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     scrollOffset.value = event.nativeEvent.contentOffset.y;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  const animatedChipsShadowStyle = useAnimatedStyle(() => {
-    const shadowOpacity = interpolate(scrollOffset.value, [0, 10], [0, 0.08], 'clamp');
-    const elevation = interpolate(scrollOffset.value, [0, 10], [0, 3], 'clamp');
-    return {
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity,
-      shadowRadius: 4,
-      elevation,
-    };
-  });
 
   const animatedButtonStyle = useAnimatedStyle(() => {
     // Fade and scale in more gradually as the sheet opens (between 1.6 and 2.0)
@@ -225,7 +194,21 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     [theme.tabIconDefault, animatedHandleStyle]
   );
 
-  const snapPoints = useMemo(() => [70, '50%', '100%'], []);
+  const collapsedSnapPoint = useMemo(() => {
+    return Math.max(62, 50 + insets.bottom);
+  }, [insets.bottom]);
+
+  const snapPoints = useMemo(() => [collapsedSnapPoint, '50%', '100%'], [collapsedSnapPoint]);
+
+  // Ensure sheet stays visible at index 0 when hikes load or component mounts
+  React.useEffect(() => {
+    const timer = setTimeout(() => {
+      if (bottomSheetRef.current && sheetIndex === 0) {
+        bottomSheetRef.current.snapToIndex(0);
+      }
+    }, 150);
+    return () => clearTimeout(timer);
+  }, [hikes.length]);
 
   const handleSheetChange = useCallback(
     (index: number) => {
@@ -247,8 +230,6 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
 
   // Filter hikes (category filtering will be added when data supports it)
   const filteredHikes = useMemo(() => {
-    // For now, return all hikes. When RandoData has a `categories` field,
-    // filter by selectedCategory here.
     return hikes;
   }, [hikes]);
 
@@ -259,6 +240,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
       index={sheetIndex}
       snapPoints={snapPoints}
       enableDynamicSizing={false}
+      enablePanDownToClose={false}
       onChange={handleSheetChange}
       backgroundComponent={renderBackground}
       handleComponent={renderHandle}
@@ -272,39 +254,10 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
         style={collapsedHeaderStyle}
         pointerEvents={sheetIndex === 0 ? 'auto' : 'none'}>
         <Text style={[styles.sheetTitle, { color: theme.text }]}>
-          {filteredHikes.length} randonnée{filteredHikes.length > 1 ? 's' : ''}
+          {isLoadingHikes
+            ? 'Recherche des randonnées...'
+            : `${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''}`}
         </Text>
-      </Animated.View>
-
-      {/* Sticky category chips */}
-      <Animated.View
-        style={[
-          expandedHeaderStyle,
-          {
-            backgroundColor: theme.background,
-            zIndex: 20,
-          },
-          animatedChipsShadowStyle,
-        ]}
-        pointerEvents={sheetIndex === 0 ? 'none' : 'auto'}>
-        <View style={styles.expandedHeader}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.categoryTagsScroll}>
-            {CATEGORIES.map((cat) => {
-              const isSelected = selectedCategory === cat;
-              return (
-                <Chip
-                  key={cat}
-                  text={cat}
-                  selected={isSelected}
-                  onPress={() => setSelectedCategory(cat)}
-                />
-              );
-            })}
-          </ScrollView>
-        </View>
       </Animated.View>
 
       <AnimatedFlatList
@@ -320,7 +273,9 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
           <Animated.View style={resultsTitleStyle}>
             {/* Results Title */}
             <Text style={[styles.resultsTitle, { color: theme.text }]}>
-              {filteredHikes.length} randonnée{filteredHikes.length > 1 ? 's' : ''} trouvées
+              {isLoadingHikes
+                ? 'Recherche des randonnées...'
+                : `${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''} trouvées`}
             </Text>
           </Animated.View>
         }
@@ -332,6 +287,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
                 id={item.id}
                 title={item.title}
                 imageUrl={item.imageUrl}
+                galleryUrls={item.galleryUrls}
                 departureStation={item.startStation}
                 distance={item.distance}
                 weatherTemp={item.weatherTemp}
@@ -351,11 +307,10 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
         }}
         ListEmptyComponent={
           isLoadingHikes ? (
-            <View style={styles.emptyContainer}>
-              <ActivityIndicator size="large" color={theme.tint} />
-              <Text style={[styles.emptyText, { color: theme.text, marginTop: 10 }]}>
-                Chargement des randonnées...
-              </Text>
+            <View style={{ paddingHorizontal: 24, gap: 32 }}>
+              <RandoCardSkeleton />
+              <RandoCardSkeleton />
+              <RandoCardSkeleton />
             </View>
           ) : (
             <View style={styles.emptyContainer}>
@@ -429,21 +384,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
-  expandedHeader: {
-    paddingTop: 0,
-  },
   resultsTitle: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
     marginTop: 0,
     marginBottom: 12,
-    paddingHorizontal: 24,
-  },
-  categoryTagsScroll: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    paddingVertical: 0,
     paddingHorizontal: 24,
   },
   listContent: {

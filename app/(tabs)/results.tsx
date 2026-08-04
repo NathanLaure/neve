@@ -15,6 +15,7 @@ import {
   Image,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSharedValue } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
 import Colors from '@/constants/Colors';
@@ -26,6 +27,8 @@ import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
 import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
+import PoiChipsBar from '@/components/PoiChipsBar';
+import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 
 export type MapStyleType = 'default' | 'satellite';
@@ -70,6 +73,7 @@ export default function SearchResultsScreen() {
     maxTrainDuration,
     maxDistance,
     maxElevation,
+    activeFiltersCount,
     clearAllFilters,
   } = useAdventure();
 
@@ -102,7 +106,10 @@ export default function SearchResultsScreen() {
 
 
   const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
-  const [compassBearing, setCompassBearing] = useState(0);
+
+  // Shared value, not state: the map emits a bearing on every camera frame and
+  // re-rendering this screen that often made the compass needle visibly lag.
+  const compassBearing = useSharedValue(0);
 
   const filteredRandos = filteredHikes;
 
@@ -152,7 +159,9 @@ export default function SearchResultsScreen() {
           hikes={filteredRandos}
           selectedHikeId={selectedHikeId}
           onSelectHike={handleSelectHike}
-          onBearingChange={setCompassBearing}
+          onBearingChange={(bearing) => {
+            compassBearing.value = bearing;
+          }}
           mapStyle={mapStyle}
           style={styles.mapContainerFullScreen}
         />
@@ -172,13 +181,21 @@ export default function SearchResultsScreen() {
           onPress={() => {
             router.push({ pathname: '/search', params: { fromResults: 'true' } });
           }}
-          onPressFilter={() => {
-            filtersSheetRef.current?.present();
-          }}
           onBack={() => {
             router.back();
           }}
+          onPressFilter={() => filtersSheetRef.current?.present()}
+          activeFiltersCount={activeFiltersCount}
           style={{ top: Math.max(insets.top, 16), zIndex: 30, elevation: 30 }}
+        />
+
+        {/* Floating Points of Interest Chips, right below the searchbar */}
+        <PoiChipsBar
+          style={{
+            top: Math.max(insets.top, 16) + 56 + MAP_CHIPS_BAR_GAP,
+            zIndex: 30,
+            elevation: 30,
+          }}
         />
 
         {/* Floating Location Simulator Bar */}
@@ -249,7 +266,7 @@ export default function SearchResultsScreen() {
           compassBearing={compassBearing}
           onPressCompass={() => mapRef.current?.resetNorth()}
           onPressLayers={() => layerSheetRef.current?.present()}
-          onPressLocate={refreshUserLocation}
+          onPressLocate={() => mapRef.current?.centerOnUser()}
           isLocating={isLocating}
           style={{
             bottom: filteredRandos.length > 0 ? 240 : 96,
@@ -305,6 +322,7 @@ export default function SearchResultsScreen() {
           onSelectHike={handleSelectHike}
           onChange={setSheetIndex}
           initialIndex={2}
+          expandedTopOffset={MAP_CHIPS_BAR_HEIGHT + MAP_CHIPS_BAR_GAP}
         />
 
         {/* Map Layer Sheet Modal */}

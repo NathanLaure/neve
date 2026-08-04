@@ -7,6 +7,7 @@ import { useAdventure } from '@/context/AdventureContext';
 import Chip from '@/components/Chip';
 import RangeSlider from '@/components/RangeSlider';
 import ToggleRow from '@/components/ToggleRow';
+import { POINTS_OF_INTEREST } from '@/constants/Filters';
 
 const ACTIVITY_TYPES = [
   'Randonnée',
@@ -23,22 +24,6 @@ const ACTIVITY_TYPES = [
   'Randonnée à cheval',
   'Ski de fond',
   'Ski alpin',
-];
-
-const POINTS_OF_INTEREST = [
-  'Vue panoramique',
-  'Forêt',
-  'Fleurs',
-  'Lac',
-  'Rivière',
-  'Cascade',
-  'Faune sauvage',
-  'Plage',
-  'Grotte',
-  'Sources chaudes',
-  'Site historique',
-  'Voies vertes',
-  'Balade en ville',
 ];
 
 const GEOGRAPHIC_ZONES = [

@@ -61,8 +61,8 @@ export default {
     warning: '#E9C46A', // amber-500
     card: '#222222', // neutral-950
     border: '#3D3D3D', // neutral-800
-    borderLight: '#989898', // neutral-600
-    borderStrong: '#222222',
+    borderLight: '#222222', // neutral-600
+    borderStrong: '#464646',
     borderDisabled: '#3D3D3D',
     textMuted: '#BDBDBD', // neutral-300
     greenBadge: '#0D1F11', // status-bg-success-subtle

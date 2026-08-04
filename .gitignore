@@ -31,3 +31,5 @@ android
 
 supabase/
 .idea/
+
+data/

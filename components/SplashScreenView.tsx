@@ -2,42 +2,41 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { StyleSheet, View, Animated, Easing } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-
 import { NeveLogo } from '@/components/NeveLogo';
 
 export interface SplashScreenViewProps {
   onFinish?: () => void;
   isReady?: boolean; // Wait for background loading (auth, data, fonts)
-  minDuration?: number; // Minimum display time for smooth splash animation (default 1800ms)
+  minDuration?: number; // Fast display time for seamless splash transition (default 350ms)
 }
 
 export function SplashScreenView({
   onFinish,
   isReady = true,
-  minDuration = 1800,
+  minDuration = 350,
 }: SplashScreenViewProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
+  // Exact native splash background match from app.json (#FFF7F2 in light, #111111 in dark)
+  const splashBgColor = colorScheme === 'dark' ? '#111111' : '#FFF7F2';
+  const logoOrangeColor = theme.primary;
+
   // Container Fade Out
   const [containerOpacity] = useState(() => new Animated.Value(1));
 
-  // Phase 1: Logo Scale & Fade
-  const [logoScale] = useState(() => new Animated.Value(0.7));
-  const [logoOpacity] = useState(() => new Animated.Value(0));
-
-  // Phase 2: "Névé" Text Slide & Fade Up (Splash 02)
-  const [textTranslateY] = useState(() => new Animated.Value(20));
-  const [textOpacity] = useState(() => new Animated.Value(0));
+  // Quick subtle logo pulse/scale animation (starts at 1.0 -> 1.05 -> 1.0)
+  const [logoScale] = useState(() => new Animated.Value(1));
+  const [logoOpacity] = useState(() => new Animated.Value(1));
 
   const animationFinishedRef = useRef(false);
 
   const checkFinish = useCallback(() => {
     if (animationFinishedRef.current && isReady) {
-      // Smooth fade out container overlay
+      // Ultra-fast smooth fade out container overlay
       Animated.timing(containerOpacity, {
         toValue: 0,
-        duration: 400,
+        duration: 180,
         useNativeDriver: true,
       }).start(() => {
         if (onFinish) {
@@ -48,49 +47,32 @@ export function SplashScreenView({
   }, [containerOpacity, isReady, onFinish]);
 
   useEffect(() => {
-    // Sequence Phase 1: Logo Fade & Scale in
-    Animated.parallel([
-      Animated.timing(logoOpacity, {
-        toValue: 1,
-        duration: 600,
+    // Quick subtle pulse animation to smooth out the native-to-JS bridge transition
+    Animated.sequence([
+      Animated.timing(logoScale, {
+        toValue: 1.05,
+        duration: 160,
+        easing: Easing.out(Easing.ease),
         useNativeDriver: true,
       }),
-      Animated.spring(logoScale, {
+      Animated.timing(logoScale, {
         toValue: 1,
-        friction: 6,
-        tension: 40,
+        duration: 160,
+        easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
     ]).start();
 
-    // Sequence Phase 2: Text "Névé" Slide & Fade in after 400ms delay
-    const textTimer = setTimeout(() => {
-      Animated.parallel([
-        Animated.timing(textOpacity, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }),
-        Animated.timing(textTranslateY, {
-          toValue: 0,
-          duration: 500,
-          easing: Easing.out(Easing.back(1.5)),
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, 400);
-
-    // Minimum animation timer
+    // Fast minimum animation timer
     const minTimer = setTimeout(() => {
       animationFinishedRef.current = true;
       checkFinish();
     }, minDuration);
 
     return () => {
-      clearTimeout(textTimer);
       clearTimeout(minTimer);
     };
-  }, [checkFinish, logoOpacity, logoScale, minDuration, textOpacity, textTranslateY]);
+  }, [checkFinish, logoScale, minDuration]);
 
   useEffect(() => {
     checkFinish();
@@ -100,10 +82,10 @@ export function SplashScreenView({
     <Animated.View
       style={[
         styles.container,
-        { backgroundColor: theme.background, opacity: containerOpacity },
+        { backgroundColor: splashBgColor, opacity: containerOpacity },
       ]}>
       <View style={styles.centerContainer}>
-        {/* Splash 01: Centered Official Vector Curve Logo */}
+        {/* Seamless Orange Logo Icon Only */}
         <Animated.View
           style={[
             styles.logoWrapper,
@@ -112,19 +94,7 @@ export function SplashScreenView({
               transform: [{ scale: logoScale }],
             },
           ]}>
-          <NeveLogo variant="icon" size={160} color={theme.text} />
-        </Animated.View>
-
-        {/* Splash 02: Official "Névé" Typo Vector below Logo */}
-        <Animated.View
-          style={[
-            styles.textWrapper,
-            {
-              opacity: textOpacity,
-              transform: [{ translateY: textTranslateY }],
-            },
-          ]}>
-          <NeveLogo variant="typo" size={140} color={theme.text} />
+          <NeveLogo variant="icon" size={140} color={logoOrangeColor} />
         </Animated.View>
       </View>
     </Animated.View>
@@ -146,11 +116,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   logoWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  textWrapper: {
-    marginTop: 20,
     alignItems: 'center',
     justifyContent: 'center',
   },

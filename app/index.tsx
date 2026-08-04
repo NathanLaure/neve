@@ -12,7 +12,7 @@ export default function IndexGatekeeper() {
     return (
       <SplashScreenView
         isReady={!isLoading}
-        minDuration={1200}
+        minDuration={350}
         onFinish={() => setIsSplashFinished(true)}
       />
     );
