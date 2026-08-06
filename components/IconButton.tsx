@@ -86,19 +86,23 @@ export const IconButton = forwardRef<View, IconButtonProps>(
       }
     };
 
-    // Auto-apply icon color for circle/square variants to contrast with buttonBgIcon
+    /**
+     * Couleur d'icône par défaut sur les variants pleins, pour contraster avec le
+     * fond du bouton.
+     *
+     * Une couleur passée explicitement l'emporte : c'est ce qui permet de
+     * réutiliser le même bouton sur un fond clair (écran de planification) comme
+     * sur un fond sombre. Auparavant `color` n'était respecté qu'en présence d'un
+     * `fill`, donc toujours écrasé en pratique.
+     */
     const renderIcon = () => {
       if (!icon) return null;
       if ((variant === 'circle' || variant === 'square') && React.isValidElement(icon)) {
-        const iconColor = disabled
-          ? (theme.buttonTextDisabled || '#7C7C7C')
-          : theme.text;
-        // Only override if the icon doesn't already have a custom fill (e.g. Heart favorite)
         const existingColor = (icon.props as any)?.color;
-        const existingFill = (icon.props as any)?.fill;
-        const hasCustomFill = existingFill && existingFill !== 'none';
+        if (existingColor) return icon;
+
         return React.cloneElement(icon as React.ReactElement<any>, {
-          color: hasCustomFill ? existingColor : iconColor,
+          color: disabled ? theme.buttonTextDisabled || '#7C7C7C' : theme.text,
         });
       }
       return icon;

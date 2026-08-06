@@ -553,7 +553,7 @@ export default function RecapScreen() {
               {
                 backgroundColor: theme.card,
                 borderTopColor: theme.border,
-                paddingBottom: Math.max(insets.bottom, 16),
+                paddingBottom: Math.max(insets.bottom, 34),
               },
             ]}>
             {isIDF ? (

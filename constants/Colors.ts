@@ -1,5 +1,7 @@
 const tintColorLight = '#EB490B'; // Orange vif sémantique (Primary-600)
-const tintColorDark = '#FA6415'; // Orange clair sémantique (Primary-500)
+// Les maquettes Figma en thème sombre utilisent bg/brand = #EB490B, la même valeur
+// qu'en thème clair. On s'aligne dessus : Figma fait foi sur la couleur de marque.
+const tintColorDark = '#EB490B'; // bg/brand (Figma, sombre)
 
 export default {
   light: {
@@ -18,6 +20,8 @@ export default {
     borderStrong: '#989898',
     borderDisabled: '#BDBDBD',
     textMuted: '#525252', // neutral-600
+    textDisabled: '#7C7C7C', // text/disabled — dates passées, libellés inactifs
+    surfaceSecondary: '#DCDCDC', // bg/surface-secondary
     greenBadge: '#F2F6F3', // status-bg-success-subtle
     blueBadge: '#F1F5F7', // status-bg-info-subtle
     orangeBadge: '#FDFAF2', // status-bg-warning-subtle
@@ -65,6 +69,8 @@ export default {
     borderStrong: '#464646',
     borderDisabled: '#3D3D3D',
     textMuted: '#BDBDBD', // neutral-300
+    textDisabled: '#525252', // text/disabled (Figma) — dates passées barrées du calendrier
+    surfaceSecondary: '#3D3D3D', // bg/surface-secondary (Figma)
     greenBadge: '#0D1F11', // status-bg-success-subtle
     blueBadge: '#0A192F', // status-bg-info-subtle
     orangeBadge: '#241800', // status-bg-warning-subtle
@@ -79,8 +85,13 @@ export default {
     buttonDisabled: '#222222',
     buttonTextDisabled: '#7C7C7C',
     buttonTextOnBrand: '#FFFFFF',
-    buttonBgIcon: '#111111',
-    buttonIconColor: '#FFFFFF',
+    // buttons/bg-btn-icon vaut #EFEFEF chez Figma : le bouton icône rond est clair
+    // sur fond sombre. La valeur précédente (#111111) le rendait invisible sur
+    // bg/background, lui aussi #111111.
+    buttonBgIcon: '#EFEFEF',
+    // Couleur de l'icône POSÉE SUR buttonBgIcon, qui est clair dans les deux
+    // thèmes : l'icône doit donc être sombre des deux côtés.
+    buttonIconColor: '#111111',
 
     // Figma Status Semantic Colors
     statusBgSuccess: '#6A994E',

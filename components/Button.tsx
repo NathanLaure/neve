@@ -72,8 +72,12 @@ export const Button = forwardRef<View, ButtonProps>(
         activeOpacity={0.8}
         style={[
           defaultStyles.button,
-          variantStyles.button,
+          // Avant `variantStyles` : `iconOnlyContainer` pose `width: undefined`
+          // pour empêcher un bouton icône de s'étirer, mais placé APRÈS il
+          // écrasait aussi la largeur explicite du variant `icon` (32 ou 48),
+          // qui s'écrasait alors sur son contenu — un ovale au lieu d'un rond.
           isIconOnlyMode && defaultStyles.iconOnlyContainer,
+          variantStyles.button,
           style,
         ]}
         {...touchableProps}>

@@ -16,7 +16,7 @@ export interface RadiusBottomSheetRef {
 export const formatRadiusLabel = (radius: number | null, isMapAreaActive = false) => {
   if (radius === null) return 'Position actuelle';
   if (isMapAreaActive) return `Zone affichée (${radius} km)`;
-  return `${radius} km`;
+  return `Rayon de ${radius} km`;
 };
 
 const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetRef, any> = (

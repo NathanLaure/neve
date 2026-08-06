@@ -850,7 +850,7 @@ export default function RandoDetailScreen() {
           {
             backgroundColor: theme.background,
             borderTopColor: theme.borderLight,
-            paddingBottom: Math.max(insets.bottom, 12),
+            paddingBottom: Math.max(insets.bottom, 34),
           },
         ]}>
         <View style={styles.bottomBarButtonsRow}>

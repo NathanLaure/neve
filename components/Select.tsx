@@ -104,7 +104,7 @@ export function Select({
         ref={bottomSheetRef}
         showHeader={false}
         enableDynamicSizing>
-        <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 16) }]}>
+        <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 34) }]}>
           {options.map((option, idx) => {
             const isSelected = option.value === value;
             const isLast = idx === options.length - 1;

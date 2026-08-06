@@ -22,177 +22,15 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
-import {
-  Search,
-  X,
-  Building2,
-  MountainSnow,
-  TreePine,
-  RotateCcw,
-  MapPin,
-  Home,
-  Waves,
-  ArrowLeft,
-} from 'lucide-react-native';
+import { Search, X, RotateCcw, ArrowLeft } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
 import FiltersForm from '@/components/FiltersForm';
-
-type PlaceKind = 'nearby' | 'water' | 'mountain' | 'forest' | 'village' | 'city' | 'recent';
-
-// Icon + colour per place kind. The subtle backgrounds reuse the design system's
-// status tokens so the rows stay on-palette in both themes.
-const PLACE_KINDS: Record<
-  PlaceKind,
-  { icon: any; light: { fg: string; bg: string }; dark: { fg: string; bg: string } }
-> = {
-  nearby: {
-    icon: MapPin,
-    light: { fg: '#EB490B', bg: '#FDEFE9' }, // primary / brand subtle
-    dark: { fg: '#FA6415', bg: '#2A1206' },
-  },
-  mountain: {
-    icon: MountainSnow,
-    light: { fg: '#457B9D', bg: '#F1F5F7' }, // statusBgInfo / Subtle
-    dark: { fg: '#98C1D9', bg: '#0A192F' },
-  },
-  water: {
-    icon: Waves,
-    light: { fg: '#2A7F86', bg: '#EFF6F6' },
-    dark: { fg: '#7FC6CC', bg: '#08221F' },
-  },
-  forest: {
-    icon: TreePine,
-    light: { fg: '#386641', bg: '#F2F6F3' }, // statusBgSuccess / Subtle
-    dark: { fg: '#6A994E', bg: '#0D1F11' },
-  },
-  village: {
-    icon: Home,
-    light: { fg: '#B07D06', bg: '#FDFAF2' }, // statusBgWarning / Subtle
-    dark: { fg: '#E9C46A', bg: '#241800' },
-  },
-  city: {
-    icon: Building2,
-    light: { fg: '#525252', bg: '#FFFFFF' },
-    dark: { fg: '#BDBDBD', bg: '#111111' },
-  },
-  recent: {
-    icon: RotateCcw,
-    light: { fg: '#525252', bg: '#FFFFFF' },
-    dark: { fg: '#BDBDBD', bg: '#111111' },
-  },
-};
-
-const ACCENT_MAP: Record<string, string> = {
-  à: 'a', á: 'a', â: 'a', ä: 'a', è: 'e', é: 'e', ê: 'e', ë: 'e',
-  ì: 'i', í: 'i', î: 'i', ï: 'i', ò: 'o', ó: 'o', ô: 'o', ö: 'o',
-  ù: 'u', ú: 'u', û: 'u', ü: 'u', ç: 'c', ÿ: 'y', ñ: 'n',
-};
-
-const deaccent = (value: string) =>
-  value.toLowerCase().replace(/[àáâäèéêëìíîïòóôöùúûüçÿñ]/g, (c) => ACCENT_MAP[c] ?? c);
-
-// Whole-word matcher. Substring matching was the main source of wrong icons:
-// "mont" fired on Montpellier/Montreuil, "bois" on Boissy, "mer" on Merville.
-const words = (...list: string[]) =>
-  new RegExp(`(^|[\\s'’\\-])(${list.join('|')})([\\s'’\\-]|$)`);
-
-const WATER_NAME = words(
-  'mer', 'mers', 'plage', 'plages', 'lac', 'lacs', 'etang', 'etangs', 'bains',
-  'golfe', 'baie', 'ile', 'iles', 'port', 'riviere', 'cascade', 'cote', 'sables'
-);
-const MOUNTAIN_NAME = words(
-  'mont', 'monts', 'montagne', 'montagnes', 'alpe', 'alpes', 'pic', 'col', 'cols',
-  'aiguille', 'aiguilles', 'massif', 'pyrenees', 'cime', 'crete', 'glacier', 'vallon', 'puy'
-);
-const FOREST_NAME = words(
-  'foret', 'forets', 'bois', 'parc', 'vallee', 'sylve', 'chene', 'chenes', 'pins',
-  'clairiere', 'futaie', 'nature'
-);
-// Coastal departments are checked before mountain ones so Alpes-Maritimes
-// resolves to the sea rather than the summits.
-const WATER_DEPT = words('maritime', 'maritimes', 'atlantique', 'mediterranee', 'manche', 'finistere', 'morbihan', 'vendee');
-const MOUNTAIN_DEPT = words('savoie', 'isere', 'alpes', 'pyrenees', 'jura', 'vosges', 'cantal', 'ardeche', 'drome', 'corse', 'ariege');
-
-// A handful of places the rules above genuinely cannot infer — a lake town sitting
-// in a mountain department, a village known for its forest. Keep this list short.
-const NOTABLE_PLACES: Record<string, PlaceKind> = {
-  annecy: 'water',
-  evian: 'water',
-  thonon: 'water',
-  biarritz: 'water',
-  chamonix: 'mountain',
-  fontainebleau: 'forest',
-  rambouillet: 'forest',
-  barbizon: 'forest',
-};
-
-/**
- * Classify a place from its name, its department and — when the suggestion comes
- * from Mapbox — its place_type, which is the only reliable city/village signal.
- */
-function getPlaceKind(name: string, dept: string, placeType?: string): PlaceKind {
-  const n = deaccent(name);
-  const d = deaccent(dept);
-
-  for (const [key, kind] of Object.entries(NOTABLE_PLACES)) {
-    if (n.includes(key)) return kind;
-  }
-
-  if (WATER_NAME.test(n)) return 'water';
-  if (MOUNTAIN_NAME.test(n)) return 'mountain';
-  if (FOREST_NAME.test(n)) return 'forest';
-  if (WATER_DEPT.test(d)) return 'water';
-  if (MOUNTAIN_DEPT.test(d)) return 'mountain';
-
-  // Mapbox ranks a "locality" or "neighborhood" below a "place", which maps well
-  // enough onto village vs town. Saint-* communes are overwhelmingly small.
-  if (placeType === 'locality' || placeType === 'neighborhood') return 'village';
-  if (/^sainte?[\s-]/.test(n)) return 'village';
-
-  return 'city';
-}
-
-function SuggestionRow({
-  kind,
-  name,
-  dept,
-  scheme,
-  textColor,
-  mutedColor,
-  onPress,
-}: {
-  kind: PlaceKind;
-  name: string;
-  dept?: string;
-  scheme: 'light' | 'dark';
-  textColor: string;
-  mutedColor: string;
-  onPress: () => void;
-}) {
-  const palette = PLACE_KINDS[kind][scheme];
-  const Icon = PLACE_KINDS[kind].icon;
-
-  return (
-    <Pressable onPress={onPress} style={styles.suggestionRow}>
-      <View style={[styles.suggestionIconWrapper, { backgroundColor: palette.bg }]}>
-        <Icon size={18} color={palette.fg} />
-      </View>
-      <View style={styles.suggestionTextRow}>
-        <Text style={[styles.suggestionName, { color: textColor }]}>{name}</Text>
-        {dept ? (
-          <>
-            <Text style={styles.suggestionSeparator}>·</Text>
-            <Text style={[styles.suggestionDept, { color: mutedColor }]}>{dept}</Text>
-          </>
-        ) : null}
-      </View>
-    </Pressable>
-  );
-}
+import { searchPlaces } from '@/services/geocodingService';
+import PlaceSuggestionRow, { PlaceKind, getPlaceKind } from '@/components/PlaceSuggestionRow';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -608,57 +446,22 @@ export default function SearchModal() {
       return;
     }
 
-    const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
-    if (!mapboxToken) {
-      console.warn('Mapbox access token is missing');
-      return;
-    }
-
     const delayDebounceFn = setTimeout(async () => {
       setIsSearching(true);
       try {
-        const query = encodeURIComponent(localSearch.trim());
-        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${query}.json?access_token=${mapboxToken}&country=fr&language=fr&types=place,locality,neighborhood,address,postcode&limit=10`;
-
-        const response = await fetch(url);
-        if (!response.ok) {
-          throw new Error('Geocoding search failed');
-        }
-
-        const data = await response.json();
-        if (data && data.features) {
-          const formatted = data.features
-            .filter((feature: any) => feature.center && feature.center.length === 2)
-            .map((feature: any) => {
-              const placeName = feature.place_name || '';
-              const parts = placeName.split(',');
-              const name = parts[0]?.trim() || feature.text || '';
-              const dept =
-                parts
-                  .slice(1)
-                  .map((p: string) => p.trim())
-                  .join(', ') || '';
-
-              const coords = {
-                latitude: feature.center[1],
-                longitude: feature.center[0],
-              };
-
-              return {
-                id: feature.id,
-                name,
-                dept,
-                coords,
-                // place_type is Mapbox's own classification — the only trustworthy
-                // city/village signal we get.
-                kind: getPlaceKind(name, dept, feature.place_type?.[0]),
-                originalValue: name,
-              };
-            });
-          setSearchResults(formatted);
-        }
-      } catch (error) {
-        console.error('Error fetching Mapbox geocoding results:', error);
+        const places = await searchPlaces(localSearch);
+        setSearchResults(
+          places.map((place) => ({
+            id: place.id,
+            name: place.name,
+            dept: place.context,
+            coords: { latitude: place.latitude, longitude: place.longitude },
+            // place_type is Mapbox's own classification — the only trustworthy
+            // city/village signal we get.
+            kind: getPlaceKind(place.name, place.context, place.placeType),
+            originalValue: place.name,
+          }))
+        );
       } finally {
         setIsSearching(false);
       }
@@ -689,46 +492,19 @@ export default function SearchModal() {
       return;
     }
 
-    const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
-    if (!mapboxToken) {
-      console.warn('Mapbox access token is missing');
-      return;
-    }
-
     try {
-      const encodedQuery = encodeURIComponent(localSearch.trim());
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedQuery}.json?access_token=${mapboxToken}&country=fr&language=fr&types=place,locality,neighborhood,address,postcode&limit=1`;
-
-      const response = await fetch(url);
-      if (!response.ok) {
-        throw new Error('Geocoding search failed');
-      }
-
-      const data = await response.json();
-      if (data && data.features && data.features.length > 0) {
-        const feature = data.features[0];
-        const placeName = feature.place_name || '';
-        const parts = placeName.split(',');
-        const name = parts[0]?.trim() || feature.text || '';
-        const coords =
-          feature.center && feature.center.length === 2
-            ? {
-                latitude: feature.center[1],
-                longitude: feature.center[0],
-              }
-            : null;
-
-        if (coords) {
-          // Staged only — committed in handleApplyFilters.
-          setPendingPlace({ name, coords });
-          setPendingUseCurrentLocation(false);
-          setLocalSearch(name);
-        }
+      const [best] = await searchPlaces(localSearch, 1);
+      if (best) {
+        // Staged only — committed in handleApplyFilters.
+        setPendingPlace({
+          name: best.name,
+          coords: { latitude: best.latitude, longitude: best.longitude },
+        });
+        setPendingUseCurrentLocation(false);
+        setLocalSearch(best.name);
       } else {
         console.warn('Lieu introuvable');
       }
-    } catch (error) {
-      console.error('Error fetching Mapbox geocoding results:', error);
     } finally {
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setOpenPanel('filters');
@@ -1205,7 +981,7 @@ export default function SearchModal() {
             </View>
 
             {/* Footer Action Buttons */}
-            <View style={[styles.footerContainer]}>
+            <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 34) }]}>
               <Button
                 variant="text"
                 title="Tout effacer"
@@ -1416,7 +1192,7 @@ export default function SearchModal() {
                       showsVerticalScrollIndicator={false}>
                       <View style={styles.suggestionsContainer}>
                         {searchResults.map((item) => (
-                          <SuggestionRow
+                          <PlaceSuggestionRow
                             key={item.id}
                             kind={item.kind}
                             name={item.name}
@@ -1457,7 +1233,7 @@ export default function SearchModal() {
                           {recentSearches
                             .filter((item) => item && item.name)
                             .map((item, index) => (
-                              <SuggestionRow
+                              <PlaceSuggestionRow
                                 key={`recent-${item.name}-${index}`}
                                 kind="recent"
                                 name={item.name}
@@ -1487,7 +1263,7 @@ export default function SearchModal() {
                           dynamicSuggestions
                             .filter((item) => item && item.name)
                             .map((item, index) => (
-                              <SuggestionRow
+                              <PlaceSuggestionRow
                                 key={`suggest-${item.name}-${index}`}
                                 kind={item.kind}
                                 name={item.name}
@@ -1530,7 +1306,7 @@ export default function SearchModal() {
                             {recentSearches
                               .filter((item) => item && item.name)
                               .map((item, index) => (
-                                <SuggestionRow
+                                <PlaceSuggestionRow
                                   key={`recent-${item.name}-${index}`}
                                   kind="recent"
                                   name={item.name}
@@ -1563,7 +1339,7 @@ export default function SearchModal() {
                             dynamicSuggestions
                               .filter((item) => item && item.name)
                               .map((item, index) => (
-                                <SuggestionRow
+                                <PlaceSuggestionRow
                                   key={`suggest-${item.name}-${index}`}
                                   kind={item.kind}
                                   name={item.name}
@@ -1800,30 +1576,6 @@ const styles = StyleSheet.create({
   suggestionsContainer: {
     gap: 4,
   },
-  suggestionRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    gap: 12,
-  },
-  suggestionTextRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-    flexWrap: 'wrap',
-  },
-  suggestionName: {
-    fontFamily: 'BricolageGrotesque-Medium',
-    fontSize: 14,
-  },
-  suggestionSeparator: {
-    marginHorizontal: 4,
-    color: '#7c7c7c',
-  },
-  suggestionDept: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 11,
-  },
   filterGroup: {
     marginBottom: 20,
     width: '100%',
@@ -1913,13 +1665,6 @@ const styles = StyleSheet.create({
   cancelSearchText: {
     fontFamily: 'Satoshi-Bold',
     fontSize: 14,
-  },
-  suggestionIconWrapper: {
-    width: 36,
-    height: 36,
-    borderRadius: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   noResultsContainer: {
     paddingVertical: 32,

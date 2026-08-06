@@ -322,7 +322,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
         </BottomSheetScrollView>
 
         {/* Footer Buttons */}
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 16), backgroundColor: theme.background }]}>
+        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34), backgroundColor: theme.background }]}>
           <Button
             variant="text"
             title="Tout effacer"

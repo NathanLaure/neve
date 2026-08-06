@@ -278,7 +278,7 @@ export default function OnboardingScreen() {
         {
           backgroundColor: theme.background,
           paddingTop: Math.max(insets.top + 16, 44),
-          paddingBottom: Math.max(insets.bottom + 16, 24),
+          paddingBottom: Math.max(insets.bottom + 16, 34),
         },
       ]}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} animated />

@@ -63,10 +63,12 @@ export function VerifyEmailStep({
             Le mail n’est pas arrivé?
           </Text>
 
+          {/* Icône en `theme.text` et non `buttonIconColor` : ce bouton est
+              `transparent`, posé sur le fond de l'écran et non sur buttonBgIcon. */}
           <Button
             title="Renvoyer l’e-mail"
             variant="transparent"
-            icon={<RotateCcw size={18} color={theme.buttonIconColor} />}
+            icon={<RotateCcw size={18} color={theme.text} />}
             onPress={handleResend}
             disabled={cooldown > 0 || isResendingEmail}
             loading={isResendingEmail}

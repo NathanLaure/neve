@@ -129,6 +129,26 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return R * c;
 }
 
+/**
+ * Libellé de la position de l'utilisateur, du plus précis au plus vague.
+ *
+ * « Paris » ne dit rien à quelqu'un qui EST à Paris : on privilégie la rue, qui
+ * situe réellement le point de départ du trajet. La ville seule ne sert que de
+ * dernier recours, quand le géocodage ne renvoie pas de voie.
+ */
+function formatUserLocationLabel(place?: Location.LocationGeocodedAddress | null): string {
+  if (!place) return 'Ma Position';
+
+  const street = [place.streetNumber, place.street].filter(Boolean).join(' ').trim();
+  const city = place.city || place.subregion || place.region || '';
+
+  if (street && city) return `${street}, ${city}`;
+  if (street) return street;
+  // `name` porte souvent un lieu-dit ou un POI quand la voie manque.
+  if (place.name && place.name !== city) return city ? `${place.name}, ${city}` : place.name;
+  return city || 'Ma Position';
+}
+
 // Boîte englobante approximative (en degrés) autour d'un point pour un rayon donné en km.
 // Sert de pré-filtre côté serveur (Supabase) — toujours un sur-ensemble du cercle exact,
 // jamais plus étroite, donc aucune rando dans le rayon ne peut être exclue par erreur.
@@ -675,14 +695,12 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       };
       setUserLocation(coords);
 
-      // Reverse geocoding is only there to put a nice city name on the coords.
-      // It goes through a Play Services backend that regularly times out, so it
-      // gets its own catch: losing the label must never cost us the fix itself.
+      // Le géocodage inverse ne sert qu'à mettre un nom lisible sur les coordonnées.
+      // Il passe par un backend Play Services qui expire régulièrement, d'où son
+      // propre catch : perdre le libellé ne doit jamais coûter la position elle-même.
       try {
         const geocode = await Location.reverseGeocodeAsync(coords);
-        const city =
-          geocode?.[0]?.city || geocode?.[0]?.subregion || geocode?.[0]?.region || 'Ma Position';
-        setUserLocationName(city);
+        setUserLocationName(formatUserLocationLabel(geocode?.[0]));
       } catch (error) {
         console.warn('Reverse geocoding failed, keeping the GPS position unnamed:', error);
         setUserLocationName('Ma Position');

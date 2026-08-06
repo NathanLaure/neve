@@ -62,7 +62,7 @@ export default function ResetPasswordScreen() {
           styles.container,
           {
             paddingTop: Math.max(insets.top + 32, 60),
-            paddingBottom: Math.max(insets.bottom + 20, 24),
+            paddingBottom: Math.max(insets.bottom + 16, 34),
           },
         ]}
         keyboardShouldPersistTaps="handled">

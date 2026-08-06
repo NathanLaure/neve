@@ -18,6 +18,10 @@ import { createClient } from 'jsr:@supabase/supabase-js@2';
 const PRIM_JOURNEYS_URL =
   'https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/journeys';
 
+// Décrit la couverture : c'est `end_production_date` qui dit jusqu'où les
+// horaires existent, et donc jusqu'où le calendrier doit laisser choisir.
+const PRIM_COVERAGE_URL = 'https://prim.iledefrance-mobilites.fr/marketplace/v2/navitia/coverage';
+
 // Fenêtre de recherche : Navitia cherche les trajets sur cette durée à partir de
 // (ou jusqu'à) l'heure demandée. Sans elle, `count=5` renvoyait cinq variantes du
 // MÊME départ — cinq propositions tenant dans dix minutes, ce qui ne laissait
@@ -144,15 +148,71 @@ function isValidCoords(c: unknown): c is Coords {
   );
 }
 
-/** Refuse le passé et les dates trop lointaines : PRIM n'a pas d'horaire au-delà. */
-function isValidDate(date: string): boolean {
+/**
+ * Refuse le passé et l'au-delà de l'horizon de production PRIM.
+ *
+ * `horizon` vient de `end_production_date` sur la couverture Navitia : la borne
+ * de validité du jeu de données, au-delà de laquelle il n'existe simplement aucun
+ * horaire. Elle bouge à chaque publication de service, d'où la lecture dynamique
+ * plutôt qu'une constante en dur.
+ */
+function isValidDate(date: string, horizon: string | null): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
-  const asked = new Date(`${date}T00:00:00Z`).getTime();
-  if (Number.isNaN(asked)) return false;
   const today = new Date();
-  const todayUtc = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  const maxUtc = todayUtc + 30 * 24 * 3600 * 1000;
-  return asked >= todayUtc && asked <= maxUtc;
+  const todayIso = `${today.getUTCFullYear()}-${String(today.getUTCMonth() + 1).padStart(2, '0')}-${String(today.getUTCDate()).padStart(2, '0')}`;
+  if (date < todayIso) return false;
+  // Repli prudent quand la couverture n'a pas pu être lue : un an, le maximum
+  // qu'une période de production Navitia puisse couvrir.
+  const ceiling = horizon ?? `${today.getUTCFullYear() + 1}-12-31`;
+  return date <= ceiling;
+}
+
+/**
+ * Dernière date pour laquelle PRIM a des horaires, mise en cache un jour dans
+ * `transit_cache` (elle ne change qu'aux publications de service). Un appel par
+ * jour tous utilisateurs confondus : négligeable sur le quota de 1 000.
+ */
+async function getProductionHorizon(
+  supabase: any,
+  apiKey: string
+): Promise<string | null> {
+  const cacheKey = 'coverage-horizon';
+  const freshSince = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const { data: cached } = await supabase
+    .from('transit_cache')
+    .select('payload')
+    .eq('cache_key', cacheKey)
+    .gte('created_at', freshSince)
+    .maybeSingle();
+
+  if (cached?.payload?.endProductionDate) {
+    return cached.payload.endProductionDate as string;
+  }
+
+  try {
+    const response = await fetch(PRIM_COVERAGE_URL, { headers: { apiKey } });
+    if (!response.ok) return null;
+
+    const body = await response.json();
+    // Navitia renvoie `YYYYMMDD` sur les dates de production.
+    const raw: string | undefined = body?.regions?.[0]?.end_production_date;
+    if (!raw || !/^\d{8}$/.test(raw)) return null;
+
+    const endProductionDate = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
+    await supabase
+      .from('transit_cache')
+      .upsert({
+        cache_key: cacheKey,
+        payload: { endProductionDate },
+        created_at: new Date().toISOString(),
+      });
+
+    return endProductionDate;
+  } catch (error) {
+    console.warn('Could not read the PRIM production horizon:', error);
+    return null;
+  }
 }
 
 // --------------------------------------------------------------------------
@@ -292,14 +352,33 @@ Deno.serve(async (req) => {
     return json({ error: 'Invalid JSON body' }, 400);
   }
 
-  const { from, to, date, time, direction, timeMode } = body ?? {};
+  const { mode, from, to, date, time, direction, timeMode } = body ?? {};
+
+  const supabase = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+  );
+  const apiKey = Deno.env.get('PRIM_API_KEY');
+
+  // Mode « horizon » : le client demande seulement jusqu'à quelle date le
+  // calendrier doit laisser choisir. Pas de trajet calculé, pas de coordonnées
+  // requises.
+  if (mode === 'horizon') {
+    const horizon = apiKey ? await getProductionHorizon(supabase, apiKey) : null;
+    return json({ horizon });
+  }
+
+  const horizon = apiKey ? await getProductionHorizon(supabase, apiKey) : null;
 
   // Validation avant toute dépense de quota.
   if (!isValidCoords(from) || !isValidCoords(to)) {
     return json({ error: 'from/to must be coordinates within the Île-de-France area' }, 400);
   }
-  if (typeof date !== 'string' || !isValidDate(date)) {
-    return json({ error: 'date must be YYYY-MM-DD, between today and 30 days ahead' }, 400);
+  if (typeof date !== 'string' || !isValidDate(date, horizon)) {
+    return json(
+      { error: `date must be YYYY-MM-DD, between today and ${horizon ?? 'the production horizon'}` },
+      400
+    );
   }
   if (typeof time !== 'string' || !/^\d{2}:\d{2}$/.test(time)) {
     return json({ error: 'time must be HH:MM' }, 400);
@@ -308,11 +387,6 @@ Deno.serve(async (req) => {
   // `arrival` = « je veux être arrivé avant cette heure », `departure` = « je pars
   // après ». Navitia gère nativement les deux via datetime_represents.
   const represents = timeMode === 'arrival' ? 'arrival' : 'departure';
-
-  const supabase = createClient(
-    Deno.env.get('SUPABASE_URL')!,
-    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-  );
 
   const cacheKey = buildCacheKey(from, to, date, time, `${dir}:${represents}`);
   const freshSince = new Date(Date.now() - CACHE_TTL_HOURS * 3600 * 1000).toISOString();
@@ -328,7 +402,6 @@ Deno.serve(async (req) => {
     return json({ options: cached.payload, source: 'cache' });
   }
 
-  const apiKey = Deno.env.get('PRIM_API_KEY');
   if (!apiKey) {
     // Pas encore configuré : le client basculera sur son estimation locale.
     return json({ options: [], reason: 'unavailable' });

@@ -240,6 +240,34 @@ export interface TransitQuery {
   direction?: 'go' | 'back';
 }
 
+/** Repli quand l'horizon PRIM n'est pas lisible : on borne à 30 jours. */
+const FALLBACK_HORIZON_DAYS = 30;
+
+/**
+ * Dernière date pour laquelle le calculateur a des horaires (`YYYY-MM-DD`).
+ *
+ * C'est `end_production_date` de la couverture Navitia : au-delà, il n'existe
+ * aucune donnée. Le calendrier s'en sert pour griser les jours plutôt que de
+ * laisser l'utilisateur demander une date qui ne peut rien retourner.
+ */
+export async function fetchTransitHorizon(): Promise<string> {
+  const fallback = () => {
+    const date = new Date();
+    date.setDate(date.getDate() + FALLBACK_HORIZON_DAYS);
+    return date.toISOString().slice(0, 10);
+  };
+
+  try {
+    const { data, error } = await supabase.functions.invoke('transit-journeys', {
+      body: { mode: 'horizon' },
+    });
+    if (error || typeof data?.horizon !== 'string') return fallback();
+    return data.horizon;
+  } catch {
+    return fallback();
+  }
+}
+
 /**
  * Fetches real journeys from the Île-de-France Mobilités calculator, through the
  * `transit-journeys` Edge Function (which holds the API key and the shared cache).
