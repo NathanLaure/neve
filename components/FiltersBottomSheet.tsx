@@ -14,7 +14,7 @@ import {
   Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 import { LinearGradient } from 'expo-linear-gradient';
 
 import Colors from '@/constants/Colors';
@@ -60,6 +60,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
     setSelectedActivityTypes,
     selectedPointsOfInterest,
     setSelectedPointsOfInterest,
+    clearAllFilters,
   } = useAdventure();
 
   // Local state initialized on present
@@ -122,6 +123,8 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
     setParcoursType([]);
     setFrequentation([]);
     setCommunityNote(null);
+    clearAllFilters();
+    bottomSheetModalRef.current?.dismiss();
   };
 
   // Local toggling helpers removed as they are managed inside FiltersForm
@@ -140,8 +143,8 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
           query === locName;
 
         if (isUserLocationSearch) {
-          const lat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? 48.8566;
-          const lng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? 2.3522;
+          const lat = rando?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+          const lng = rando?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
           const dist = calculateDistanceKm(
             userLocation?.latitude ?? 48.8566,
             userLocation?.longitude ?? 2.3522,
@@ -161,21 +164,27 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
 
       // 2. Difficulty
       if (localDifficulties.length > 0) {
-        if (!localDifficulties.includes(rando.difficulty)) return false;
+        const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const hasMatch = localDifficulties.some((d) => {
+          const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return randoDiffNorm.includes(dNorm) || dNorm.includes(randoDiffNorm);
+        });
+        if (!hasMatch) return false;
       }
 
       // 3. Hike Distance
       const maxDistVal = distanceRange[1] >= 34 ? null : distanceRange[1];
       if (maxDistVal !== null) {
-        const distNum = parseFloat(rando.distance);
+        const distNum = (rando as any).distance_km ?? parseFloat(rando.distance);
         if (!isNaN(distNum) && distNum > maxDistVal) return false;
       }
 
       // 4. Hike Elevation
       const maxElevVal = elevationRange[1] >= 4500 ? null : elevationRange[1];
       if (maxElevVal !== null) {
-        const elevNum = parseInt(rando.elevation.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(elevNum) && elevNum > maxElevVal) return false;
+        const elevMatch = rando.elevation ? rando.elevation.match(/\d+/) : null;
+        const elevNum = (rando as any).elevation_gain_m ?? (elevMatch ? parseInt(elevMatch[0], 10) : 0);
+        if (elevNum > maxElevVal) return false;
       }
 
       // 5. Train Duration (Transit time)
@@ -248,7 +257,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   };
 
   const getResultsButtonTitle = () => {
-    if (localFilteredHikesCount === 0) return 'Aucun résultat';
+    if (localFilteredHikesCount === 0) return 'Aucune rando trouvée';
     if (localFilteredHikesCount === 1) return 'Afficher 1 résultat';
     return `Afficher les ${localFilteredHikesCount} résultats`;
   };
@@ -325,7 +334,6 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
             title={getResultsButtonTitle()}
             onPress={handleApply}
             style={styles.applyButton}
-            disabled={localFilteredHikesCount === 0}
           />
         </View>
       </View>
@@ -392,7 +400,5 @@ const styles = StyleSheet.create({
   },
   applyButton: {
     flex: 1,
-    backgroundColor: '#eb490b',
-    borderColor: '#eb490b',
   },
 });

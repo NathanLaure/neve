@@ -26,6 +26,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
 import RandoCardSkeleton from '@/components/RandoCardSkeleton';
+import Skeleton from '@/components/Skeleton';
 import { type RandoData } from '@/constants/RandosData';
 
 export interface HikesBottomSheetRef {
@@ -41,7 +42,7 @@ interface HikesBottomSheetProps {
     durationText: string;
     distanceKm: number;
   };
-  onSelectHike: (id: string) => void;
+  onSelectHike: (id?: string) => void;
   onChange?: (index: number) => void;
   initialIndex?: number;
   /** Extra top space reserved at full expansion for floating overlays below the searchbar. */
@@ -233,6 +234,36 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     return hikes;
   }, [hikes]);
 
+  const renderHikeItem = useCallback(
+    ({ item }: { item: RandoData }) => {
+      const transitInfo = getTransitInfo(item);
+      return (
+        <View style={{ paddingHorizontal: 24 }}>
+          <RandoCard
+            id={item.id}
+            title={item.title}
+            imageUrl={item.imageUrl}
+            galleryUrls={item.galleryUrls}
+            departureStation={item.startStation}
+            distance={item.distance}
+            weatherTemp={item.weatherTemp}
+            weatherIcon={item.weatherIcon}
+            trainDuration={transitInfo.durationText}
+            trainType={item.trainType}
+            difficulty={item.difficulty}
+            elevation={item.elevation}
+            onPress={onSelectHike}
+            location={item.location}
+            gpxTrace={item.gpxTrace}
+            startStationCoords={item.startStationCoords}
+            duration={formatHikeDuration(item.durationHours)}
+          />
+        </View>
+      );
+    },
+    [getTransitInfo, onSelectHike]
+  );
+
   return (
     <BottomSheet
       ref={bottomSheetRef}
@@ -253,11 +284,13 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
       <Animated.View
         style={collapsedHeaderStyle}
         pointerEvents={sheetIndex === 0 ? 'auto' : 'none'}>
-        <Text style={[styles.sheetTitle, { color: theme.text }]}>
-          {isLoadingHikes
-            ? 'Recherche des randonnées...'
-            : `${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''}`}
-        </Text>
+        {isLoadingHikes ? (
+          <Skeleton width={140} height={18} borderRadius={6} />
+        ) : (
+          <Text style={[styles.sheetTitle, { color: theme.text }]}>
+            {`${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''}`}
+          </Text>
+        )}
       </Animated.View>
 
       <AnimatedFlatList
@@ -272,39 +305,16 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
         ListHeaderComponent={
           <Animated.View style={resultsTitleStyle}>
             {/* Results Title */}
-            <Text style={[styles.resultsTitle, { color: theme.text }]}>
-              {isLoadingHikes
-                ? 'Recherche des randonnées...'
-                : `${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''} trouvées`}
-            </Text>
+            {isLoadingHikes ? (
+              <Skeleton width={180} height={20} borderRadius={6} />
+            ) : (
+              <Text style={[styles.resultsTitle, { color: theme.text }]}>
+                {`${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''} trouvées`}
+              </Text>
+            )}
           </Animated.View>
         }
-        renderItem={({ item }: { item: RandoData }) => {
-          const transitInfo = getTransitInfo(item);
-          return (
-            <View style={{ paddingHorizontal: 24 }}>
-              <RandoCard
-                id={item.id}
-                title={item.title}
-                imageUrl={item.imageUrl}
-                galleryUrls={item.galleryUrls}
-                departureStation={item.startStation}
-                distance={item.distance}
-                weatherTemp={item.weatherTemp}
-                weatherIcon={item.weatherIcon}
-                trainDuration={transitInfo.durationText}
-                trainType={item.trainType}
-                difficulty={item.difficulty}
-                elevation={item.elevation}
-                onPress={() => onSelectHike(item.id)}
-                location={item.location}
-                gpxTrace={item.gpxTrace}
-                startStationCoords={item.startStationCoords}
-                duration={formatHikeDuration(item.durationHours)}
-              />
-            </View>
-          );
-        }}
+        renderItem={renderHikeItem}
         ListEmptyComponent={
           isLoadingHikes ? (
             <View style={{ paddingHorizontal: 24, gap: 32 }}>

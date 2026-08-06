@@ -124,6 +124,9 @@ export default function RootLayout() {
                         headerShown: false,
                         presentation: 'transparentModal',
                         animation: 'fade',
+                        // Overrides the global contentStyle: without this the stack paints an
+                        // opaque background over the screen behind, killing the glass effect.
+                        contentStyle: { backgroundColor: 'transparent' },
                       }}
                     />
                     <Stack.Screen

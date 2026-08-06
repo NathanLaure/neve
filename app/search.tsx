@@ -25,10 +25,8 @@ import { LinearGradient } from 'expo-linear-gradient';
 import {
   Search,
   X,
-  ChevronUp,
-  ChevronDown,
   Building2,
-  CableCar,
+  MountainSnow,
   TreePine,
   RotateCcw,
   MapPin,
@@ -43,61 +41,165 @@ import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
 import FiltersForm from '@/components/FiltersForm';
 
-// Helper to choose appropriate icon for suggestion based on name & region
-function getSuggestionIcon(name: string, dept: string): any {
-  const n = name.toLowerCase();
-  const d = dept.toLowerCase();
+type PlaceKind = 'nearby' | 'water' | 'mountain' | 'forest' | 'village' | 'city' | 'recent';
 
-  // 1. Exact matches for mock/popular places
-  if (n.includes('chamonix')) return CableCar;
-  if (n.includes('annecy') || n.includes('aix-les-bains')) return Waves;
-  if (n.includes('grenoble') || n.includes('albertville')) return Building2;
-  if (n.includes('barbizon') || n.includes('échirolles')) return Home;
-  if (n.includes('rambouillet') || n.includes('fontainebleau')) return TreePine;
+// Icon + colour per place kind. The subtle backgrounds reuse the design system's
+// status tokens so the rows stay on-palette in both themes.
+const PLACE_KINDS: Record<
+  PlaceKind,
+  { icon: any; light: { fg: string; bg: string }; dark: { fg: string; bg: string } }
+> = {
+  nearby: {
+    icon: MapPin,
+    light: { fg: '#EB490B', bg: '#FDEFE9' }, // primary / brand subtle
+    dark: { fg: '#FA6415', bg: '#2A1206' },
+  },
+  mountain: {
+    icon: MountainSnow,
+    light: { fg: '#457B9D', bg: '#F1F5F7' }, // statusBgInfo / Subtle
+    dark: { fg: '#98C1D9', bg: '#0A192F' },
+  },
+  water: {
+    icon: Waves,
+    light: { fg: '#2A7F86', bg: '#EFF6F6' },
+    dark: { fg: '#7FC6CC', bg: '#08221F' },
+  },
+  forest: {
+    icon: TreePine,
+    light: { fg: '#386641', bg: '#F2F6F3' }, // statusBgSuccess / Subtle
+    dark: { fg: '#6A994E', bg: '#0D1F11' },
+  },
+  village: {
+    icon: Home,
+    light: { fg: '#B07D06', bg: '#FDFAF2' }, // statusBgWarning / Subtle
+    dark: { fg: '#E9C46A', bg: '#241800' },
+  },
+  city: {
+    icon: Building2,
+    light: { fg: '#525252', bg: '#FFFFFF' },
+    dark: { fg: '#BDBDBD', bg: '#111111' },
+  },
+  recent: {
+    icon: RotateCcw,
+    light: { fg: '#525252', bg: '#FFFFFF' },
+    dark: { fg: '#BDBDBD', bg: '#111111' },
+  },
+};
 
-  // 2. Keyword rules
-  // Mountain regions/names
-  if (
-    n.includes('alpes') ||
-    d.includes('savoie') ||
-    d.includes('isère') ||
-    n.includes('pyrénées') ||
-    n.includes('mont')
-  ) {
-    return CableCar;
-  }
-  // Seaside / Lakes / thermal
-  if (
-    n.includes('mer') ||
-    n.includes('plage') ||
-    n.includes('côte') ||
-    n.includes('bains') ||
-    n.includes('lac') ||
-    d.includes('maritime') ||
-    d.includes('atlantique')
-  ) {
-    return Waves;
-  }
-  // Nature/Forest
-  if (
-    n.includes('forêt') ||
-    n.includes('bois') ||
-    n.includes('parc') ||
-    n.includes('nature') ||
-    n.includes('vallée')
-  ) {
-    return TreePine;
-  }
-  // Small Saint/Sainte villages
-  if (n.includes('saint-') || n.includes('sainte-') || name.length > 15) {
-    return Home;
+const ACCENT_MAP: Record<string, string> = {
+  à: 'a', á: 'a', â: 'a', ä: 'a', è: 'e', é: 'e', ê: 'e', ë: 'e',
+  ì: 'i', í: 'i', î: 'i', ï: 'i', ò: 'o', ó: 'o', ô: 'o', ö: 'o',
+  ù: 'u', ú: 'u', û: 'u', ü: 'u', ç: 'c', ÿ: 'y', ñ: 'n',
+};
+
+const deaccent = (value: string) =>
+  value.toLowerCase().replace(/[àáâäèéêëìíîïòóôöùúûüçÿñ]/g, (c) => ACCENT_MAP[c] ?? c);
+
+// Whole-word matcher. Substring matching was the main source of wrong icons:
+// "mont" fired on Montpellier/Montreuil, "bois" on Boissy, "mer" on Merville.
+const words = (...list: string[]) =>
+  new RegExp(`(^|[\\s'’\\-])(${list.join('|')})([\\s'’\\-]|$)`);
+
+const WATER_NAME = words(
+  'mer', 'mers', 'plage', 'plages', 'lac', 'lacs', 'etang', 'etangs', 'bains',
+  'golfe', 'baie', 'ile', 'iles', 'port', 'riviere', 'cascade', 'cote', 'sables'
+);
+const MOUNTAIN_NAME = words(
+  'mont', 'monts', 'montagne', 'montagnes', 'alpe', 'alpes', 'pic', 'col', 'cols',
+  'aiguille', 'aiguilles', 'massif', 'pyrenees', 'cime', 'crete', 'glacier', 'vallon', 'puy'
+);
+const FOREST_NAME = words(
+  'foret', 'forets', 'bois', 'parc', 'vallee', 'sylve', 'chene', 'chenes', 'pins',
+  'clairiere', 'futaie', 'nature'
+);
+// Coastal departments are checked before mountain ones so Alpes-Maritimes
+// resolves to the sea rather than the summits.
+const WATER_DEPT = words('maritime', 'maritimes', 'atlantique', 'mediterranee', 'manche', 'finistere', 'morbihan', 'vendee');
+const MOUNTAIN_DEPT = words('savoie', 'isere', 'alpes', 'pyrenees', 'jura', 'vosges', 'cantal', 'ardeche', 'drome', 'corse', 'ariege');
+
+// A handful of places the rules above genuinely cannot infer — a lake town sitting
+// in a mountain department, a village known for its forest. Keep this list short.
+const NOTABLE_PLACES: Record<string, PlaceKind> = {
+  annecy: 'water',
+  evian: 'water',
+  thonon: 'water',
+  biarritz: 'water',
+  chamonix: 'mountain',
+  fontainebleau: 'forest',
+  rambouillet: 'forest',
+  barbizon: 'forest',
+};
+
+/**
+ * Classify a place from its name, its department and — when the suggestion comes
+ * from Mapbox — its place_type, which is the only reliable city/village signal.
+ */
+function getPlaceKind(name: string, dept: string, placeType?: string): PlaceKind {
+  const n = deaccent(name);
+  const d = deaccent(dept);
+
+  for (const [key, kind] of Object.entries(NOTABLE_PLACES)) {
+    if (n.includes(key)) return kind;
   }
 
-  // Default: City Building
-  return Building2;
+  if (WATER_NAME.test(n)) return 'water';
+  if (MOUNTAIN_NAME.test(n)) return 'mountain';
+  if (FOREST_NAME.test(n)) return 'forest';
+  if (WATER_DEPT.test(d)) return 'water';
+  if (MOUNTAIN_DEPT.test(d)) return 'mountain';
+
+  // Mapbox ranks a "locality" or "neighborhood" below a "place", which maps well
+  // enough onto village vs town. Saint-* communes are overwhelmingly small.
+  if (placeType === 'locality' || placeType === 'neighborhood') return 'village';
+  if (/^sainte?[\s-]/.test(n)) return 'village';
+
+  return 'city';
+}
+
+function SuggestionRow({
+  kind,
+  name,
+  dept,
+  scheme,
+  textColor,
+  mutedColor,
+  onPress,
+}: {
+  kind: PlaceKind;
+  name: string;
+  dept?: string;
+  scheme: 'light' | 'dark';
+  textColor: string;
+  mutedColor: string;
+  onPress: () => void;
+}) {
+  const palette = PLACE_KINDS[kind][scheme];
+  const Icon = PLACE_KINDS[kind].icon;
+
+  return (
+    <Pressable onPress={onPress} style={styles.suggestionRow}>
+      <View style={[styles.suggestionIconWrapper, { backgroundColor: palette.bg }]}>
+        <Icon size={18} color={palette.fg} />
+      </View>
+      <View style={styles.suggestionTextRow}>
+        <Text style={[styles.suggestionName, { color: textColor }]}>{name}</Text>
+        {dept ? (
+          <>
+            <Text style={styles.suggestionSeparator}>·</Text>
+            <Text style={[styles.suggestionDept, { color: mutedColor }]}>{dept}</Text>
+          </>
+        ) : null}
+      </View>
+    </Pressable>
+  );
 }
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
+
+// Fixed chrome heights used to work out how tall the open card may grow.
+const FILTERS_COLLAPSED_HEIGHT = 74; // cardHeader (42) + card padding (16 * 2)
+const CARDS_GAP = 12; // cardsContainer gap
+const FOOTER_HEIGHT = 96; // paddingTop (32) + Button (48) + paddingBottom (16)
 
 
 
@@ -183,6 +285,7 @@ export default function SearchModal() {
     selectedPointsOfInterest,
     setSelectedPointsOfInterest,
     hikes,
+    isLoadingHikes,
     userLocationName,
     userLocation,
     getTransitInfo,
@@ -190,6 +293,7 @@ export default function SearchModal() {
     refreshUserLocation,
     recentSearches,
     addRecentSearch,
+    ensureHikesRadius,
   } = useAdventure();
 
   // Local state initialized from global context on mount
@@ -210,6 +314,23 @@ export default function SearchModal() {
 
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  // The place is staged locally and only written to the global context on
+  // "Rechercher" — picking a suggestion must not move the map behind the modal,
+  // and closing without validating must leave nothing behind.
+  const [pendingPlace, setPendingPlace] = useState<{
+    name: string;
+    coords: { latitude: number; longitude: number };
+  } | null>(null);
+  const [pendingUseCurrentLocation, setPendingUseCurrentLocation] = useState(false);
+
+  // What the modal previews against: the staged place when there is one.
+  const effectiveLocation = pendingPlace?.coords ?? userLocation;
+  const effectiveLocationName = pendingPlace?.name ?? userLocationName;
+
+  // Searching with nothing entered means "around me". The preview below filters on
+  // this same fallback, so the result count never contradicts what the search returns.
+  const effectiveSearchQuery = localSearch.trim() ? localSearch : 'À proximité';
 
   // Dynamic suggestions based on user location and mock hikes
   const dynamicSuggestions = useMemo(() => {
@@ -258,36 +379,55 @@ export default function SearchModal() {
 
     // Build the final suggestions array (limit to 10 hike locations + "À proximité")
     return [
-      { name: 'À proximité', dept: 'Autour de moi', icon: MapPin, coords: userLocation },
+      {
+        name: 'À proximité',
+        dept: 'Autour de moi',
+        kind: 'nearby' as PlaceKind,
+        coords: userLocation,
+      },
       ...uniqueLocations.slice(0, 10).map((loc) => ({
         name: loc.name,
         dept: loc.dept,
-        icon: getSuggestionIcon(loc.name, loc.dept),
+        kind: getPlaceKind(loc.name, loc.dept),
         coords: loc.coords,
       })),
     ];
   }, [hikes, userLocation]);
 
-  // Search Collapsed logic: collapses when a query is set
-  const [isSearchCollapsed, setIsSearchCollapsed] = useState(!!localSearch);
+  // The two cards behave as one exclusive accordion: exactly one of them is open at
+  // any time, so a single piece of state drives both.
+  const [openPanel, setOpenPanel] = useState<'search' | 'filters'>(
+    localSearch ? 'filters' : 'search'
+  );
+  const isSearchCollapsed = openPanel !== 'search';
+  const isFiltersOpen = openPanel === 'filters';
+
   // Track whether the search input is focused
   const [isSearchFocused, setIsSearchFocused] = useState(false);
 
   const [headerHeight, setHeaderHeight] = useState(60);
 
-  const boundedContentHeight = useMemo(() => {
-    const recentSearchesHeight = recentSearches.length > 0 ? 30 + recentSearches.length * 56 : 0;
-    const suggestionsHeight = 30 + dynamicSuggestions.length * 56;
-    const totalContentHeight = recentSearchesHeight + suggestionsHeight + 12; // 12 is marginTop
-    return Math.min(totalContentHeight, 320); // max height of 320px
-  }, [recentSearches, dynamicSuggestions]);
+  // Height the search card is allowed to grow to when it is the open panel: everything
+  // left once the header, the collapsed Filtres card and the footer have taken their share.
+  const maxSearchContentHeight = useMemo(() => {
+    const available =
+      SCREEN_HEIGHT -
+      (insets.top + 32 + headerHeight) - // top of the card
+      FILTERS_COLLAPSED_HEIGHT -
+      CARDS_GAP -
+      FOOTER_HEIGHT -
+      (insets.bottom || 16);
+    // 140 is the card chrome above the list (title row + input + paddings).
+    return Math.max(160, available - 140);
+  }, [insets.top, insets.bottom, headerHeight]);
 
-  const isScrollable = useMemo(() => {
-    const recentSearchesHeight = recentSearches.length > 0 ? 30 + recentSearches.length * 56 : 0;
-    const suggestionsHeight = 30 + dynamicSuggestions.length * 56;
+  const boundedContentHeight = useMemo(() => {
+    // 60 = suggestionRow (56) + suggestionsContainer gap (4); 30 = section subtitle.
+    const recentSearchesHeight = recentSearches.length > 0 ? 30 + recentSearches.length * 60 : 0;
+    const suggestionsHeight = 30 + dynamicSuggestions.length * 60;
     const totalContentHeight = recentSearchesHeight + suggestionsHeight + 12; // 12 is marginTop
-    return totalContentHeight > 320;
-  }, [recentSearches, dynamicSuggestions]);
+    return Math.min(totalContentHeight, maxSearchContentHeight);
+  }, [recentSearches, dynamicSuggestions, maxSearchContentHeight]);
 
   const placeholderLayout = useMemo(() => {
     const cardHeight = isSearchCollapsed ? 72 : 140 + boundedContentHeight;
@@ -445,15 +585,22 @@ export default function SearchModal() {
   // Helper to change search focus state with smooth animations
   const toggleSearchFocus = useCallback(
     (focused: boolean) => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setIsSearchFocused(focused);
-      if (focused) {
-        setIsSearchCollapsed(false);
-      } else {
-        setIsSearchCollapsed(!!localSearch);
-      }
+      // Focusing the input always brings the search panel forward; blurring hands the
+      // accordion over to Filtres only once a place has actually been entered.
+      setOpenPanel(focused ? 'search' : localSearch ? 'filters' : 'search');
     },
     [localSearch]
   );
+
+  // Tapping either card header swaps which one is open — they are mutually exclusive.
+  const handleToggleFilters = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    Keyboard.dismiss();
+    setIsSearchFocused(false);
+    setOpenPanel((current) => (current === 'filters' ? 'search' : 'filters'));
+  }, []);
 
   // Debounced geocoding search for places in France via Mapbox Geocoding API (runs only when typing)
   useEffect(() => {
@@ -502,7 +649,9 @@ export default function SearchModal() {
                 name,
                 dept,
                 coords,
-                icon: getSuggestionIcon(name, dept),
+                // place_type is Mapbox's own classification — the only trustworthy
+                // city/village signal we get.
+                kind: getPlaceKind(name, dept, feature.place_type?.[0]),
                 originalValue: name,
               };
             });
@@ -531,8 +680,10 @@ export default function SearchModal() {
 
     const query = localSearch.trim().toLowerCase();
     if (query === 'à proximité' || query === 'a proximité' || query === 'proximité') {
-      refreshUserLocation();
-      setIsSearchCollapsed(true);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setPendingUseCurrentLocation(true);
+      setPendingPlace(null);
+      setOpenPanel('filters');
       setIsSearchFocused(false);
       Keyboard.dismiss();
       return;
@@ -568,8 +719,9 @@ export default function SearchModal() {
             : null;
 
         if (coords) {
-          setUserLocationManually(coords, name);
-          addRecentSearch(name, coords);
+          // Staged only — committed in handleApplyFilters.
+          setPendingPlace({ name, coords });
+          setPendingUseCurrentLocation(false);
           setLocalSearch(name);
         }
       } else {
@@ -578,7 +730,8 @@ export default function SearchModal() {
     } catch (error) {
       console.error('Error fetching Mapbox geocoding results:', error);
     } finally {
-      setIsSearchCollapsed(true);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setOpenPanel('filters');
       setIsSearchFocused(false);
       Keyboard.dismiss();
     }
@@ -605,10 +758,23 @@ export default function SearchModal() {
 
   const handleApplyFilters = () => {
     // Commit all local filter states to global context at once!
+    // The staged place goes first so the map and distances land on it.
+    // With no place entered the search falls back to the user's surroundings.
+    if (pendingUseCurrentLocation || !localSearch.trim()) {
+      refreshUserLocation();
+    } else if (pendingPlace) {
+      setUserLocationManually(pendingPlace.coords, pendingPlace.name);
+      addRecentSearch(pendingPlace.name, pendingPlace.coords);
+    }
+
+    // 75 km : même rayon "à proximité" que celui déjà utilisé pour filtrer les résultats
+    // plus bas — s'assure que les randos autour du lieu recherché sont bien chargées.
+    ensureHikesRadius(pendingPlace?.coords ?? userLocation, 75);
+
     setMaxTrainDuration(trainRange[1] >= 180 ? null : trainRange[1]);
     setMaxDistance(distanceRange[1] >= 34 ? null : distanceRange[1]);
     setMaxElevation(elevationRange[1] >= 4500 ? null : elevationRange[1]);
-    setSearchQuery(localSearch);
+    setSearchQuery(effectiveSearchQuery);
     setSelectedDifficulties(localDifficulties);
     setDogsAllowed(localDogs);
     setKidsFriendly(localKids);
@@ -638,10 +804,14 @@ export default function SearchModal() {
   };
 
   const handleClearFilters = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setLocalSearch('');
     setSearchResults([]);
     setIsSearching(false);
-    setIsSearchCollapsed(false);
+    // No place left, so the accordion goes back to the search panel.
+    setOpenPanel('search');
+    setPendingPlace(null);
+    setPendingUseCurrentLocation(false);
     setLocalDifficulties([]);
     setTrainRange([0, 180]);
     setDistanceRange([0, 34]);
@@ -665,15 +835,18 @@ export default function SearchModal() {
     setLocalSearch(placeName);
     setSearchResults([]);
     setIsSearching(false);
+    // toggleSearchFocus reads the stale localSearch here, so set the panel explicitly.
     toggleSearchFocus(false);
-    setIsSearchCollapsed(true);
+    setOpenPanel('filters');
     Keyboard.dismiss();
 
+    // Staged only — committed in handleApplyFilters.
     if (placeName === 'À proximité') {
-      refreshUserLocation();
+      setPendingUseCurrentLocation(true);
+      setPendingPlace(null);
     } else if (coords) {
-      setUserLocationManually(coords, placeName);
-      addRecentSearch(placeName, coords);
+      setPendingPlace({ name: placeName, coords });
+      setPendingUseCurrentLocation(false);
     }
   };
 
@@ -698,61 +871,64 @@ export default function SearchModal() {
 
   // Compute local filtered hikes inside modal in real-time based on local selections
   const localFilteredHikes = useMemo(() => {
-    let filtered = hikes.filter((rando) => {
-      // 1. Text Search query
-      if (localSearch) {
-        const query = localSearch.toLowerCase().trim();
-        const locName = userLocationName.toLowerCase().trim();
-        const isUserLocationSearch =
-          query === 'à proximité' ||
-          query === 'a proximité' ||
-          query === 'proximité' ||
-          query === locName;
+    const query = effectiveSearchQuery.toLowerCase().trim();
+    const locName = effectiveLocationName.toLowerCase().trim();
+    const isUserLocationSearch =
+      query === 'à proximité' ||
+      query === 'a proximité' ||
+      query === 'proximité' ||
+      query === locName;
 
-        if (isUserLocationSearch) {
-          // Filter hikes within 75 km of the user location
-          const rLat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? 48.8566;
-          const rLng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? 2.3522;
-          const dist = calculateDistanceKm(
-            userLocation?.latitude ?? 48.8566,
-            userLocation?.longitude ?? 2.3522,
-            rLat,
-            rLng
-          );
-          if (dist > 75) return false;
-        } else {
-          const matchesText =
-            rando.title?.toLowerCase().includes(query) ||
-            rando.location?.toLowerCase().includes(query) ||
-            rando.startStation?.toLowerCase().includes(query) ||
-            rando.endStation?.toLowerCase().includes(query);
-          if (!matchesText) return false;
-        }
+    const distanceToUser = (rando: any) =>
+      calculateDistanceKm(
+        effectiveLocation?.latitude ?? 48.8566,
+        effectiveLocation?.longitude ?? 2.3522,
+        rando?.startStationCoords?.latitude ?? rando?.start_lat ?? 48.8566,
+        rando?.startStationCoords?.longitude ?? rando?.start_lng ?? 2.3522
+      );
+
+    // Everything the user asked for explicitly. The proximity radius is deliberately
+    // left out — it is a preference, applied further down.
+    const base = hikes.filter((rando) => {
+      // 1. Text Search query — skipped for an "around me" search.
+      if (!isUserLocationSearch) {
+        const matchesText =
+          rando.title?.toLowerCase().includes(query) ||
+          rando.location?.toLowerCase().includes(query) ||
+          rando.startStation?.toLowerCase().includes(query) ||
+          rando.endStation?.toLowerCase().includes(query);
+        if (!matchesText) return false;
       }
 
       // 2. Difficulty
       if (localDifficulties.length > 0) {
-        if (!localDifficulties.includes(rando.difficulty)) return false;
+        const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const hasMatch = localDifficulties.some((d) => {
+          const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return randoDiffNorm.includes(dNorm) || dNorm.includes(randoDiffNorm);
+        });
+        if (!hasMatch) return false;
       }
 
       // 3. Hike Distance
       const maxDistVal = distanceRange[1] >= 34 ? null : distanceRange[1];
       if (maxDistVal !== null) {
-        const distNum = parseFloat(rando.distance);
+        const distNum = (rando as any).distance_km ?? parseFloat(rando.distance);
         if (!isNaN(distNum) && distNum > maxDistVal) return false;
       }
 
       // 4. Hike Elevation
       const maxElevVal = elevationRange[1] >= 4500 ? null : elevationRange[1];
       if (maxElevVal !== null) {
-        const elevNum = parseInt(rando.elevation.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(elevNum) && elevNum > maxElevVal) return false;
+        const elevMatch = rando.elevation ? rando.elevation.match(/\d+/) : null;
+        const elevNum = (rando as any).elevation_gain_m ?? (elevMatch ? parseInt(elevMatch[0], 10) : 0);
+        if (elevNum > maxElevVal) return false;
       }
 
       // 5. Train Duration (Transit time)
       const maxTrainVal = trainRange[1] >= 180 ? null : trainRange[1];
       if (maxTrainVal !== null) {
-        const transitInfo = getTransitInfo(rando);
+        const transitInfo = getTransitInfo(rando, effectiveLocation);
         if (transitInfo.durationMinutes > maxTrainVal) return false;
       }
 
@@ -777,28 +953,18 @@ export default function SearchModal() {
       return true;
     });
 
-    // If query is "À proximité", sort the results by distance to the user
-    const query = localSearch.toLowerCase().trim();
-    if (query === 'à proximité' || query === 'a proximité' || query === 'proximité') {
-      filtered = [...filtered].sort((a, b) => {
-        const latA = a?.startStationCoords?.latitude ?? (a as any)?.start_lat ?? 48.8566;
-        const lngA = a?.startStationCoords?.longitude ?? (a as any)?.start_lng ?? 2.3522;
-        const latB = b?.startStationCoords?.latitude ?? (b as any)?.start_lat ?? 48.8566;
-        const lngB = b?.startStationCoords?.longitude ?? (b as any)?.start_lng ?? 2.3522;
-        const uLat = userLocation?.latitude ?? 48.8566;
-        const uLng = userLocation?.longitude ?? 2.3522;
+    if (!isUserLocationSearch) return base;
 
-        const distA = calculateDistanceKm(uLat, uLng, latA, lngA);
-        const distB = calculateDistanceKm(uLat, uLng, latB, lngB);
-        return distA - distB;
-      });
-    }
+    // Prefer what sits within 75 km, but never hand back an empty list just because
+    // the user is far from every hike — showing the nearest ones beats "Aucun résultat".
+    const nearby = base.filter((rando) => distanceToUser(rando) <= 75);
+    const result = nearby.length > 0 ? nearby : base;
 
-    return filtered;
+    return [...result].sort((a, b) => distanceToUser(a) - distanceToUser(b));
   }, [
     hikes,
-    localSearch,
-    userLocationName,
+    effectiveSearchQuery,
+    effectiveLocationName,
     localDifficulties,
     distanceRange,
     elevationRange,
@@ -808,10 +974,11 @@ export default function SearchModal() {
     localActivityTypes,
     localPointsOfInterest,
     getTransitInfo,
-    userLocation,
+    effectiveLocation,
   ]);
 
-  // Check if any filters are active
+  // Check if any filters are active. Must cover everything handleClearFilters
+  // resets, otherwise "Tout effacer" would sit disabled with something to clear.
   const hasActiveFilters = useMemo(() => {
     return (
       localDifficulties.length > 0 ||
@@ -821,7 +988,14 @@ export default function SearchModal() {
       localDogs ||
       localKids ||
       localActivityTypes.length > 0 ||
-      localPointsOfInterest.length > 0
+      localPointsOfInterest.length > 0 ||
+      highestPointRange[0] > 0 ||
+      highestPointRange[1] < 4500 ||
+      geographicZone !== 'idf' ||
+      wheelchairFriendly ||
+      parcoursType.length > 0 ||
+      frequentation.length > 0 ||
+      communityNote !== null
     );
   }, [
     localDifficulties,
@@ -832,7 +1006,17 @@ export default function SearchModal() {
     localKids,
     localActivityTypes,
     localPointsOfInterest,
+    highestPointRange,
+    geographicZone,
+    wheelchairFriendly,
+    parcoursType,
+    frequentation,
+    communityNote,
   ]);
+
+  // "Tout effacer" also wipes the place, so it stays enabled for that alone.
+  const hasAnythingToClear =
+    hasActiveFilters || !!localSearch.trim() || !!pendingPlace || pendingUseCurrentLocation;
 
   // Format dynamic labels
   const formatTrainLabel = (val: number) => {
@@ -856,16 +1040,14 @@ export default function SearchModal() {
             backgroundColor:
               Platform.OS === 'ios'
                 ? colorScheme === 'dark'
-                  ? 'rgba(15, 15, 15, 0.45)'
-                  : 'rgba(255, 255, 255, 0.45)'
-                : colorScheme === 'dark'
-                  ? 'rgba(20, 20, 20, 0.85)'
-                  : 'rgba(245, 245, 245, 0.85)',
+                  ? 'rgba(15, 15, 15, 0.25)'
+                  : 'rgba(255, 255, 255, 0.25)'
+                : theme.background,
           },
         ]}>
         {Platform.OS === 'ios' && (
           <BlurView
-            intensity={100}
+            intensity={60}
             tint={colorScheme === 'dark' ? 'dark' : 'light'}
             style={StyleSheet.absoluteFill}
           />
@@ -927,92 +1109,122 @@ export default function SearchModal() {
                 }}
               />
 
-              {/* FILTERS SECTION */}
-              <View style={[styles.card, styles.filtersCard, { backgroundColor: theme.card }]}>
-                <View style={styles.cardHeader}>
+              {/* FILTERS SECTION — half of the exclusive accordion with the search card */}
+              <View
+                style={[
+                  styles.card,
+                  styles.filtersCard,
+                  { backgroundColor: theme.card },
+                  !isFiltersOpen && styles.filtersCardCollapsed,
+                ]}>
+                <Pressable
+                  onPress={handleToggleFilters}
+                  style={[styles.cardHeader, !isFiltersOpen && { marginBottom: 0 }]}>
                   <Text style={[styles.cardTitle, { color: theme.text }]}>Filtres</Text>
-                  {hasActiveFilters && (
-                    <Button
-                      variant="text"
-                      title="Réinitialiser"
-                      icon={<RotateCcw size={14} color={theme.textMuted} />}
-                      onPress={handleClearFilters}
-                      style={{ paddingHorizontal: 8, paddingVertical: 4, height: 'auto' }}
-                      textStyle={{ fontSize: 13, color: theme.textMuted }}
+                  <View style={styles.filtersCardHeaderRight}>
+                    {isFiltersOpen && hasActiveFilters && (
+                      <Button
+                        variant="text"
+                        title="Réinitialiser"
+                        icon={<RotateCcw size={14} color={theme.textMuted} />}
+                        onPress={handleClearFilters}
+                        style={{ paddingHorizontal: 8, paddingVertical: 4, height: 'auto' }}
+                        textStyle={{ fontSize: 13, color: theme.textMuted }}
+                      />
+                    )}
+                    {!isFiltersOpen && (
+                      <Text style={[styles.accordionHint, { color: theme.textMuted }]}>
+                        Affiner la recherche
+                      </Text>
+                    )}
+                  </View>
+                </Pressable>
+
+                {isFiltersOpen ? (
+                  <>
+                    <ScrollView
+                      style={styles.filtersScrollView}
+                      showsVerticalScrollIndicator={false}
+                      keyboardShouldPersistTaps="handled"
+                      contentContainerStyle={styles.filtersScrollContent}>
+                      <FiltersForm
+                        difficulties={localDifficulties}
+                        setDifficulties={setLocalDifficulties}
+                        trainRange={trainRange}
+                        setTrainRange={setTrainRange}
+                        distanceRange={distanceRange}
+                        setDistanceRange={setDistanceRange}
+                        elevationRange={elevationRange}
+                        setElevationRange={setElevationRange}
+                        highestPointRange={highestPointRange}
+                        setHighestPointRange={setHighestPointRange}
+                        geographicZone={geographicZone}
+                        setGeographicZone={setGeographicZone}
+                        dogsAllowed={localDogs}
+                        setDogsAllowed={setLocalDogs}
+                        kidsFriendly={localKids}
+                        setKidsFriendly={setLocalKids}
+                        wheelchairFriendly={wheelchairFriendly}
+                        setWheelchairFriendly={setWheelchairFriendly}
+                        activityTypes={localActivityTypes}
+                        setActivityTypes={setLocalActivityTypes}
+                        pointsOfInterest={localPointsOfInterest}
+                        setPointsOfInterest={setLocalPointsOfInterest}
+                        parcoursType={parcoursType}
+                        setParcoursType={setParcoursType}
+                        frequentation={frequentation}
+                        setFrequentation={setFrequentation}
+                        communityNote={communityNote}
+                        setCommunityNote={setCommunityNote}
+                        showDifficulties={true}
+                        showTrainRange={true}
+                        showDistanceRange={true}
+                        showElevationRange={true}
+                        showHighestPointRange={true}
+                        showAccessibility={true}
+                        showActivityTypes={true}
+                        showPointsOfInterest={true}
+                        showParcoursType={true}
+                        showFrequentation={true}
+                        showCommunityNote={true}
+                      />
+                    </ScrollView>
+
+                    {/* Fade gradient at the bottom of the filters scroll */}
+                    <LinearGradient
+                      colors={[
+                        colorScheme === 'dark' ? 'rgba(27, 27, 27, 0)' : 'rgba(255, 255, 255, 0)',
+                        colorScheme === 'dark' ? 'rgba(27, 27, 27, 1)' : 'rgba(255, 255, 255, 1)',
+                      ]}
+                      style={styles.filtersFadeGradient}
+                      pointerEvents="none"
                     />
-                  )}
-                </View>
-
-                <ScrollView
-                  style={styles.filtersScrollView}
-                  showsVerticalScrollIndicator={false}
-                  keyboardShouldPersistTaps="handled"
-                  contentContainerStyle={styles.filtersScrollContent}>
-                  <FiltersForm
-                    difficulties={localDifficulties}
-                    setDifficulties={setLocalDifficulties}
-                    trainRange={trainRange}
-                    setTrainRange={setTrainRange}
-                    distanceRange={distanceRange}
-                    setDistanceRange={setDistanceRange}
-                    elevationRange={elevationRange}
-                    setElevationRange={setElevationRange}
-                    highestPointRange={highestPointRange}
-                    setHighestPointRange={setHighestPointRange}
-                    geographicZone={geographicZone}
-                    setGeographicZone={setGeographicZone}
-                    dogsAllowed={localDogs}
-                    setDogsAllowed={setLocalDogs}
-                    kidsFriendly={localKids}
-                    setKidsFriendly={setLocalKids}
-                    wheelchairFriendly={wheelchairFriendly}
-                    setWheelchairFriendly={setWheelchairFriendly}
-                    activityTypes={localActivityTypes}
-                    setActivityTypes={setLocalActivityTypes}
-                    pointsOfInterest={localPointsOfInterest}
-                    setPointsOfInterest={setLocalPointsOfInterest}
-                    parcoursType={parcoursType}
-                    setParcoursType={setParcoursType}
-                    frequentation={frequentation}
-                    setFrequentation={setFrequentation}
-                    communityNote={communityNote}
-                    setCommunityNote={setCommunityNote}
-                    showDifficulties={true}
-                    showTrainRange={true}
-                    showDistanceRange={true}
-                    showElevationRange={true}
-                    showHighestPointRange={true}
-                    showAccessibility={true}
-                    showActivityTypes={true}
-                    showPointsOfInterest={true}
-                    showParcoursType={true}
-                    showFrequentation={true}
-                    showCommunityNote={true}
-                  />
-                </ScrollView>
-
-                {/* Fade gradient at the bottom of the filters scroll */}
-                <LinearGradient
-                  colors={[
-                    colorScheme === 'dark' ? 'rgba(27, 27, 27, 0)' : 'rgba(255, 255, 255, 0)',
-                    colorScheme === 'dark' ? 'rgba(27, 27, 27, 1)' : 'rgba(255, 255, 255, 1)',
-                  ]}
-                  style={styles.filtersFadeGradient}
-                  pointerEvents="none"
-                />
+                  </>
+                ) : null}
               </View>
             </View>
 
             {/* Footer Action Buttons */}
             <View style={[styles.footerContainer]}>
-              <Button variant="text" title="Tout effacer" onPress={handleClearFilters} />
+              <Button
+                variant="text"
+                title="Tout effacer"
+                onPress={handleClearFilters}
+                disabled={!hasAnythingToClear}
+              />
 
               <Button
                 variant="primary"
-                title={localFilteredHikes.length === 0 ? 'Aucun résultat' : 'Rechercher'}
+                // While the hikes are still loading the list is empty for a reason that
+                // has nothing to do with the filters — don't call that "Aucun résultat".
+                title={
+                  !isLoadingHikes && localFilteredHikes.length === 0
+                    ? 'Aucun résultat'
+                    : 'Rechercher'
+                }
                 icon={<Search size={20} color="#efefef" />}
                 onPress={handleApplyFilters}
-                disabled={!localSearch || localSearch.trim() === '' || localFilteredHikes.length === 0}
+                disabled={!isLoadingHikes && localFilteredHikes.length === 0}
                 style={{ flex: 1 }}
               />
             </View>
@@ -1053,36 +1265,25 @@ export default function SearchModal() {
                }}>
                <Pressable
                 onPress={() => {
-                  toggleSearchFocus(true);
+                  // Only swap the accordion open — focusing the input is a separate,
+                  // deliberate tap on the search field itself.
+                  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+                  setOpenPanel('search');
                 }}
                 style={styles.collapsedSearchContainer}>
+                <Text style={[styles.collapsedSearchTitle, { color: theme.text }]}>
+                  Où va-t-on ?
+                </Text>
                 {localSearch ? (
-                  <>
-                    <Text style={[styles.collapsedSearchFilledLabel, { color: theme.textMuted }]}>
-                      Où va-t-on ?
-                    </Text>
-                    <Text
-                      style={[styles.collapsedSearchFilledValue, { color: theme.text }]}
-                      numberOfLines={1}>
-                      {localSearch}
-                    </Text>
-                  </>
+                  <Text
+                    style={[styles.collapsedSearchFilledValue, { color: theme.text }]}
+                    numberOfLines={1}>
+                    {localSearch}
+                  </Text>
                 ) : (
-                  <>
-                    <View style={styles.collapsedSearchLeft}>
-                      <Text style={[styles.collapsedSearchTitle, { color: theme.text }]}>
-                        Où va-t-on ?
-                      </Text>
-                      <Text
-                        style={[styles.collapsedSearchValue, { color: theme.textMuted }]}
-                        numberOfLines={1}>
-                        Tout Explorer
-                      </Text>
-                    </View>
-                    <View style={styles.chevronIcon}>
-                      <ChevronDown size={20} color={theme.text} />
-                    </View>
-                  </>
+                  <Text style={[styles.accordionHint, { color: theme.textMuted }]}>
+                    Choisir un lieu
+                  </Text>
                 )}
               </Pressable>
             </Animated.View>
@@ -1112,16 +1313,9 @@ export default function SearchModal() {
                   }>
                   {!isSearchFocused && (
                     <View style={styles.cardHeader}>
+                      {/* No hint here: the affordance belongs to the collapsed panel,
+                          and this one is open. Filtres' own header closes it. */}
                       <Text style={[styles.cardTitle, { color: theme.text }]}>Où va-t-on ?</Text>
-                      {localSearch ? (
-                        <Pressable
-                          onPress={() => {
-                            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-                            setIsSearchCollapsed(true);
-                          }}>
-                          <ChevronUp size={20} color={theme.text} />
-                        </Pressable>
-                      ) : null}
                     </View>
                   )}
 
@@ -1221,41 +1415,20 @@ export default function SearchModal() {
                       keyboardShouldPersistTaps="handled"
                       showsVerticalScrollIndicator={false}>
                       <View style={styles.suggestionsContainer}>
-                        {searchResults.map((item, index) => {
-                          const IconComponent = item.icon || MapPin;
-                          const isLast = index === searchResults.length - 1;
-
-                          return (
-                            <Pressable
-                              key={item.id}
-                              onPress={() =>
-                                handleSuggestionPress(item.originalValue || item.name, item.coords)
-                              }
-                              style={styles.suggestionRow}>
-                              <View
-                                style={[
-                                  styles.suggestionIconWrapper,
-                                  { backgroundColor: theme.background },
-                                ]}>
-                                <IconComponent size={18} color={theme.text} />
-                              </View>
-                              <View style={styles.suggestionTextRow}>
-                                <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                  {item.name}
-                                </Text>
-                                {item.dept ? (
-                                  <>
-                                    <Text style={styles.suggestionSeparator}>·</Text>
-                                    <Text
-                                      style={[styles.suggestionDept, { color: theme.textMuted }]}>
-                                      {item.dept}
-                                    </Text>
-                                  </>
-                                ) : null}
-                              </View>
-                            </Pressable>
-                          );
-                        })}
+                        {searchResults.map((item) => (
+                          <SuggestionRow
+                            key={item.id}
+                            kind={item.kind}
+                            name={item.name}
+                            dept={item.dept}
+                            scheme={colorScheme}
+                            textColor={theme.text}
+                            mutedColor={theme.textMuted}
+                            onPress={() =>
+                              handleSuggestionPress(item.originalValue || item.name, item.coords)
+                            }
+                          />
+                        ))}
                       </View>
                     </ScrollView>
                   )
@@ -1283,32 +1456,22 @@ export default function SearchModal() {
                         <View style={styles.suggestionsContainer}>
                           {recentSearches
                             .filter((item) => item && item.name)
-                            .map((item, index) => {
-                              return (
-                                <Pressable
-                                  key={`recent-${item.name}-${index}`}
-                                  onPress={() =>
-                                    handleSuggestionPress(
-                                      item.name,
-                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
-                                    )
-                                  }
-                                  style={styles.suggestionRow}>
-                                  <View
-                                    style={[
-                                      styles.suggestionIconWrapper,
-                                      { backgroundColor: theme.background },
-                                    ]}>
-                                    <RotateCcw size={18} color={theme.text} />
-                                  </View>
-                                  <View style={styles.suggestionTextRow}>
-                                    <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                      {item.name}
-                                    </Text>
-                                  </View>
-                                </Pressable>
-                              );
-                            })}
+                            .map((item, index) => (
+                              <SuggestionRow
+                                key={`recent-${item.name}-${index}`}
+                                kind="recent"
+                                name={item.name}
+                                scheme={colorScheme}
+                                textColor={theme.text}
+                                mutedColor={theme.textMuted}
+                                onPress={() =>
+                                  handleSuggestionPress(
+                                    item.name,
+                                    item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                  )
+                                }
+                              />
+                            ))}
                         </View>
                       </View>
                     )}
@@ -1323,50 +1486,34 @@ export default function SearchModal() {
                         {dynamicSuggestions &&
                           dynamicSuggestions
                             .filter((item) => item && item.name)
-                            .map((item, index) => {
-                              const IconComponent = item.icon || MapPin;
-
-                              return (
-                                <Pressable
-                                  key={`suggest-${item.name}-${index}`}
-                                  onPress={() =>
-                                    handleSuggestionPress(
-                                      item.name,
-                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
-                                    )
-                                  }
-                                  style={styles.suggestionRow}>
-                                  <View
-                                    style={[
-                                      styles.suggestionIconWrapper,
-                                      { backgroundColor: theme.background },
-                                    ]}>
-                                    <IconComponent size={18} color={theme.text} />
-                                  </View>
-                                  <View style={styles.suggestionTextRow}>
-                                    <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                      {item.name}
-                                    </Text>
-                                    {item.dept ? (
-                                      <>
-                                        <Text style={styles.suggestionSeparator}>·</Text>
-                                        <Text
-                                          style={[styles.suggestionDept, { color: theme.textMuted }]}>
-                                          {item.dept}
-                                        </Text>
-                                      </>
-                                    ) : null}
-                                  </View>
-                                </Pressable>
-                              );
-                            })}
+                            .map((item, index) => (
+                              <SuggestionRow
+                                key={`suggest-${item.name}-${index}`}
+                                kind={item.kind}
+                                name={item.name}
+                                dept={item.dept}
+                                scheme={colorScheme}
+                                textColor={theme.text}
+                                mutedColor={theme.textMuted}
+                                onPress={() =>
+                                  handleSuggestionPress(
+                                    item.name,
+                                    item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                  )
+                                }
+                              />
+                            ))}
                       </View>
                     </View>
                   </ScrollView>
                 ) : (
                   <ScrollView
-                    style={{ flex: 1 }}
+                    // maxHeight pins the viewport: relying on flex alone left it unbounded
+                    // inside the absolutely positioned card, so the list never scrolled.
+                    style={{ flex: 1, maxHeight: boundedContentHeight }}
                     showsVerticalScrollIndicator={false}
+                    nestedScrollEnabled
+                    keyboardShouldPersistTaps="handled"
                     contentContainerStyle={{ paddingBottom: 24 }}>
                     <View style={{ marginTop: 12 }}>
                       {/* Recent Searches */}
@@ -1382,32 +1529,22 @@ export default function SearchModal() {
                           <View style={styles.suggestionsContainer}>
                             {recentSearches
                               .filter((item) => item && item.name)
-                              .map((item, index) => {
-                                return (
-                                  <Pressable
-                                    key={`recent-${item.name}-${index}`}
-                                    onPress={() =>
-                                      handleSuggestionPress(
-                                        item.name,
-                                        item.coords || { latitude: 48.8566, longitude: 2.3522 }
-                                      )
-                                    }
-                                    style={styles.suggestionRow}>
-                                    <View
-                                      style={[
-                                        styles.suggestionIconWrapper,
-                                        { backgroundColor: theme.background },
-                                      ]}>
-                                      <RotateCcw size={18} color={theme.text} />
-                                    </View>
-                                    <View style={styles.suggestionTextRow}>
-                                      <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                        {item.name}
-                                      </Text>
-                                    </View>
-                                  </Pressable>
-                                );
-                              })}
+                              .map((item, index) => (
+                                <SuggestionRow
+                                  key={`recent-${item.name}-${index}`}
+                                  kind="recent"
+                                  name={item.name}
+                                  scheme={colorScheme}
+                                  textColor={theme.text}
+                                  mutedColor={theme.textMuted}
+                                  onPress={() =>
+                                    handleSuggestionPress(
+                                      item.name,
+                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                    )
+                                  }
+                                />
+                              ))}
                           </View>
                         </View>
                       )}
@@ -1425,43 +1562,23 @@ export default function SearchModal() {
                           {dynamicSuggestions &&
                             dynamicSuggestions
                               .filter((item) => item && item.name)
-                              .map((item, index) => {
-                                const IconComponent = item.icon || MapPin;
-
-                                return (
-                                  <Pressable
-                                    key={`suggest-${item.name}-${index}`}
-                                    onPress={() =>
-                                      handleSuggestionPress(
-                                        item.name,
-                                        item.coords || { latitude: 48.8566, longitude: 2.3522 }
-                                      )
-                                    }
-                                    style={styles.suggestionRow}>
-                                    <View
-                                      style={[
-                                        styles.suggestionIconWrapper,
-                                        { backgroundColor: theme.background },
-                                      ]}>
-                                      <IconComponent size={18} color={theme.text} />
-                                    </View>
-                                    <View style={styles.suggestionTextRow}>
-                                      <Text style={[styles.suggestionName, { color: theme.text }]}>
-                                        {item.name}
-                                      </Text>
-                                      {item.dept ? (
-                                        <>
-                                          <Text style={styles.suggestionSeparator}>·</Text>
-                                          <Text
-                                            style={[styles.suggestionDept, { color: theme.textMuted }]}>
-                                            {item.dept}
-                                          </Text>
-                                        </>
-                                      ) : null}
-                                    </View>
-                                  </Pressable>
-                                );
-                              })}
+                              .map((item, index) => (
+                                <SuggestionRow
+                                  key={`suggest-${item.name}-${index}`}
+                                  kind={item.kind}
+                                  name={item.name}
+                                  dept={item.dept}
+                                  scheme={colorScheme}
+                                  textColor={theme.text}
+                                  mutedColor={theme.textMuted}
+                                  onPress={() =>
+                                    handleSuggestionPress(
+                                      item.name,
+                                      item.coords || { latitude: 48.8566, longitude: 2.3522 }
+                                    )
+                                  }
+                                />
+                              ))}
                         </View>
                       </View>
                     </View>
@@ -1553,6 +1670,21 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     paddingBottom: 0,
   },
+  filtersCardCollapsed: {
+    // Header only: 16 (padding) + 42 (cardHeader) + 16 = FILTERS_COLLAPSED_HEIGHT.
+    flex: 0,
+    paddingBottom: 16,
+  },
+  filtersCardHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  // Affordance label replacing the accordion chevrons.
+  accordionHint: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+  },
   filtersScrollView: {
     flex: 1,
   },
@@ -1599,20 +1731,8 @@ const styles = StyleSheet.create({
       },
     }),
   },
-  collapsedSearchLeft: {
-    flex: 1,
-  },
   collapsedSearchTitle: {
     fontFamily: 'BricolageGrotesque-SemiBold',
-    fontSize: 16,
-  },
-  collapsedSearchValue: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 13,
-    marginTop: 2,
-  },
-  collapsedSearchFilledLabel: {
-    fontFamily: 'Satoshi-Medium',
     fontSize: 16,
   },
   collapsedSearchFilledValue: {
@@ -1621,9 +1741,6 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     marginLeft: 16,
-  },
-  chevronIcon: {
-    padding: 4,
   },
   expandedSearchContainer: {
     width: '100%',

@@ -4,7 +4,7 @@ const tintColorDark = '#FA6415'; // Orange clair sémantique (Primary-500)
 export default {
   light: {
     text: '#292929', // neutral-900
-    background: '#ffffffff', // neutral-50
+    background: '#EFEFEF', // neutral-50
     tint: tintColorLight,
     tabIconDefault: '#7C7C7C', // neutral-400
     tabIconSelected: tintColorLight,
@@ -12,7 +12,7 @@ export default {
     primaryLight: '#C3350B', // Primary-700
     secondary: '#457B9D', // blue-600
     warning: '#B07D06', // amber-600
-    card: '#EFEFEF', // neutral-0
+    card: '#FFFFFF', // neutral-0
     border: '#BDBDBD', // neutral-200
     borderLight: '#DCDCDC', // neutral-100
     borderStrong: '#989898',

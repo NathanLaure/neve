@@ -1,4 +1,4 @@
-import React, { forwardRef, useRef, useImperativeHandle } from 'react';
+import React, { forwardRef, useRef, useImperativeHandle, useMemo } from 'react';
 import { StyleSheet, Text, Pressable } from 'react-native';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import { Check, Crosshair, MapPin } from 'lucide-react-native';
@@ -13,19 +13,11 @@ export interface RadiusBottomSheetRef {
   dismiss: () => void;
 }
 
-/** `null` = pas de limite de rayon, on affiche tout autour de la position actuelle. */
-export const RADIUS_OPTIONS: { value: number | null; label: string }[] = [
-  { value: null, label: 'Position actuelle' },
-  { value: 5, label: 'Rayon de 5 km' },
-  { value: 10, label: 'Rayon de 10 km' },
-  { value: 20, label: 'Rayon de 20 km' },
-  { value: 30, label: 'Rayon de 30 km' },
-  { value: 50, label: 'Rayon de 50 km' },
-  { value: 100, label: 'Rayon de 100 km' },
-];
-
-export const formatRadiusLabel = (radius: number | null) =>
-  radius === null ? 'Position actuelle' : `${radius} km`;
+export const formatRadiusLabel = (radius: number | null, isMapAreaActive = false) => {
+  if (radius === null) return 'Position actuelle';
+  if (isMapAreaActive) return `Zone affichée (${radius} km)`;
+  return `${radius} km`;
+};
 
 const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetRef, any> = (
   _,
@@ -35,12 +27,66 @@ const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetR
   const theme = Colors[colorScheme];
   const modalRef = useRef<BaseBottomSheetModalRef>(null);
 
-  const { searchRadiusKm, setSearchRadiusKm } = useAdventure();
+  const {
+    searchRadiusKm,
+    setSearchRadiusKm,
+    mapSearchRadiusKm,
+    isMapAreaActive,
+    setIsMapAreaActive,
+    resetToUserLocationRadius,
+    userLocation,
+    ensureHikesRadius,
+  } = useAdventure();
 
   useImperativeHandle(ref, () => ({
     present: () => modalRef.current?.present(),
     dismiss: () => modalRef.current?.dismiss(),
   }));
+
+  const options = useMemo(() => {
+    const list: { key: string; value: number | null; isMapArea: boolean; label: string; icon: any }[] = [
+      { key: 'user_location', value: null, isMapArea: false, label: 'Position actuelle', icon: Crosshair },
+    ];
+
+    // Dynamic map area option inserted between Position actuelle and Rayon de 5 km!
+    if (mapSearchRadiusKm !== null || isMapAreaActive) {
+      const activeRadius = mapSearchRadiusKm ?? searchRadiusKm ?? 15;
+      list.push({
+        key: 'map_area',
+        value: activeRadius,
+        isMapArea: true,
+        label: `Zone de la carte (${activeRadius} km)`,
+        icon: MapPin,
+      });
+    }
+
+    list.push(
+      { key: '5', value: 5, isMapArea: false, label: 'Rayon de 5 km', icon: MapPin },
+      { key: '10', value: 10, isMapArea: false, label: 'Rayon de 10 km', icon: MapPin },
+      { key: '20', value: 20, isMapArea: false, label: 'Rayon de 20 km', icon: MapPin },
+      { key: '30', value: 30, isMapArea: false, label: 'Rayon de 30 km', icon: MapPin },
+      { key: '50', value: 50, isMapArea: false, label: 'Rayon de 50 km', icon: MapPin },
+      { key: '100', value: 100, isMapArea: false, label: 'Rayon de 100 km', icon: MapPin }
+    );
+
+    return list;
+  }, [mapSearchRadiusKm, isMapAreaActive, searchRadiusKm]);
+
+  const handleSelectOption = (option: { key: string; value: number | null; isMapArea: boolean }) => {
+    if (option.key === 'user_location') {
+      resetToUserLocationRadius();
+    } else if (option.isMapArea) {
+      setSearchRadiusKm(option.value);
+      setIsMapAreaActive(true);
+    } else {
+      setSearchRadiusKm(option.value);
+      setIsMapAreaActive(false);
+      if (option.value !== null) {
+        ensureHikesRadius(userLocation, option.value);
+      }
+    }
+    modalRef.current?.dismiss();
+  };
 
   return (
     <BaseBottomSheetModal
@@ -54,16 +100,17 @@ const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetR
         style={{ flex: 1 }}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}>
-        {RADIUS_OPTIONS.map((option) => {
-          const isSelected = searchRadiusKm === option.value;
-          const Icon = option.value === null ? Crosshair : MapPin;
+        {options.map((option) => {
+          const isSelected = option.isMapArea
+            ? isMapAreaActive
+            : option.value === null
+              ? !isMapAreaActive && searchRadiusKm === null
+              : !isMapAreaActive && searchRadiusKm === option.value;
+          const Icon = option.icon;
           return (
             <Pressable
-              key={option.label}
-              onPress={() => {
-                setSearchRadiusKm(option.value);
-                modalRef.current?.dismiss();
-              }}
+              key={option.key}
+              onPress={() => handleSelectOption(option)}
               style={[
                 styles.option,
                 {

@@ -15,6 +15,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import { TrainOption } from '@/constants/RandosData';
+import { generateTransitOptions, calculateCo2Impact } from '@/services/transitService';
 
 // Generate dynamic dates (next 7 days starting tomorrow)
 const generateDates = () => {
@@ -145,20 +146,55 @@ export default function PlanScreen() {
         style={[styles.container, { backgroundColor: theme.background }]}
         showsVerticalScrollIndicator={false}>
         {/* Hike Header Summary */}
-        <View
-          style={[
-            styles.hikeSummaryCard,
-            { backgroundColor: theme.card, borderColor: theme.border },
-          ]}>
-          <Text style={[styles.hikeSummaryLabel, { color: theme.textMuted }]}>
-            {"Planification de l'éco-rando"}
-          </Text>
-          <Text style={[styles.hikeSummaryTitle, { color: theme.text }]}>{rando.title}</Text>
-          <Text style={[styles.hikeSummarySpecs, { color: theme.tint }]}>
-            🚆 {departureStation} → {rando.startStation} • 🥾 {rando.distance} (
-            {rando.durationHours}h)
-          </Text>
-        </View>
+        {(() => {
+          const distKm = parseFloat(rando.distance) || 12;
+          const co2 = calculateCo2Impact(distKm);
+          const isTraverse = rando.startStation !== rando.endStation;
+
+          return (
+            <View
+              style={[
+                styles.hikeSummaryCard,
+                { backgroundColor: theme.card, borderColor: theme.border },
+              ]}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <Text style={[styles.hikeSummaryLabel, { color: theme.textMuted }]}>
+                  {"Planification de l'éco-rando"}
+                </Text>
+                {isTraverse && (
+                  <View style={{ backgroundColor: theme.tint + '18', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 12 }}>
+                    <Text style={{ color: theme.tint, fontSize: 11, fontFamily: 'Satoshi-Bold' }}>
+                      🚶‍♂️ Traversée Gare à Gare
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text style={[styles.hikeSummaryTitle, { color: theme.text }]}>{rando.title}</Text>
+              <Text style={[styles.hikeSummarySpecs, { color: theme.tint, marginTop: 4 }]}>
+                🚆 {departureStation} → {rando.startStation} {isTraverse ? `→ ${rando.endStation}` : ''} • 🥾 {rando.distance} ({rando.durationHours}h)
+              </Text>
+              
+              {/* Eco CO2 Impact Banner */}
+              <View
+                style={{
+                  marginTop: 10,
+                  padding: 10,
+                  borderRadius: 8,
+                  backgroundColor: '#E8F5E9',
+                  borderWidth: 1,
+                  borderColor: '#C8E6C9',
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  gap: 8,
+                }}>
+                <Text style={{ fontSize: 18 }}>🌱</Text>
+                <Text style={{ fontSize: 12, color: '#2E7D32', fontFamily: 'Satoshi-Medium', flex: 1 }}>
+                  <Text style={{ fontFamily: 'Satoshi-Bold' }}>-{co2.savedCo2Kg} kg CO₂ économisés</Text> en venant en train par rapport à la voiture !
+                </Text>
+              </View>
+            </View>
+          );
+        })()}
 
         {/* STEP 1: DATES */}
         <View

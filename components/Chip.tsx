@@ -11,6 +11,8 @@ export interface ChipProps {
   size?: 'default' | 'small';
   icon?: React.ReactNode;
   trailingIcon?: React.ReactNode;
+  badgeCount?: number;
+  badgePosition?: 'chip-corner' | 'icon-corner' | 'inline';
   onPress?: () => void;
   style?: ViewStyle | ViewStyle[] | any;
   textStyle?: TextStyle | TextStyle[] | any;
@@ -24,6 +26,8 @@ export default function Chip({
   size = 'default',
   icon,
   trailingIcon,
+  badgeCount,
+  badgePosition = 'chip-corner',
   onPress,
   style,
   textStyle,
@@ -55,6 +59,8 @@ export default function Chip({
       : '#111111'
     : theme.text;
 
+  const hasBadge = badgeCount != null && badgeCount > 0;
+
   return (
     <Pressable
       disabled={disabled}
@@ -70,7 +76,16 @@ export default function Chip({
         },
         style,
       ]}>
-      {icon && <View style={styles.iconWrapper}>{icon}</View>}
+      {icon && (
+        <View style={styles.iconWrapper}>
+          {icon}
+          {hasBadge && badgePosition === 'icon-corner' ? (
+            <View style={[styles.iconBadgeOverlay, { backgroundColor: theme.primary || theme.tint }]}>
+              <Text style={styles.iconBadgeText}>{badgeCount}</Text>
+            </View>
+          ) : null}
+        </View>
+      )}
       {chipLabel ? (
         <Text
           style={[
@@ -85,6 +100,16 @@ export default function Chip({
           {chipLabel}
         </Text>
       ) : null}
+      {hasBadge && badgePosition === 'inline' ? (
+        <View style={[styles.badgePill, { backgroundColor: theme.primary || theme.tint }]}>
+          <Text style={styles.badgeText}>{badgeCount}</Text>
+        </View>
+      ) : null}
+      {hasBadge && badgePosition === 'chip-corner' ? (
+        <View style={[styles.chipCornerBadge, { backgroundColor: theme.primary || theme.tint }]}>
+          <Text style={styles.chipCornerBadgeText}>{badgeCount}</Text>
+        </View>
+      ) : null}
       {trailingIcon && <View style={styles.trailingIconWrapper}>{trailingIcon}</View>}
     </Pressable>
   );
@@ -97,16 +122,72 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
   },
   iconWrapper: {
     marginRight: 6,
     alignItems: 'center',
     justifyContent: 'center',
+    position: 'relative',
+  },
+  iconBadgeOverlay: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 7.5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+  },
+  iconBadgeText: {
+    color: '#FFFFFF',
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 9,
+    lineHeight: 10,
+    textAlign: 'center',
+  },
+  chipCornerBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    zIndex: 10,
+    elevation: 5,
+  },
+  chipCornerBadgeText: {
+    color: '#FFFFFF',
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 10,
+    lineHeight: 11,
+    textAlign: 'center',
   },
   trailingIconWrapper: {
     marginLeft: 6,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  badgePill: {
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    marginLeft: 6,
+  },
+  badgeText: {
+    color: '#FFFFFF',
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 10,
+    lineHeight: 12,
+    textAlign: 'center',
   },
   text: {
     fontFamily: 'BricolageGrotesque-Medium',

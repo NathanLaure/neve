@@ -5,11 +5,16 @@ import React, {
   useEffect,
   useMemo,
   useCallback,
+  useRef,
   ReactNode,
 } from 'react';
+import { AppState } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { RandoData, TrainOption, MOCK_RANDOS } from '@/constants/RandosData';
 import { supabase } from '@/utils/supabase';
+import { findNearestStation } from '@/services/transitService';
+import { useAuth } from '@/context/AuthContext';
 
 export interface PlannedAdventure {
   id: string;
@@ -73,12 +78,29 @@ interface AdventureContextType {
   /** Radius in km around the user's location. `null` means no radius limit. */
   searchRadiusKm: number | null;
   setSearchRadiusKm: (radius: number | null) => void;
+  mapSearchRadiusKm: number | null;
+  setMapSearchRadiusKm: (radius: number | null) => void;
+  isMapAreaActive: boolean;
+  setIsMapAreaActive: (active: boolean) => void;
+  setMapSearchArea: (radiusKm: number) => void;
+  resetToUserLocationRadius: () => void;
+  /** Widens the loaded hikes set to cover this circle if it isn't already covered — no-op otherwise. */
+  ensureHikesRadius: (center: Coordinates, radiusKm: number) => void;
   clearAllFilters: () => void;
   /** How many filters are currently narrowing the results — drives the searchbar badge. */
   activeFiltersCount: number;
   filteredHikes: RandoData[];
   recentSearches: { name: string; coords: Coordinates }[];
   addRecentSearch: (name: string, coords: Coordinates) => void;
+
+  // Favorites
+  favoriteHikeIds: Set<string>;
+  /** hikeId -> ISO timestamp of when it was favorited. */
+  favoriteSavedAt: Map<string, string>;
+  isFavorite: (hikeId: string) => boolean;
+  toggleFavorite: (hikeId: string) => void;
+  isLoadingFavorites: boolean;
+  refreshFavorites: () => Promise<void>;
 }
 
 const AdventureContext = createContext<AdventureContextType | undefined>(undefined);
@@ -86,6 +108,10 @@ const AdventureContext = createContext<AdventureContextType | undefined>(undefin
 // Default coordinates pointing to Paris Châtelet
 const DEFAULT_COORDS = { latitude: 48.8584, longitude: 2.3488 };
 const DEFAULT_LOCATION_NAME = 'Paris (Centre)';
+
+// Rayon de chargement initial : on ne va chercher que les randos proches plutôt que
+// toute l'Île-de-France d'un coup (évite de tout charger au démarrage).
+const DEFAULT_RADIUS_KM = 30;
 
 // Haversine formula to calculate distance in km
 export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number) {
@@ -102,13 +128,45 @@ export function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lo
   return R * c;
 }
 
+// Boîte englobante approximative (en degrés) autour d'un point pour un rayon donné en km.
+// Sert de pré-filtre côté serveur (Supabase) — toujours un sur-ensemble du cercle exact,
+// jamais plus étroite, donc aucune rando dans le rayon ne peut être exclue par erreur.
+function boundingBoxForRadius(lat: number, lng: number, radiusKm: number) {
+  const latDelta = radiusKm / 111;
+  const lngDelta = radiusKm / (111 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
+  return {
+    minLat: lat - latDelta,
+    maxLat: lat + latDelta,
+    minLng: lng - lngDelta,
+    maxLng: lng + lngDelta,
+  };
+}
+
+// AdventureProvider: central state for hikes, user location, search filters, and cached favorites
 export const AdventureProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
   const [userLocation, setUserLocation] = useState<Coordinates>(DEFAULT_COORDS);
   const [userLocationName, setUserLocationName] = useState<string>(DEFAULT_LOCATION_NAME);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
   const [hikes, setHikes] = useState<RandoData[]>([]);
+  const [favoriteHikeIds, setFavoriteHikeIds] = useState<Set<string>>(new Set());
+  const favoriteHikeIdsRef = useRef<Set<string>>(favoriteHikeIds);
+
+  const updateFavoriteHikeIds = useCallback((next: Set<string>) => {
+    favoriteHikeIdsRef.current = next;
+    setFavoriteHikeIds(next);
+  }, []);
+
+  const [favoriteSavedAt, setFavoriteSavedAt] = useState<Map<string, string>>(new Map());
+  const [isLoadingFavorites, setIsLoadingFavorites] = useState(false);
   const [isLoadingHikes, setIsLoadingHikes] = useState<boolean>(true);
+  // Zone (centre + rayon) actuellement couverte par `hikes`, pour savoir quand un
+  // élargissement (nouveau rayon, nouveau lieu recherché) nécessite un rechargement.
+  const loadedAreaRef = useRef<{ latitude: number; longitude: number; radiusKm: number } | null>(null);
+  // Reste `false` tant que le GPS n'a pas répondu (succès ou échec) au moins une fois —
+  // évite de charger les randos autour de Paris avant même d'avoir tenté la position réelle.
+  const [hasResolvedLocationOnce, setHasResolvedLocationOnce] = useState(false);
 
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -120,8 +178,24 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [kidsFriendly, setKidsFriendly] = useState(false);
   const [selectedActivityTypes, setSelectedActivityTypes] = useState<string[]>([]);
   const [selectedPointsOfInterest, setSelectedPointsOfInterest] = useState<string[]>([]);
+  // Default to Position actuelle (null radius) on startup
   const [searchRadiusKm, setSearchRadiusKm] = useState<number | null>(null);
+  const [mapSearchRadiusKm, setMapSearchRadiusKm] = useState<number | null>(null);
+  const [isMapAreaActive, setIsMapAreaActive] = useState<boolean>(false);
   const [recentSearches, setRecentSearches] = useState<{ name: string; coords: Coordinates }[]>([]);
+
+  const setMapSearchArea = (radiusKm: number) => {
+    setMapSearchRadiusKm(radiusKm);
+    setSearchRadiusKm(radiusKm);
+    setIsMapAreaActive(true);
+  };
+
+  const resetToUserLocationRadius = () => {
+    setSearchRadiusKm(null);
+    setIsMapAreaActive(false);
+    // 60 km : même plafond que le repli utilisé par la carte quand aucun zoom précis n'est connu.
+    ensureHikesRadius(userLocation, 60);
+  };
 
   const addRecentSearch = (name: string, coords: Coordinates) => {
     setRecentSearches((prev) => {
@@ -133,8 +207,40 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
 function mapSupabaseHikeToRandoData(row: any): RandoData {
   const startLat = row.start_lat ?? row.startStationCoords?.latitude ?? 48.8566;
   const startLng = row.start_lng ?? row.startStationCoords?.longitude ?? 2.3522;
-  const location = row.location_name || row.location || 'Alpes-de-Haute-Provence, France';
-  const startStation = row.start_station_name || location.split(',')[0].trim() || 'Point de départ';
+  const endLat = row.end_lat ?? startLat;
+  const endLng = row.end_lng ?? startLng;
+
+  let startStation = row.start_station_name || row.startStation;
+  let startStationLat = row.start_station_lat ?? startLat;
+  let startStationLng = row.start_station_lng ?? startLng;
+
+  let endStation = row.end_station_name || row.endStation;
+  let endStationLat = row.end_station_lat ?? endLat;
+  let endStationLng = row.end_station_lng ?? endLng;
+
+  if (!startStation) {
+    const matchedStart = findNearestStation(startLat, startLng);
+    if (matchedStart) {
+      startStation = `Gare de ${matchedStart.name}`;
+      startStationLat = matchedStart.latitude;
+      startStationLng = matchedStart.longitude;
+    } else {
+      startStation = row.location_name ? `Gare de ${row.location_name.split('-')[0].trim()}` : 'Gare Île-de-France';
+    }
+  }
+
+  if (!endStation) {
+    const matchedEnd = findNearestStation(endLat, endLng);
+    if (matchedEnd) {
+      endStation = `Gare de ${matchedEnd.name}`;
+      endStationLat = matchedEnd.latitude;
+      endStationLng = matchedEnd.longitude;
+    } else {
+      endStation = startStation;
+    }
+  }
+
+  const location = row.location_name || row.location || 'Île-de-France, France';
 
   const gain = row.elevation_gain_m || 0;
   const loss = row.elevation_loss_m || 0;
@@ -174,10 +280,12 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     id: String(row.id),
     title: row.title || 'Randonnée',
     imageUrl: row.cover_image_url || row.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+    start_lat: Number(startLat),
+    start_lng: Number(startLng),
     startStation,
-    startStationCoords: { latitude: startLat, longitude: startLng },
-    endStation: row.endStation || startStation,
-    endStationCoords: { latitude: startLat, longitude: startLng },
+    startStationCoords: { latitude: startStationLat, longitude: startStationLng },
+    endStation,
+    endStationCoords: { latitude: endStationLat, longitude: endStationLng },
     distance: distanceStr,
     durationHours,
     difficulty,
@@ -185,7 +293,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     weatherTemp: row.weatherTemp || '18°C',
     weatherIcon: row.weatherIcon || '☀️',
     trainDurationMinutes: row.trainDurationMinutes || 45,
-    trainType: row.trainType || 'TER / Bus',
+    trainType: row.trainType || 'Transilien / RER',
     priceEst: row.priceEst || 0,
     location,
     gpxTrace,
@@ -204,26 +312,83 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   // Lightweight columns only: full geometry/description are fetched on-demand
   // via loadHikeDetail when a hike's detail page is actually opened.
   const HIKES_LIST_COLUMNS =
-    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, start_lat, start_lng, location_name, cover_image_url, gallery_urls';
+    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, start_lat, start_lng, location_name, cover_image_url, gallery_urls, start_station_name, start_station_lat, start_station_lng, end_station_name, end_station_lat, end_station_lng';
 
-  const loadHikes = async () => {
+  const loadHikes = async (area?: { latitude: number; longitude: number; radiusKm: number }) => {
+    // Sans zone explicite (ex: pull-to-refresh) : on recharge la même zone qu'avant,
+    // ou à défaut un rayon par défaut autour de Paris.
+    const target = area ?? loadedAreaRef.current ?? {
+      latitude: DEFAULT_COORDS.latitude,
+      longitude: DEFAULT_COORDS.longitude,
+      radiusKm: DEFAULT_RADIUS_KM,
+    };
+    // Posé avant l'appel réseau (pas après) pour qu'un ensureHikesRadius() déclenché
+    // pendant le fetch voie tout de suite la zone comme "en cours de couverture".
+    loadedAreaRef.current = target;
+
     setIsLoadingHikes(true);
     try {
-      const { data, error } = await supabase.from('hikes').select(HIKES_LIST_COLUMNS);
+      let query = supabase.from('hikes').select(HIKES_LIST_COLUMNS);
+      const { minLat, maxLat, minLng, maxLng } = boundingBoxForRadius(
+        target.latitude,
+        target.longitude,
+        target.radiusKm
+      );
+      query = query
+        .gte('start_lat', minLat)
+        .lte('start_lat', maxLat)
+        .gte('start_lng', minLng)
+        .lte('start_lng', maxLng);
+
+      const { data, error } = await query;
       if (error) {
         throw error;
       }
-      if (data && data.length > 0) {
+      if (data) {
         const mapped = data.map((row) => ({ ...mapSupabaseHikeToRandoData(row), hasFullDetail: false }));
-        setHikes(mapped);
+        setHikes((prev) => {
+          const byId = new Map(mapped.map((h) => [h.id, h]));
+          const preserved = prev.filter((h) => favoriteHikeIdsRef.current.has(h.id) || h.hasFullDetail);
+
+          for (const h of preserved) {
+            if (!byId.has(h.id)) {
+              byId.set(h.id, h);
+            } else {
+              const fresh = byId.get(h.id)!;
+              byId.set(h.id, {
+                ...fresh,
+                gpxTrace: (h.gpxTrace && h.gpxTrace.length > 0) ? h.gpxTrace : fresh.gpxTrace,
+                hasFullDetail: fresh.hasFullDetail || h.hasFullDetail,
+              });
+            }
+          }
+
+          return Array.from(byId.values());
+        });
       }
     } catch (error) {
       console.warn('Could not fetch hikes from Supabase, falling back to mock data:', error);
-      setHikes(MOCK_RANDOS.map((r) => ({ ...r, hasFullDetail: true })));
     } finally {
       setIsLoadingHikes(false);
     }
   };
+
+  // Élargit/recentre la zone chargée uniquement si le cercle demandé n'est pas déjà
+  // entièrement couvert par ce qu'on a en mémoire — évite les rechargements inutiles.
+  const ensureHikesRadius = useCallback((center: Coordinates, radiusKm: number) => {
+    const loaded = loadedAreaRef.current;
+    if (loaded) {
+      const distFromLoadedCenter = calculateDistanceKm(
+        loaded.latitude,
+        loaded.longitude,
+        center.latitude,
+        center.longitude
+      );
+      if (distFromLoadedCenter + radiusKm <= loaded.radiusKm) return;
+    }
+    // Charge un peu plus large que demandé pour amortir de petits déplacements/rayons suivants.
+    loadHikes({ latitude: center.latitude, longitude: center.longitude, radiusKm: Math.max(radiusKm * 1.2, radiusKm + 10) });
+  }, []);
 
   const loadHikeDetail = async (id: string) => {
     const existing = hikes.find((h) => h.id === id);
@@ -244,6 +409,247 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       setHikes((prev) => prev.map((h) => (h.id === id ? { ...h, hasFullDetail: true } : h)));
     }
   };
+
+  // Favoris — table `user_favorites` (user_id, hike_id), RLS : chaque utilisateur ne
+  // voit/modifie que les siens.
+
+  const favoritesCacheKey = useMemo(() => {
+    return user ? `@neve_favorites_cache_${user.id}` : null;
+  }, [user]);
+
+  // Load cached favorites from AsyncStorage for instant offline/startup display
+  const loadFavoritesFromCache = useCallback(async () => {
+    if (!favoritesCacheKey) return false;
+    try {
+      const cachedRaw = await AsyncStorage.getItem(favoritesCacheKey);
+      if (!cachedRaw) return false;
+      const parsed = JSON.parse(cachedRaw);
+      if (Array.isArray(parsed?.ids) && Array.isArray(parsed?.savedAt)) {
+        const cachedIds = new Set<string>(parsed.ids);
+        const cachedSavedAt = new Map<string, string>(parsed.savedAt);
+        const cachedHikes: RandoData[] = Array.isArray(parsed.hikes) ? parsed.hikes : [];
+
+        updateFavoriteHikeIds(cachedIds);
+        setFavoriteSavedAt(cachedSavedAt);
+
+        if (cachedHikes.length > 0) {
+          setHikes((prev) => {
+            const byId = new Map(cachedHikes.map((h: RandoData) => [h.id, h]));
+            const merged = prev.map((h) => {
+              const richer = byId.get(h.id);
+              if (!richer) return h;
+              byId.delete(h.id);
+              return {
+                ...h,
+                ...richer,
+                gpxTrace: (richer.gpxTrace && richer.gpxTrace.length > 0) ? richer.gpxTrace : h.gpxTrace,
+                hasFullDetail: h.hasFullDetail || richer.hasFullDetail,
+              };
+            });
+            return [...merged, ...byId.values()];
+          });
+        }
+        return true;
+      }
+    } catch (err) {
+      console.warn('Error loading favorites from AsyncStorage cache:', err);
+    }
+    return false;
+  }, [favoritesCacheKey]);
+
+  // Save current favorites state to AsyncStorage cache
+  const saveFavoritesToCache = useCallback(
+    async (
+      idsSet: Set<string>,
+      savedAtMap: Map<string, string>,
+      allHikes: RandoData[]
+    ) => {
+      if (!favoritesCacheKey) return;
+      try {
+        const ids = Array.from(idsSet);
+        const savedAt = Array.from(savedAtMap.entries());
+        const favoriteHikesData = allHikes.filter((h) => idsSet.has(h.id));
+        const payload = JSON.stringify({
+          ids,
+          savedAt,
+          hikes: favoriteHikesData,
+          updatedAt: new Date().toISOString(),
+        });
+        await AsyncStorage.setItem(favoritesCacheKey, payload);
+      } catch (err) {
+        console.warn('Error saving favorites to AsyncStorage cache:', err);
+      }
+    },
+    [favoritesCacheKey]
+  );
+
+  const loadFavorites = useCallback(async () => {
+    if (!user) {
+      updateFavoriteHikeIds(new Set());
+      setFavoriteSavedAt(new Map());
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('user_favorites')
+        .select('hike_id, created_at')
+        .eq('user_id', user.id);
+      if (error) throw error;
+
+      const ids = (data ?? []).map((r: any) => String(r.hike_id));
+      const nextIds = new Set(ids);
+      const nextSavedAt = new Map((data ?? []).map((r: any) => [String(r.hike_id), r.created_at as string]));
+
+      updateFavoriteHikeIds(nextIds);
+      setFavoriteSavedAt(nextSavedAt);
+
+      if (ids.length > 0) {
+        const { data: hikeRows, error: hikeError } = await supabase
+          .from('hikes')
+          .select(`${HIKES_LIST_COLUMNS}, geometry`)
+          .in('id', ids);
+
+        if (!hikeError && hikeRows) {
+          const mappedFavorites = hikeRows.map((row) => ({
+            ...mapSupabaseHikeToRandoData(row),
+            hasFullDetail: false,
+          }));
+
+          setHikes((prev) => {
+            const byId = new Map(mappedFavorites.map((h) => [h.id, h]));
+            const merged = prev.map((h) => {
+              const richer = byId.get(h.id);
+              if (!richer) return h;
+              byId.delete(h.id);
+              return {
+                ...h,
+                ...richer,
+                gpxTrace: (richer.gpxTrace && richer.gpxTrace.length > 0) ? richer.gpxTrace : h.gpxTrace,
+                hasFullDetail: h.hasFullDetail || richer.hasFullDetail,
+              };
+            });
+            const updatedHikes = [...merged, ...byId.values()];
+            const favObjects = updatedHikes.filter((h) => nextIds.has(h.id));
+            saveFavoritesToCache(nextIds, nextSavedAt, favObjects);
+            return updatedHikes;
+          });
+        } else {
+          setHikes((prev) => {
+            const favObjects = prev.filter((h) => nextIds.has(h.id));
+            saveFavoritesToCache(nextIds, nextSavedAt, favObjects);
+            return prev;
+          });
+        }
+      } else {
+        saveFavoritesToCache(nextIds, nextSavedAt, []);
+      }
+    } catch (error) {
+      console.warn('Could not load favorites from network:', error);
+    } finally {
+      setIsLoadingFavorites(false);
+    }
+  }, [user, saveFavoritesToCache]);
+
+  // Initial load, Supabase Realtime subscription & AppState foreground listener
+  useEffect(() => {
+    if (!user) return;
+
+    let isMounted = true;
+
+    const initFavorites = async () => {
+      const hasCache = await loadFavoritesFromCache();
+      if (isMounted && !hasCache) {
+        setIsLoadingFavorites(true);
+      }
+      if (isMounted) {
+        await loadFavorites();
+      }
+    };
+
+    initFavorites();
+
+    // 3. Supabase Realtime subscription for instant auto-sync when favorited on website
+    const channel = supabase
+      .channel(`user_favorites_sync:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_favorites',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadFavorites();
+        }
+      )
+      .subscribe();
+
+    // 4. Foreground app state listener for when user switches back from browser
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadFavorites();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+      subscription.remove();
+    };
+  }, [user, loadFavoritesFromCache, loadFavorites]);
+
+  const isFavorite = useCallback((hikeId: string) => favoriteHikeIds.has(hikeId), [favoriteHikeIds]);
+
+  const toggleFavorite = useCallback(
+    (hikeId: string) => {
+      if (!user) return;
+      const wasFavorite = favoriteHikeIds.has(hikeId);
+
+      const optimisticSavedAt = new Date().toISOString();
+      const nextIds = new Set(favoriteHikeIds);
+      const nextSavedAt = new Map(favoriteSavedAt);
+
+      if (wasFavorite) {
+        nextIds.delete(hikeId);
+        nextSavedAt.delete(hikeId);
+      } else {
+        nextIds.add(hikeId);
+        nextSavedAt.set(hikeId, optimisticSavedAt);
+      }
+
+      updateFavoriteHikeIds(nextIds);
+      setFavoriteSavedAt(nextSavedAt);
+
+      setHikes((currentHikes) => {
+        const favObjects = currentHikes.filter((h) => nextIds.has(h.id));
+        saveFavoritesToCache(nextIds, nextSavedAt, favObjects);
+        return currentHikes;
+      });
+
+      const revert = () => {
+        updateFavoriteHikeIds(favoriteHikeIdsRef.current);
+        setFavoriteSavedAt(favoriteSavedAt);
+        setHikes((currentHikes) => {
+          const favObjects = currentHikes.filter((h) => favoriteHikeIdsRef.current.has(h.id));
+          saveFavoritesToCache(favoriteHikeIdsRef.current, favoriteSavedAt, favObjects);
+          return currentHikes;
+        });
+      };
+
+      const request = wasFavorite
+        ? supabase.from('user_favorites').delete().eq('user_id', user.id).eq('hike_id', hikeId)
+        : supabase.from('user_favorites').insert({ user_id: user.id, hike_id: hikeId });
+
+      request.then(({ error }) => {
+        if (error) {
+          console.warn('Could not toggle favorite:', error);
+          revert();
+        }
+      });
+    },
+    [user, favoriteHikeIds, favoriteSavedAt, saveFavoritesToCache]
+  );
 
   const refreshUserLocation = async () => {
     setIsLocating(true);
@@ -266,12 +672,16 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       };
       setUserLocation(coords);
 
-      // Try reverse geocoding to get a nice city name
-      const geocode = await Location.reverseGeocodeAsync(coords);
-      if (geocode && geocode.length > 0) {
-        const city = geocode[0].city || geocode[0].subregion || geocode[0].region || 'Ma Position';
+      // Reverse geocoding is only there to put a nice city name on the coords.
+      // It goes through a Play Services backend that regularly times out, so it
+      // gets its own catch: losing the label must never cost us the fix itself.
+      try {
+        const geocode = await Location.reverseGeocodeAsync(coords);
+        const city =
+          geocode?.[0]?.city || geocode?.[0]?.subregion || geocode?.[0]?.region || 'Ma Position';
         setUserLocationName(city);
-      } else {
+      } catch (error) {
+        console.warn('Reverse geocoding failed, keeping the GPS position unnamed:', error);
         setUserLocationName('Ma Position');
       }
     } catch (error) {
@@ -280,16 +690,27 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       setUserLocationName(DEFAULT_LOCATION_NAME);
     } finally {
       setIsLocating(false);
+      // Se déclenche sur les 3 issues possibles (accordé, refusé, erreur) : le point unique
+      // qui dit "on a fini d'essayer, on sait maintenant où charger les randos".
+      setHasResolvedLocationOnce(true);
     }
   };
 
-  // Automatically fetch hikes and the user's location on startup
+  // On attend la réponse du GPS avant de charger la moindre rando — pas de Paris par
+  // défaut pendant l'attente. Si la position échoue vraiment, refreshUserLocation
+  // retombe elle-même sur Paris, et c'est cette valeur qui sera alors chargée.
   useEffect(() => {
     Promise.resolve().then(() => {
-      loadHikes();
       refreshUserLocation();
     });
   }, []);
+
+  // Ne charge qu'une fois la position résolue (succès ou repli Paris après échec) —
+  // et recharge si elle change ensuite au point de sortir de la zone déjà couverte.
+  useEffect(() => {
+    if (!hasResolvedLocationOnce) return;
+    ensureHikesRadius(userLocation, DEFAULT_RADIUS_KM);
+  }, [userLocation, hasResolvedLocationOnce, ensureHikesRadius]);
 
   const setUserLocationManually = (coords: Coordinates, name: string) => {
     setUserLocation(coords);
@@ -344,7 +765,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
           DEFAULT_COORDS.longitude
         ) < 15;
 
-      const trainMins = rando?.trainDurationMinutes ?? (rando as any)?.duration_minutes ?? 35;
+      const trainMins = rando?.trainDurationMinutes ?? 35;
 
       if (nearParis) {
         return {
@@ -354,7 +775,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         };
       }
 
-      // Otherwise calculate a dynamic time: ~1.5 mins per kilometer + 10 mins train buffer
+      // Otherwise calculate a dynamic time: ~1.4 mins per kilometer + 12 mins train buffer
       // Cap at minimum 15 mins and maximum 180 mins
       const durationMinutes = Math.max(15, Math.min(180, Math.round(distanceKm * 1.4 + 12)));
 
@@ -412,7 +833,9 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   const filteredHikes = useMemo(() => {
     let filtered = hikes.filter((rando) => {
       // 1. Text Search query (title, location, startStation, endStation)
-      if (searchQuery) {
+      // Skipped once a map area is active: the user has explicitly picked a
+      // zone on the map, which supersedes whatever text query got them there.
+      if (searchQuery && !isMapAreaActive) {
         const query = searchQuery.toLowerCase().trim();
         const locName = userLocationName.toLowerCase().trim();
         const isUserLocationSearch =
@@ -423,8 +846,8 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
         if (isUserLocationSearch) {
           // Filter hikes within 75 km of user's location
-          const randoLat = rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? DEFAULT_COORDS.latitude;
-          const randoLng = rando?.startStationCoords?.longitude ?? (rando as any)?.start_lng ?? DEFAULT_COORDS.longitude;
+          const randoLat = rando?.start_lat ?? rando?.startStationCoords?.latitude ?? DEFAULT_COORDS.latitude;
+          const randoLng = rando?.start_lng ?? rando?.startStationCoords?.longitude ?? DEFAULT_COORDS.longitude;
           const dist = calculateDistanceKm(
             userLocation?.latitude ?? DEFAULT_COORDS.latitude,
             userLocation?.longitude ?? DEFAULT_COORDS.longitude,
@@ -444,19 +867,25 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
       // 2. Difficulty
       if (selectedDifficulties.length > 0) {
-        if (!selectedDifficulties.includes(rando.difficulty)) return false;
+        const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        const hasMatch = selectedDifficulties.some((d) => {
+          const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          return randoDiffNorm.includes(dNorm) || dNorm.includes(randoDiffNorm);
+        });
+        if (!hasMatch) return false;
       }
 
       // 3. Hike Distance
       if (maxDistance !== null) {
-        const distNum = parseFloat(rando.distance);
+        const distNum = (rando as any).distance_km ?? parseFloat(rando.distance);
         if (!isNaN(distNum) && distNum > maxDistance) return false;
       }
 
       // 4. Hike Elevation
       if (maxElevation !== null) {
-        const elevNum = parseInt(rando.elevation.replace(/[^0-9]/g, ''), 10);
-        if (!isNaN(elevNum) && elevNum > maxElevation) return false;
+        const elevMatch = rando.elevation ? rando.elevation.match(/\d+/) : null;
+        const elevNum = (rando as any).elevation_gain_m ?? (elevMatch ? parseInt(elevMatch[0], 10) : 0);
+        if (elevNum > maxElevation) return false;
       }
 
       // 5. Train Duration (Transit time)
@@ -486,23 +915,6 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         if (!hasMatch) return false;
       }
 
-      // 10. Search radius around the user's location
-      if (searchRadiusKm !== null) {
-        const randoLat =
-          rando?.startStationCoords?.latitude ?? (rando as any)?.start_lat ?? DEFAULT_COORDS.latitude;
-        const randoLng =
-          rando?.startStationCoords?.longitude ??
-          (rando as any)?.start_lng ??
-          DEFAULT_COORDS.longitude;
-        const dist = calculateDistanceKm(
-          userLocation?.latitude ?? DEFAULT_COORDS.latitude,
-          userLocation?.longitude ?? DEFAULT_COORDS.longitude,
-          randoLat,
-          randoLng
-        );
-        if (dist > searchRadiusKm) return false;
-      }
-
       return true;
     });
 
@@ -527,6 +939,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   }, [
     hikes,
     searchQuery,
+    isMapAreaActive,
     userLocation,
     userLocationName,
     selectedDifficulties,
@@ -537,7 +950,6 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     kidsFriendly,
     selectedActivityTypes,
     selectedPointsOfInterest,
-    searchRadiusKm,
     getTransitInfo,
   ]);
 
@@ -578,11 +990,24 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         setSelectedPointsOfInterest,
         searchRadiusKm,
         setSearchRadiusKm,
+        mapSearchRadiusKm,
+        setMapSearchRadiusKm,
+        isMapAreaActive,
+        setIsMapAreaActive,
+        setMapSearchArea,
+        resetToUserLocationRadius,
+        ensureHikesRadius,
         clearAllFilters,
         activeFiltersCount,
         filteredHikes,
         recentSearches,
         addRecentSearch,
+        favoriteHikeIds,
+        favoriteSavedAt,
+        isFavorite,
+        toggleFavorite,
+        isLoadingFavorites,
+        refreshFavorites: loadFavorites,
       }}>
       {children}
     </AdventureContext.Provider>

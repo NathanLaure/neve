@@ -3,10 +3,12 @@ import React, {
   useImperativeHandle,
   useRef,
   useCallback,
+  useEffect,
   useMemo,
+  useState,
   ReactNode,
 } from 'react';
-import { StyleSheet, Text, View, Pressable, StyleProp, ViewStyle } from 'react-native';
+import { BackHandler, StyleSheet, Text, View, Pressable, StyleProp, ViewStyle } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   BottomSheetModal,
@@ -59,6 +61,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
   const modalRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     present: () => modalRef.current?.present(),
@@ -67,11 +70,28 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
 
   const memoizedSnapPoints = useMemo(() => snapPoints, [snapPoints]);
 
+  const handleChange = useCallback((index: number) => {
+    setIsOpen(index >= 0);
+  }, []);
+
   const handleDismiss = useCallback(() => {
+    setIsOpen(false);
     if (onClose) {
       onClose();
     }
   }, [onClose]);
+
+  // Retour système (Android) : referme la feuille au lieu de quitter l'écran derrière.
+  // Le listener n'est monté que pendant l'ouverture, sinon il capterait le back de
+  // l'écran hôte. No-op sur iOS, où BackHandler n'émet jamais.
+  useEffect(() => {
+    if (!isOpen) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      modalRef.current?.dismiss();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [isOpen]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -107,6 +127,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
       snapPoints={memoizedSnapPoints}
       enablePanDownToClose={enablePanDownToClose}
       enableDynamicSizing={enableDynamicSizing}
+      onChange={handleChange}
       onDismiss={handleDismiss}
       backdropComponent={renderBackdrop}
       handleIndicatorStyle={[styles.handle, { backgroundColor: theme.tabIconDefault }]}
@@ -189,7 +210,7 @@ const styles = StyleSheet.create({
   },
   heading: {
     fontFamily: 'BricolageGrotesque-SemiBold',
-    fontSize: 20,
+    fontSize: 24,
     lineHeight: 30,
   },
 });

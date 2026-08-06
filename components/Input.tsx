@@ -25,6 +25,11 @@ export interface InputProps extends TextInputProps {
   isPassword?: boolean;
   containerStyle?: ViewStyle;
   inputStyle?: TextStyle;
+  /**
+   * Overrides the field's background. The floating label badge picks it up too, so it
+   * stays flush with the field instead of showing the screen background behind it.
+   */
+  fieldBackground?: string;
 }
 
 export const Input = forwardRef<TextInput, InputProps>(
@@ -46,6 +51,7 @@ export const Input = forwardRef<TextInput, InputProps>(
       onFocus,
       onBlur,
       placeholder,
+      fieldBackground,
       ...textInputProps
     },
     ref
@@ -57,6 +63,9 @@ export const Input = forwardRef<TextInput, InputProps>(
 
     const hasValue = Boolean(value && value.length > 0);
     const isFloating = isFocused || hasValue;
+    // Sans label flottant, rien n'occupe l'intérieur du champ au repos : le placeholder
+    // doit alors rester visible en permanence (sinon le champ paraît vide).
+    const hasFloatingLabel = Boolean(label && variant === 'outlined');
 
     const animatedIsFocused = useRef(new Animated.Value(isFloating ? 1 : 0)).current;
 
@@ -113,9 +122,12 @@ export const Input = forwardRef<TextInput, InputProps>(
       outputRange: [icon ? 44 : 16, 12],
     });
 
+    const containerBackground =
+      fieldBackground ?? (variant === 'outlined' ? 'transparent' : theme.card);
+
     const floatingBgColor = animatedIsFocused.interpolate({
       inputRange: [0, 1],
-      outputRange: ['transparent', theme.background],
+      outputRange: ['transparent', fieldBackground ?? theme.background],
     });
 
     return (
@@ -128,7 +140,7 @@ export const Input = forwardRef<TextInput, InputProps>(
           style={[
             styles.inputContainer,
             {
-              backgroundColor: variant === 'outlined' ? 'transparent' : theme.card,
+              backgroundColor: containerBackground,
               borderColor,
               borderWidth: isFocused || isSuccess ? 2 : 1.5,
             },
@@ -166,7 +178,7 @@ export const Input = forwardRef<TextInput, InputProps>(
             onChangeText={onChangeText}
             secureTextEntry={isPassword ? secureText : textInputProps.secureTextEntry}
             style={[styles.input, { color: theme.text }, inputStyle, style]}
-            placeholder={isFloating ? placeholder : undefined}
+            placeholder={!hasFloatingLabel || isFloating ? placeholder : undefined}
             placeholderTextColor={theme.textMuted}
             onFocus={handleFocus}
             onBlur={handleBlur}

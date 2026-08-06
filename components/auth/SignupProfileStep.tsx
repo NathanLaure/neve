@@ -46,7 +46,7 @@ export function SignupProfileStep({
           Parlez-nous un peu de vous
         </Text>
         <Text style={[styles.headingSubtitle, { color: theme.textMuted }]}>
-          Ces informations nous permettent de personnaliser votre expérience d'aventure Névé.
+          Ces informations nous permettent de personnaliser votre expérience d&apos;aventure Névé.
         </Text>
       </View>
 

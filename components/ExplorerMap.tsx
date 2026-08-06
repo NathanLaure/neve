@@ -8,6 +8,13 @@ import Colors from '@/constants/Colors';
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 Mapbox.setAccessToken(MAPBOX_TOKEN);
 
+export interface BoundingBox {
+  swLat: number;
+  swLng: number;
+  neLat: number;
+  neLng: number;
+}
+
 export type MapStyleType = 'default' | 'satellite';
 
 interface ExplorerMapProps {
@@ -17,8 +24,14 @@ interface ExplorerMapProps {
   selectedHikeId: string | null;
   onSelectHike?: (id: string) => void;
   onBearingChange?: (bearing: number) => void;
+  onCameraChangeComplete?: (
+    center: { latitude: number; longitude: number },
+    zoom: number,
+    bounds: BoundingBox | null
+  ) => void;
   mapStyle?: MapStyleType;
   showGpxTrace?: boolean;
+  initialZoomLevel?: number;
   style?: any;
 }
 
@@ -44,8 +57,10 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     selectedHikeId,
     onSelectHike,
     onBearingChange,
+    onCameraChangeComplete,
     mapStyle = 'default',
     showGpxTrace = false,
+    initialZoomLevel = 11.5,
     style,
   },
   ref
@@ -57,21 +72,38 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
   const safeUserLat = userLocation?.latitude ?? DEFAULT_LAT;
   const safeUserLng = userLocation?.longitude ?? DEFAULT_LNG;
 
+  // Tracks camera moves we trigger ourselves (compass reset, locate button,
+  // cluster taps, carousel-driven flyTo) so onCameraChangeComplete only fires
+  // for camera changes the user actually drove by hand.
+  const isProgrammaticMoveRef = useRef(false);
+  const programmaticMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const setCameraProgrammatically = (
+    config: { centerCoordinate?: number[]; zoomLevel?: number; heading?: number },
+    duration: number
+  ) => {
+    isProgrammaticMoveRef.current = true;
+    if (programmaticMoveTimeoutRef.current) clearTimeout(programmaticMoveTimeoutRef.current);
+    programmaticMoveTimeoutRef.current = setTimeout(() => {
+      isProgrammaticMoveRef.current = false;
+    }, duration + 150);
+    cameraRef.current?.setCamera({ ...config, animationDuration: duration } as Mapbox.CameraStop);
+  };
+
   useImperativeHandle(ref, () => ({
     resetNorth: () => {
-      cameraRef.current?.setCamera({
-        heading: 0,
-        animationDuration: 500,
-      });
+      setCameraProgrammatically({ heading: 0 }, 500);
     },
     // Recenters the camera on the position already tracked in the background —
     // it does not request a new GPS fix.
     centerOnUser: () => {
-      cameraRef.current?.setCamera({
-        centerCoordinate: [safeUserLng, safeUserLat],
-        zoomLevel: 12,
-        animationDuration: 600,
-      });
+      setCameraProgrammatically(
+        {
+          centerCoordinate: [safeUserLng, safeUserLat],
+          zoomLevel: initialZoomLevel,
+        },
+        600
+      );
     },
   }));
 
@@ -85,12 +117,8 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
   // Convert hikes into a GeoJSON FeatureCollection for native clustering
   const hikesGeoJSON = useMemo<GeoJSON.FeatureCollection<GeoJSON.Point>>(() => {
     const features: GeoJSON.Feature<GeoJSON.Point>[] = hikes.map((hike) => {
-      const lng = hike.startStationCoords
-        ? hike.startStationCoords.longitude
-        : (hike as any).start_lng || DEFAULT_LNG;
-      const lat = hike.startStationCoords
-        ? hike.startStationCoords.latitude
-        : (hike as any).start_lat || DEFAULT_LAT;
+      const lat = (hike as any).start_lat ?? hike.startStationCoords?.latitude ?? DEFAULT_LAT;
+      const lng = (hike as any).start_lng ?? hike.startStationCoords?.longitude ?? DEFAULT_LNG;
 
       return {
         type: 'Feature',
@@ -151,34 +179,35 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
 
     if (feature.properties?.cluster) {
       // Zoom into cluster
-      const clusterId = feature.properties.cluster_id;
-      // Mapbox handles cluster zoom via camera
       const coords = feature.geometry.coordinates;
-      cameraRef.current?.setCamera({
-        centerCoordinate: coords,
-        zoomLevel: 13,
-        animationDuration: 500,
-      });
+      setCameraProgrammatically({ centerCoordinate: coords, zoomLevel: 13 }, 500);
     } else if (feature.properties?.id) {
       onSelectHike?.(feature.properties.id);
     }
   };
 
+  const hasCenteredInitialLocationRef = useRef(false);
+
+  // Smoothly center camera on user's real GPS position once resolved at startup
+  useEffect(() => {
+    if (!userLocation || hasCenteredInitialLocationRef.current) return;
+    hasCenteredInitialLocationRef.current = true;
+    setCameraProgrammatically(
+      {
+        centerCoordinate: [userLocation.longitude, userLocation.latitude],
+        zoomLevel: initialZoomLevel,
+      },
+      700
+    );
+  }, [userLocation, initialZoomLevel]);
+
   // Center camera when selected hike changes
   useEffect(() => {
     if (!selectedHike) return;
-    const lng = selectedHike.startStationCoords
-      ? selectedHike.startStationCoords.longitude
-      : (selectedHike as any).start_lng || DEFAULT_LNG;
-    const lat = selectedHike.startStationCoords
-      ? selectedHike.startStationCoords.latitude
-      : (selectedHike as any).start_lat || DEFAULT_LAT;
+    const lat = (selectedHike as any).start_lat ?? selectedHike.startStationCoords?.latitude ?? DEFAULT_LAT;
+    const lng = (selectedHike as any).start_lng ?? selectedHike.startStationCoords?.longitude ?? DEFAULT_LNG;
 
-    cameraRef.current?.setCamera({
-      centerCoordinate: [lng, lat],
-      zoomLevel: 12.5,
-      animationDuration: 800,
-    });
+    setCameraProgrammatically({ centerCoordinate: [lng, lat], zoomLevel: 12.5 }, 800);
   }, [selectedHikeId]);
 
   return (
@@ -194,12 +223,42 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
           if (state.properties?.heading !== undefined) {
             onBearingChange?.(state.properties.heading);
           }
+          if (state.properties?.center && !isProgrammaticMoveRef.current) {
+            const [lng, lat] = state.properties.center;
+            const zoom = state.properties.zoom ?? 10;
+
+            let bounds: BoundingBox | null = null;
+            const b = state.properties.bounds;
+            if (b) {
+              if (b.ne && b.sw) {
+                bounds = {
+                  neLng: b.ne[0],
+                  neLat: b.ne[1],
+                  swLng: b.sw[0],
+                  swLat: b.sw[1],
+                };
+              } else if (Array.isArray(b) && b.length === 2) {
+                const p1 = b[0];
+                const p2 = b[1];
+                if (Array.isArray(p1) && Array.isArray(p2)) {
+                  bounds = {
+                    swLng: Math.min(p1[0], p2[0]),
+                    neLng: Math.max(p1[0], p2[0]),
+                    swLat: Math.min(p1[1], p2[1]),
+                    neLat: Math.max(p1[1], p2[1]),
+                  };
+                }
+              }
+            }
+
+            onCameraChangeComplete?.({ latitude: lat, longitude: lng }, zoom, bounds);
+          }
         }}>
         <Mapbox.Camera
           ref={cameraRef}
           defaultSettings={{
             centerCoordinate: [safeUserLng, safeUserLat],
-            zoomLevel: 10,
+            zoomLevel: initialZoomLevel,
           }}
         />
 

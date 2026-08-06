@@ -33,3 +33,7 @@ supabase/
 .idea/
 
 data/
+.claude/
+scripts/
+.env*.local
+.mcp.json

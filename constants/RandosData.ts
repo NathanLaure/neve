@@ -16,6 +16,8 @@ export interface RandoData {
   id: string;
   title: string;
   imageUrl: string;
+  start_lat?: number;
+  start_lng?: number;
   startStation: string;
   startStationCoords: { latitude: number; longitude: number };
   endStation: string;

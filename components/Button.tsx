@@ -245,14 +245,14 @@ const getButtonStyles = (
     default:
       return {
         button: {
-          backgroundColor: theme.card,
+          backgroundColor: theme.background,
           height: size === 'small' ? 36 : 48,
           borderRadius,
           paddingHorizontal: size === 'small' ? 16 : 24,
           paddingVertical: size === 'small' ? 8 : 12,
         },
         text: {
-          color: theme.buttonTextOnBrand || '#FFFFFF',
+          color: theme.text || '#FFFFFF',
           fontFamily: 'BricolageGrotesque-Medium',
           fontSize: size === 'small' ? 14 : 16,
           fontWeight: '600' as const,

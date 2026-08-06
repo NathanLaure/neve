@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   FlatList,
   StyleSheet,
@@ -13,16 +13,23 @@ import {
   useWindowDimensions,
   Dimensions,
   Image,
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  ListRenderItemInfo,
+  BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSharedValue } from 'react-native-reanimated';
+import { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
+import * as Location from 'expo-location';
+import { RotateCcw } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
 import { useAdventure } from '@/context/AdventureContext';
-import ExplorerMap, { type ExplorerMapRef } from '@/components/ExplorerMap';
+import { type RandoData } from '@/constants/RandosData';
+import ExplorerMap, { type ExplorerMapRef, type BoundingBox } from '@/components/ExplorerMap';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
@@ -30,6 +37,7 @@ import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/Fil
 import PoiChipsBar from '@/components/PoiChipsBar';
 import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import Fab from '@/components/Fab';
 
 export type MapStyleType = 'default' | 'satellite';
 
@@ -45,6 +53,20 @@ const formatHikeDuration = (hours: number) => {
   const m = Math.round((hours - h) * 60);
   return m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h`;
 };
+
+function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
 
 export default function SearchResultsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -69,12 +91,17 @@ export default function SearchResultsScreen() {
     isLoadingHikes,
     filteredHikes,
     searchQuery,
+    setSearchQuery,
     selectedDifficulties,
     maxTrainDuration,
     maxDistance,
     maxElevation,
     activeFiltersCount,
     clearAllFilters,
+    searchRadiusKm,
+    isMapAreaActive,
+    setMapSearchArea,
+    resetToUserLocationRadius,
   } = useAdventure();
 
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
@@ -111,7 +138,202 @@ export default function SearchResultsScreen() {
   // re-rendering this screen that often made the compass needle visibly lag.
   const compassBearing = useSharedValue(0);
 
-  const filteredRandos = filteredHikes;
+  const [showSearchInAreaBtn, setShowSearchInAreaBtn] = useState(false);
+  const [isSearchingArea, setIsSearchingArea] = useState(false);
+  const [pendingSearchCenter, setPendingSearchCenter] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [pendingSearchZoom, setPendingSearchZoom] = useState<number>(10);
+  const [pendingSearchBounds, setPendingSearchBounds] = useState<BoundingBox | null>(null);
+  const [mapAreaCenter, setMapAreaCenter] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [mapAreaZoom, setMapAreaZoom] = useState<number | null>(null);
+  const [mapAreaBounds, setMapAreaBounds] = useState<BoundingBox | null>(null);
+
+  const lastSearchedCoordsRef = useRef<{ latitude: number; longitude: number }>({
+    latitude: userLocation?.latitude ?? 48.8566,
+    longitude: userLocation?.longitude ?? 2.3522,
+  });
+  const lastSearchedZoomRef = useRef<number>(10);
+  const isInitialAreaSetRef = useRef(false);
+  const hasLeftFirstCarouselCardRef = useRef(false);
+
+  const filteredRandos = React.useMemo(() => {
+    if (!isMapAreaActive) {
+      const activeRadius = searchRadiusKm ?? 5;
+      return filteredHikes.filter((rando) => {
+        const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+        const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+        const dist = calculateDistanceKm(
+          userLocation?.latitude ?? 48.8566,
+          userLocation?.longitude ?? 2.3522,
+          randoLat,
+          randoLng
+        );
+        return dist <= activeRadius;
+      });
+    }
+
+    if (!mapAreaCenter && !mapAreaBounds) return filteredHikes;
+
+    if (mapAreaBounds) {
+      // Strict screen bounding box filtering!
+      return filteredHikes.filter((rando) => {
+        const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+        const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+        return (
+          randoLat >= mapAreaBounds.swLat &&
+          randoLat <= mapAreaBounds.neLat &&
+          randoLng >= mapAreaBounds.swLng &&
+          randoLng <= mapAreaBounds.neLng
+        );
+      });
+    }
+
+    // Fallback: calculate dynamic radius based on map zoom level
+    let radius = 60;
+    if (mapAreaZoom != null) {
+      if (mapAreaZoom >= 15) radius = 3;
+      else if (mapAreaZoom >= 14) radius = 6;
+      else if (mapAreaZoom >= 13) radius = 12;
+      else if (mapAreaZoom >= 12) radius = 22;
+      else if (mapAreaZoom >= 11) radius = 40;
+      else if (mapAreaZoom >= 10) radius = 70;
+      else radius = 120;
+    } else if (searchRadiusKm !== null) {
+      radius = searchRadiusKm;
+    }
+
+    return filteredHikes.filter((rando) => {
+      const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+      const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+      const dist = calculateDistanceKm(
+        mapAreaCenter!.latitude,
+        mapAreaCenter!.longitude,
+        randoLat,
+        randoLng
+      );
+      return dist <= radius;
+    });
+  }, [filteredHikes, mapAreaCenter, mapAreaBounds, mapAreaZoom, searchRadiusKm, isMapAreaActive, userLocation]);
+
+  const handleCameraChangeComplete = React.useCallback(
+    (center: { latitude: number; longitude: number }, zoom: number, bounds: BoundingBox | null) => {
+      // Automatically set initial screen bounds on app startup
+      if (!isInitialAreaSetRef.current) {
+        if (bounds || center) {
+          isInitialAreaSetRef.current = true;
+          setMapAreaCenter(center);
+          setMapAreaZoom(zoom);
+          setMapAreaBounds(bounds);
+          lastSearchedCoordsRef.current = center;
+          lastSearchedZoomRef.current = zoom;
+          return;
+        }
+      }
+
+      const dist = calculateDistanceKm(
+        lastSearchedCoordsRef.current.latitude,
+        lastSearchedCoordsRef.current.longitude,
+        center.latitude,
+        center.longitude
+      );
+      const zoomDiff = Math.abs(lastSearchedZoomRef.current - zoom);
+
+      if (dist > 0.8 || zoomDiff > 0.4) {
+        setPendingSearchCenter(center);
+        setPendingSearchZoom(zoom);
+        setPendingSearchBounds(bounds);
+        setShowSearchInAreaBtn(true);
+      }
+    },
+    []
+  );
+
+  const handleSearchInThisArea = () => {
+    if (!pendingSearchCenter) return;
+
+    // Calculate targeted radius in km based on the visible map screen area
+    let estimatedRadiusKm = 20;
+    if (pendingSearchBounds) {
+      const distKm = calculateDistanceKm(
+        pendingSearchCenter.latitude,
+        pendingSearchCenter.longitude,
+        pendingSearchBounds.neLat,
+        pendingSearchBounds.neLng
+      );
+      estimatedRadiusKm = Math.max(1, Math.round(distKm));
+    } else if (pendingSearchZoom != null) {
+      if (pendingSearchZoom >= 15) estimatedRadiusKm = 3;
+      else if (pendingSearchZoom >= 14) estimatedRadiusKm = 6;
+      else if (pendingSearchZoom >= 13) estimatedRadiusKm = 12;
+      else if (pendingSearchZoom >= 12) estimatedRadiusKm = 22;
+      else if (pendingSearchZoom >= 11) estimatedRadiusKm = 40;
+      else if (pendingSearchZoom >= 10) estimatedRadiusKm = 70;
+      else estimatedRadiusKm = 120;
+    }
+
+    setMapSearchArea(estimatedRadiusKm);
+    setIsSearchingArea(true);
+    setShowSearchInAreaBtn(false);
+    hasLeftFirstCarouselCardRef.current = false;
+    // Smooth transition: carousel animates out -> new area filters -> new carousel animates in
+    setTimeout(() => {
+      setMapAreaCenter(pendingSearchCenter);
+      setMapAreaZoom(pendingSearchZoom);
+      setMapAreaBounds(pendingSearchBounds);
+      lastSearchedCoordsRef.current = pendingSearchCenter;
+      lastSearchedZoomRef.current = pendingSearchZoom;
+      setIsSearchingArea(false);
+    }, 350);
+
+    // Relabel the search bar to reflect the newly picked zone instead of the
+    // stale text query that got the user to this screen.
+    setSearchQuery('Zone sélectionnée');
+    Location.reverseGeocodeAsync(pendingSearchCenter)
+      .then((geocode) => {
+        const place = geocode?.[0]?.city || geocode?.[0]?.subregion || geocode?.[0]?.region;
+        if (place) setSearchQuery(place);
+      })
+      .catch((error) => {
+        console.warn('Reverse geocoding failed for the selected map area:', error);
+      });
+  };
+
+  // Reset map area bounds when user selects 'Position actuelle'
+  React.useEffect(() => {
+    if (searchRadiusKm === null && !isMapAreaActive) {
+      setMapAreaCenter(null);
+      setMapAreaBounds(null);
+      setMapAreaZoom(null);
+      if (userLocation) {
+        mapRef.current?.centerOnUser();
+      }
+    }
+  }, [searchRadiusKm, isMapAreaActive, userLocation]);
+
+  const showCarousel = !isSearchingArea && filteredRandos.length > 0;
+
+  const animatedFabStyle = useAnimatedStyle(() => ({
+    bottom: withTiming(showCarousel ? 217 : 100, {
+      duration: showCarousel ? 150 : 250,
+    }),
+  }));
+
+  // Leaving this screen — whether via the searchbar's back arrow or the
+  // hardware/gesture back action — drops the location search and every filter,
+  // so the next visit to results starts from a clean slate.
+  const handleBackReset = useCallback(() => {
+    clearAllFilters();
+    resetToUserLocationRadius();
+  }, [clearAllFilters, resetToUserLocationRadius]);
+
+  useFocusEffect(
+    useCallback(() => {
+      const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+        handleBackReset();
+        return false;
+      });
+      return () => subscription.remove();
+    }, [handleBackReset])
+  );
 
   const getSearchSummaryText = () => {
     if (searchQuery) return searchQuery;
@@ -136,11 +358,64 @@ export default function SearchResultsScreen() {
     return '';
   };
 
-  const handleSelectHike = (id: string) => {
-    setSelectedHikeId(id);
-    const rando = hikes.find((r) => r.id === id);
-    if (rando) {
-      router.push(`/rando/${id}`);
+  const handleSelectHike = useCallback(
+    (id?: string) => {
+      if (!id) return;
+      setSelectedHikeId(id);
+      const rando = hikes.find((r) => r.id === id);
+      if (rando) {
+        router.push(`/rando/${id}`);
+      }
+    },
+    [hikes, router]
+  );
+
+  // Stable identity (deps exclude selectedHikeId) so selection changes don't force
+  // every carousel card to re-render — React.memo on RandoCard can then skip them.
+  const renderCarouselItem = useCallback(
+    ({ item }: ListRenderItemInfo<RandoData>) => {
+      const transitInfo = getTransitInfo(item);
+      return (
+        <RandoCard
+          id={item.id}
+          horizontal
+          title={item.title}
+          imageUrl={item.imageUrl}
+          departureStation={item.startStation}
+          distance={item.distance}
+          weatherTemp={item.weatherTemp}
+          weatherIcon={item.weatherIcon}
+          trainDuration={transitInfo.durationText}
+          trainType={item.trainType}
+          difficulty={item.difficulty}
+          elevation={item.elevation}
+          onPress={handleSelectHike}
+          location={item.location}
+          duration={formatHikeDuration(item.durationHours)}
+          width={cardWidth}
+        />
+      );
+    },
+    [getTransitInfo, handleSelectHike, cardWidth]
+  );
+
+  // As the carousel snaps to a card, zoom the map onto that hike without navigating away.
+  // The carousel opens on card 0: don't zoom there until the user has actually scrolled
+  // away from it by hand at least once (coming back to it afterwards is fine).
+  const handleCarouselScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const offsetX = event.nativeEvent.contentOffset.x;
+    const index = Math.round(offsetX / (cardWidth + 12));
+    const clampedIndex = Math.max(0, Math.min(index, filteredRandos.length - 1));
+
+    if (clampedIndex > 0) {
+      hasLeftFirstCarouselCardRef.current = true;
+    } else if (!hasLeftFirstCarouselCardRef.current) {
+      return;
+    }
+
+    const hike = filteredRandos[clampedIndex];
+    if (hike && hike.id !== selectedHikeId) {
+      setSelectedHikeId(hike.id);
     }
   };
 
@@ -162,12 +437,13 @@ export default function SearchResultsScreen() {
           onBearingChange={(bearing) => {
             compassBearing.value = bearing;
           }}
+          onCameraChangeComplete={handleCameraChangeComplete}
           mapStyle={mapStyle}
           style={styles.mapContainerFullScreen}
         />
 
         {/* Subtle dark gradient overlay at the bottom of the map */}
-        {filteredRandos.length > 0 && (
+        {showCarousel && (
           <LinearGradient
             colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.28)']}
             style={styles.mapBottomOverlay}
@@ -182,6 +458,7 @@ export default function SearchResultsScreen() {
             router.push({ pathname: '/search', params: { fromResults: 'true' } });
           }}
           onBack={() => {
+            handleBackReset();
             router.back();
           }}
           onPressFilter={() => filtersSheetRef.current?.present()}
@@ -269,12 +546,21 @@ export default function SearchResultsScreen() {
           onPressLocate={() => mapRef.current?.centerOnUser()}
           isLocating={isLocating}
           style={{
-            bottom: filteredRandos.length > 0 ? 240 : 96,
+            bottom: showCarousel ? 240 : 96,
           }}
         />
 
+        {/* Floating "Rechercher ici" FAB — visible after the user pans/zooms the map */}
+        <Fab
+          visible={showSearchInAreaBtn}
+          text="Rechercher dans cette zone"
+          icon={<RotateCcw size={18} color="#FFFFFF" />}
+          onPress={handleSearchInThisArea}
+          style={animatedFabStyle}
+        />
+
         {/* Horizontal Hikes Carousel "A proximité" */}
-        {filteredRandos.length > 0 && (
+        {showCarousel && (
           <View style={styles.carouselContainer}>
             <FlatList
               data={filteredRandos}
@@ -285,30 +571,9 @@ export default function SearchResultsScreen() {
               snapToInterval={cardWidth + 12}
               decelerationRate="fast"
               snapToAlignment="start"
+              onMomentumScrollEnd={handleCarouselScrollEnd}
               ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
-              renderItem={({ item }) => {
-                const transitInfo = getTransitInfo(item);
-                return (
-                  <RandoCard
-                    id={item.id}
-                    horizontal
-                    title={item.title}
-                    imageUrl={item.imageUrl}
-                    departureStation={item.startStation}
-                    distance={item.distance}
-                    weatherTemp={item.weatherTemp}
-                    weatherIcon={item.weatherIcon}
-                    trainDuration={transitInfo.durationText}
-                    trainType={item.trainType}
-                    difficulty={item.difficulty}
-                    elevation={item.elevation}
-                    onPress={() => handleSelectHike(item.id)}
-                    location={item.location}
-                    duration={formatHikeDuration(item.durationHours)}
-                    width={cardWidth}
-                  />
-                );
-              }}
+              renderItem={renderCarouselItem}
             />
           </View>
         )}
@@ -317,7 +582,7 @@ export default function SearchResultsScreen() {
         <HikesBottomSheet
           ref={bottomSheetRef}
           hikes={filteredRandos}
-          isLoadingHikes={isLoadingHikes}
+          isLoadingHikes={isLoadingHikes || isSearchingArea}
           getTransitInfo={getTransitInfo}
           onSelectHike={handleSelectHike}
           onChange={setSheetIndex}

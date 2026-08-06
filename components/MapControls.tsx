@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, Platform, ActivityIndicator, ViewStyle } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, ActivityIndicator, ViewStyle, StyleProp } from 'react-native';
 import { Layers, LocateFixed } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
@@ -17,7 +17,7 @@ interface MapControlsProps {
   onPressLayers: () => void;
   onPressLocate: () => void;
   isLocating: boolean;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
 }
 
 /**
@@ -51,7 +51,7 @@ export default function MapControls({
   }));
 
   return (
-    <View style={[styles.container, style]}>
+    <Animated.View style={[styles.container, style]}>
       {/* Compass — separate circle */}
       <Pressable
         onPress={onPressCompass}
@@ -82,7 +82,7 @@ export default function MapControls({
         </Pressable>
 
         {/* Separator */}
-        <View style={[styles.pillSeparator, { backgroundColor: theme.border }]} />
+        <View style={[styles.pillSeparator, { backgroundColor: theme.borderStrong }]} />
 
         {/* Locate (bottom) */}
         <Pressable onPress={onPressLocate} style={styles.pillButton}>
@@ -93,7 +93,7 @@ export default function MapControls({
           )}
         </Pressable>
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   pillSeparator: {
-    height: StyleSheet.hairlineWidth,
+    height: 1.5,
     width: 32,
     alignSelf: 'center',
   },

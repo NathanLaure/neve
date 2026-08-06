@@ -7,6 +7,8 @@ import { useAdventure } from '@/context/AdventureContext';
 import Chip from '@/components/Chip';
 import RangeSlider from '@/components/RangeSlider';
 import ToggleRow from '@/components/ToggleRow';
+import CheckboxRow from '@/components/CheckboxRow';
+import Divider from '@/components/Divider';
 import { POINTS_OF_INTEREST } from '@/constants/Filters';
 
 const ACTIVITY_TYPES = [
@@ -164,52 +166,31 @@ export default function FiltersForm({
     return `${val} min`;
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Difficulty */}
-      {showDifficulties && (
+  const sections: { key: string; group: string; show: boolean; node: React.ReactNode }[] = [
+    {
+      key: 'difficulties',
+      group: 'difficulties',
+      show: showDifficulties,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>Difficulté</Text>
-          <View style={styles.chipsRow}>
-            {['Facile', 'Modéré', 'Difficile'].map((diff) => {
-              const isSelected = difficulties.includes(diff);
-              let diffStyle = {};
-              let diffTextStyle = {};
-
-              if (diff === 'Facile') {
-                diffStyle = isSelected
-                  ? { backgroundColor: theme.statusBgSuccess, borderColor: theme.statusBgSuccess }
-                  : { backgroundColor: theme.statusBgSuccessSubtle, borderColor: theme.statusBgSuccess, borderWidth: 1 };
-                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextSuccess };
-              } else if (diff === 'Modéré') {
-                diffStyle = isSelected
-                  ? { backgroundColor: theme.statusBgWarning, borderColor: theme.statusBgWarning }
-                  : { backgroundColor: theme.statusBgWarningSubtle, borderColor: theme.statusBgWarning, borderWidth: 1 };
-                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextWarning };
-              } else {
-                diffStyle = isSelected
-                  ? { backgroundColor: theme.statusBgError, borderColor: theme.statusBgError }
-                  : { backgroundColor: theme.statusBgErrorSubtle, borderColor: theme.statusBgError, borderWidth: 1 };
-                diffTextStyle = { color: isSelected ? '#FFFFFF' : theme.statusTextError };
-              }
-
-              return (
-                <Chip
-                  key={diff}
-                  text={diff}
-                  selected={isSelected}
-                  onPress={() => toggleDifficulty(diff)}
-                  style={diffStyle}
-                  textStyle={diffTextStyle}
-                />
-              );
-            })}
-          </View>
+          {['Facile', 'Modéré', 'Difficile'].map((diff, idx) => (
+            <CheckboxRow
+              key={diff}
+              title={diff}
+              value={difficulties.includes(diff)}
+              onValueChange={() => toggleDifficulty(diff)}
+              style={idx > 0 ? { marginTop: 4 } : undefined}
+            />
+          ))}
         </View>
-      )}
-
-      {/* Train Duration Slider */}
-      {showTrainRange && (
+      ),
+    },
+    {
+      key: 'trainRange',
+      group: 'ranges',
+      show: showTrainRange,
+      node: (
         <RangeSlider
           title="Temps de transport"
           subtitle={
@@ -223,10 +204,13 @@ export default function FiltersForm({
           onChange={setTrainRange}
           valueFormatter={(minVal, maxVal) => `${minVal}-${formatTrainLabel(maxVal)}`}
         />
-      )}
-
-      {/* Distance Slider */}
-      {showDistanceRange && (
+      ),
+    },
+    {
+      key: 'distanceRange',
+      group: 'ranges',
+      show: showDistanceRange,
+      node: (
         <RangeSlider
           title="Distance du parcours"
           min={0}
@@ -237,10 +221,13 @@ export default function FiltersForm({
             `${minVal}-${maxVal === 34 ? 'Toutes' : `${maxVal} km`}`
           }
         />
-      )}
-
-      {/* Elevation Slider */}
-      {showElevationRange && (
+      ),
+    },
+    {
+      key: 'elevationRange',
+      group: 'ranges',
+      show: showElevationRange,
+      node: (
         <RangeSlider
           title="Dénivelé positif"
           min={0}
@@ -251,10 +238,13 @@ export default function FiltersForm({
             `${minVal}-${maxVal === 4500 ? 'Tous' : `${maxVal} m+`}`
           }
         />
-      )}
-
-      {/* Highest Point Slider */}
-      {showHighestPointRange && (
+      ),
+    },
+    {
+      key: 'highestPointRange',
+      group: 'ranges',
+      show: showHighestPointRange,
+      node: (
         <RangeSlider
           title="Point le plus élevé"
           min={0}
@@ -265,10 +255,13 @@ export default function FiltersForm({
             `${minVal}-${maxVal === 4500 ? 'Tous' : `${maxVal} m`}`
           }
         />
-      )}
-
-      {/* Accessibility */}
-      {showAccessibility && (
+      ),
+    },
+    {
+      key: 'accessibility',
+      group: 'accessibility',
+      show: showAccessibility,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>Accessibilité</Text>
           <Text style={[styles.filterSubText, { color: theme.textMuted }]}>
@@ -334,10 +327,13 @@ export default function FiltersForm({
             style={{ marginTop: 12 }}
           />
         </View>
-      )}
-
-      {/* Activity Types Grid */}
-      {showActivityTypes && (
+      ),
+    },
+    {
+      key: 'activityTypes',
+      group: 'activityTypes',
+      show: showActivityTypes,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
             Type d’activité
@@ -356,10 +352,13 @@ export default function FiltersForm({
             })}
           </View>
         </View>
-      )}
-
-      {/* Points of interest Grid */}
-      {showPointsOfInterest && (
+      ),
+    },
+    {
+      key: 'pointsOfInterest',
+      group: 'pointsOfInterest',
+      show: showPointsOfInterest,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
             Points d’intérêts
@@ -378,10 +377,13 @@ export default function FiltersForm({
             })}
           </View>
         </View>
-      )}
-
-      {/* Route Type */}
-      {showParcoursType && (
+      ),
+    },
+    {
+      key: 'parcoursType',
+      group: 'parcoursType',
+      show: showParcoursType,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
             Type de parcours
@@ -400,10 +402,13 @@ export default function FiltersForm({
             })}
           </View>
         </View>
-      )}
-
-      {/* Frequentation */}
-      {showFrequentation && (
+      ),
+    },
+    {
+      key: 'frequentation',
+      group: 'frequentation',
+      show: showFrequentation,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
             Fréquentation
@@ -422,10 +427,13 @@ export default function FiltersForm({
             })}
           </View>
         </View>
-      )}
-
-      {/* Community Note */}
-      {showCommunityNote && (
+      ),
+    },
+    {
+      key: 'communityNote',
+      group: 'communityNote',
+      show: showCommunityNote,
+      node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>
             Note de la communauté
@@ -444,7 +452,35 @@ export default function FiltersForm({
             })}
           </View>
         </View>
-      )}
+      ),
+    },
+  ];
+
+  const groupOrder = [
+    'difficulties',
+    'ranges',
+    'accessibility',
+    'activityTypes',
+    'pointsOfInterest',
+    'parcoursType',
+    'frequentation',
+    'communityNote',
+  ];
+
+  const visibleGroups = groupOrder
+    .map((group) => sections.filter((section) => section.group === group && section.show))
+    .filter((groupSections) => groupSections.length > 0);
+
+  return (
+    <View style={styles.container}>
+      {visibleGroups.map((groupSections, idx) => (
+        <React.Fragment key={groupSections[0].key}>
+          {groupSections.map((section) => (
+            <React.Fragment key={section.key}>{section.node}</React.Fragment>
+          ))}
+          {idx < visibleGroups.length - 1 && <Divider style={styles.divider} />}
+        </React.Fragment>
+      ))}
     </View>
   );
 }
@@ -456,6 +492,9 @@ const styles = StyleSheet.create({
   filterGroup: {
     marginBottom: 28,
     width: '100%',
+  },
+  divider: {
+    marginBottom: 20,
   },
   filterGroupTitle: {
     fontFamily: 'Satoshi-Bold',
@@ -470,11 +509,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi',
     fontSize: 12,
     marginBottom: 12,
-  },
-  chipsRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 8,
   },
   chipsWrapRow: {
     flexDirection: 'row',

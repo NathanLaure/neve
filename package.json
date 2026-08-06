@@ -12,7 +12,9 @@
     "web": "expo start --web",
     "seed:hikes": "npx tsx scripts/ingest-hikes.ts",
     "seed:csv": "npx tsx scripts/ingest-csv-hikes.ts",
-    "seed:geotrek": "npx tsx scripts/ingest-geotrek-api.ts"
+    "seed:csv:idf": "npx tsx scripts/ingest-csv-hikes-idf.ts",
+    "seed:geotrek": "npx tsx scripts/ingest-geotrek-api.ts",
+    "seed:osm:idf": "npx tsx scripts/ingest-osm-overpass-idf.ts"
   },
   "dependencies": {
     "@expo/ui": "~56.0.24",
@@ -26,6 +28,7 @@
     "expo-blur": "~56.0.4",
     "expo-constants": "~56.0.22",
     "expo-font": "~56.0.6",
+    "expo-haptics": "~56.0.3",
     "expo-linear-gradient": "^56.0.4",
     "expo-linking": "~56.0.16",
     "expo-location": "~56.0.22",

@@ -10,12 +10,14 @@ import {
   useWindowDimensions,
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
-import { Star, Route, Heart, Train } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Star, Route, Heart, Train, Clock, TrendingUp } from 'lucide-react-native';
 import Tag from '@/components/Tag';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IconButton } from '@/components/IconButton';
+import { useAdventure } from '@/context/AdventureContext';
 
 export interface RandoCardProps {
   id?: string;
@@ -30,8 +32,17 @@ export interface RandoCardProps {
   trainType?: string;
   difficulty?: 'Facile' | 'Modéré' | 'Difficile';
   elevation?: string; // e.g. '+180m'
-  onPress?: () => void;
+  // Receives the card's own id: pass a stable, id-aware handler (e.g. straight
+  // from context) so this prop's identity doesn't change every render — that's
+  // what lets React.memo actually skip re-rendering unaffected cards in a list.
+  onPress?: (id?: string) => void;
+  /** compact only: long-press opens the caller's contextual actions sheet. */
+  onLongPress?: (id?: string) => void;
   horizontal?: boolean;
+  /** Compact list row (thumbnail map + meta line) — used by the Favorites screen. */
+  compact?: boolean;
+  /** compact only: ISO timestamp shown as "Ajouté le <date>". */
+  savedAt?: string;
   location?: string;
   duration?: string;
   width?: number;
@@ -44,7 +55,7 @@ const DEFAULT_IMAGE =
 
 const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
-export default function RandoCard({
+function RandoCard({
   id,
   title = 'Les Balcons de la Vallée de Chevreuse',
   imageUrl = DEFAULT_IMAGE,
@@ -58,7 +69,10 @@ export default function RandoCard({
   difficulty = 'Modéré',
   elevation = '+150m',
   onPress,
+  onLongPress,
   horizontal = false,
+  compact = false,
+  savedAt,
   location,
   duration,
   width: widthProp,
@@ -70,7 +84,8 @@ export default function RandoCard({
   const { width: windowWidth } = useWindowDimensions();
   const screenWidth = windowWidth > 0 ? windowWidth : Dimensions.get('window').width;
 
-  const [isFavorite, setIsFavorite] = useState(false);
+  const { isFavorite: isFavoriteHike, toggleFavorite } = useAdventure();
+  const isFavorite = !!id && isFavoriteHike(id);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [cardImageWidth, setCardImageWidth] = useState(0);
 
@@ -135,8 +150,8 @@ export default function RandoCard({
   };
 
   const getMapThumbnailUrl = () => {
-    const defaultLat = startStationCoords?.latitude || (gpxTrace && gpxTrace[0]?.latitude) || 44.0;
-    const defaultLon = startStationCoords?.longitude || (gpxTrace && gpxTrace[0]?.longitude) || 6.0;
+    const defaultLat = (gpxTrace && gpxTrace[0]?.latitude) || startStationCoords?.latitude || 44.0;
+    const defaultLon = (gpxTrace && gpxTrace[0]?.longitude) || startStationCoords?.longitude || 6.0;
 
     if (!MAPBOX_TOKEN) {
       return 'https://images.unsplash.com/photo-1524661135-423995f22d0b?q=80&w=200&auto=format&fit=crop';
@@ -153,38 +168,92 @@ export default function RandoCard({
     const step = Math.max(1, Math.floor(gpxTrace.length / maxPoints));
     const sampled = gpxTrace.filter((_, idx) => idx % step === 0 || idx === gpxTrace.length - 1);
 
-    const lats = sampled.map((p) => p.latitude);
-    const lons = sampled.map((p) => p.longitude);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLon = Math.min(...lons);
-    const maxLon = Math.max(...lons);
-    const centerLat = Number(((minLat + maxLat) / 2).toFixed(4));
-    const centerLon = Number(((minLon + maxLon) / 2).toFixed(4));
-
     const coordinates = sampled
       .map((p) => `[${Number(p.longitude.toFixed(4))},${Number(p.latitude.toFixed(4))}]`)
       .join(',');
 
     const geojson = `{"type":"Feature","properties":{"stroke":"#eb490b","stroke-width":3.5,"stroke-opacity":0.95},"geometry":{"type":"LineString","coordinates":[${coordinates}]}}`;
 
-    const latDiff = maxLat - minLat;
-    const lonDiff = maxLon - minLon;
-    const maxDiff = Math.max(latDiff, lonDiff);
-    let zoom = 11.5;
-    if (maxDiff > 0.15) zoom = 9.5;
-    else if (maxDiff > 0.08) zoom = 10.5;
-    else if (maxDiff > 0.04) zoom = 11.2;
-    else if (maxDiff > 0.02) zoom = 11.8;
-    else zoom = 12.2;
-
-    return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${encodeURIComponent(geojson)})/${centerLon},${centerLat},${zoom},0/120x120@2x?access_token=${MAPBOX_TOKEN}`;
+    // `auto` lets Mapbox fit the viewport to the overlay itself, so the whole trail is
+    // always framed — the previous hand-tuned zoom thresholds cropped longer routes.
+    return `https://api.mapbox.com/styles/v1/${styleId}/static/geojson(${encodeURIComponent(geojson)})/auto/120x120@2x?padding=10&access_token=${MAPBOX_TOKEN}`;
   };
 
   const handleFavoritePress = (e: any) => {
     e.stopPropagation();
-    setIsFavorite(!isFavorite);
+    if (id) toggleFavorite(id);
   };
+
+  if (compact) {
+    const difficultyStatut = difficulty === 'Facile' ? 'Success' : difficulty === 'Difficile' ? 'Error' : 'Warning';
+    const gainMatch = elevation?.match(/\+(\d+)/);
+    const gainText = gainMatch ? `${gainMatch[1]} m` : null;
+    const savedAtText = savedAt
+      ? new Date(savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+      : null;
+
+    return (
+      <Pressable
+        onPress={() => onPress?.(id)}
+        onLongPress={
+          onLongPress
+            ? () => {
+                // Haptics are unavailable on some devices/emulators — never let a
+                // missing vibration motor swallow the action itself.
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                onLongPress(id);
+              }
+            : undefined
+        }
+        delayLongPress={350}
+        style={({ pressed }) => [
+          styles.compactPressable,
+          pressed ? { backgroundColor: theme.card } : null,
+        ]}>
+        {/* flexDirection lives on this inner View, not on the Pressable: the same
+            pattern the horizontal variant uses — driving it from the Pressable's
+            style callback ends up laying the row out as a column. */}
+        <View style={styles.compactRow}>
+          <View style={styles.compactThumbnailWrapper}>
+            <Image source={{ uri: getMapThumbnailUrl() }} style={styles.compactThumbnail} />
+            <Tag
+              text={difficulty === 'Modéré' ? 'Moyen' : difficulty}
+              statut={difficultyStatut}
+              style={styles.compactTagOverlay}
+            />
+          </View>
+
+          <View style={styles.compactContent}>
+            <Text style={[styles.compactTitle, { color: theme.text }]} numberOfLines={2}>
+              {title}
+            </Text>
+            <View style={styles.compactMetaRow}>
+              {duration ? (
+                <>
+                  <Clock size={15} color={theme.textMuted} />
+                  <Text style={[styles.compactMetaText, { color: theme.textMuted }]}>{duration}</Text>
+                  <Text style={[styles.compactMetaText, { color: theme.textMuted }]}>·</Text>
+                </>
+              ) : null}
+              <Route size={15} color={theme.textMuted} />
+              <Text style={[styles.compactMetaText, { color: theme.textMuted }]}>{distance}</Text>
+              {gainText ? (
+                <>
+                  <Text style={[styles.compactMetaText, { color: theme.textMuted }]}>·</Text>
+                  <TrendingUp size={15} color={theme.textMuted} />
+                  <Text style={[styles.compactMetaText, { color: theme.textMuted }]}>{gainText}</Text>
+                </>
+              ) : null}
+            </View>
+            <Text style={[styles.compactSubtext, { color: theme.textMuted }]} numberOfLines={1}>
+              {savedAtText ? `${savedAtText} · ` : ''}
+              {getHikeLocation()}
+            </Text>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
 
   if (horizontal) {
     const cardWidth =
@@ -192,7 +261,7 @@ export default function RandoCard({
 
     return (
       <Pressable
-        onPress={onPress}
+        onPress={() => onPress?.(id)}
         style={({ pressed }) => [
           styles.horizontalPressable,
           { width: cardWidth },
@@ -266,7 +335,7 @@ export default function RandoCard({
   // Vertical card design from Figma Node ID 49:3492
   return (
     <Pressable
-      onPress={onPress}
+      onPress={() => onPress?.(id)}
       style={({ pressed }) => [styles.pressableWrapper, pressed ? styles.cardPressed : null]}>
       <View style={styles.verticalCard}>
         {/* Image Section */}
@@ -491,6 +560,62 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 2,
   },
+  // padding + equal negative margin: the pressed highlight bleeds past the row on
+  // all sides without shifting the layout (net offset is zero).
+  compactPressable: {
+    borderRadius: 16,
+    padding: 10,
+    margin: -10,
+  },
+  compactRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    width: '100%',
+  },
+  compactThumbnailWrapper: {
+    width: 92,
+    height: 92,
+    borderRadius: 16,
+    overflow: 'hidden',
+    position: 'relative',
+  },
+  compactThumbnail: {
+    width: '100%',
+    height: '100%',
+  },
+  compactTagOverlay: {
+    position: 'absolute',
+    bottom: 6,
+    left: 6,
+  },
+  compactContent: {
+    flex: 1,
+    justifyContent: 'center',
+    gap: 5,
+  },
+  compactTitle: {
+    fontFamily: 'BricolageGrotesque',
+    fontSize: 18,
+    fontWeight: '600',
+    lineHeight: 22,
+  },
+  compactMetaRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    flexWrap: 'wrap',
+  },
+  compactMetaText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  compactSubtext: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 13,
+    fontWeight: '500',
+  },
   miniMapImage: {
     width: '100%',
     height: '100%',
@@ -677,3 +802,5 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+export default React.memo(RandoCard);

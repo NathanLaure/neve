@@ -1,6 +1,6 @@
 import React from 'react';
 import { StyleProp, ViewStyle } from 'react-native';
-import { ChevronDown, SlidersHorizontal } from 'lucide-react-native';
+import { CircleDotDashed, SlidersHorizontal } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -22,21 +22,23 @@ export default function FilterChipsBar({
 }: FilterChipsBarProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const { searchRadiusKm } = useAdventure();
+  const { searchRadiusKm, isMapAreaActive, activeFiltersCount } = useAdventure();
 
   return (
     <MapChipsBar style={style}>
       <Chip
-        text="Filtres"
-        icon={<SlidersHorizontal size={18} color={theme.text} />}
-        onPress={onPressFilters}
+        text={formatRadiusLabel(searchRadiusKm, isMapAreaActive)}
+        selected={searchRadiusKm !== null || isMapAreaActive}
+        icon={<CircleDotDashed size={18} color={theme.text} />}
+        onPress={onPressRadius}
         style={mapChipStyle}
       />
       <Chip
-        text={formatRadiusLabel(searchRadiusKm)}
-        selected={searchRadiusKm !== null}
-        trailingIcon={<ChevronDown size={18} color={theme.textMuted} />}
-        onPress={onPressRadius}
+        text="Filtres"
+        selected={activeFiltersCount > 0}
+        badgeCount={activeFiltersCount}
+        icon={<SlidersHorizontal size={18} color={theme.text} />}
+        onPress={onPressFilters}
         style={mapChipStyle}
       />
     </MapChipsBar>

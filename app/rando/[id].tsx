@@ -76,11 +76,19 @@ export default function RandoDetailScreen() {
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
 
-  const { userLocationName, hikes, loadHikes, loadHikeDetail, isLoadingHikes } = useAdventure();
+  const {
+    userLocationName,
+    hikes,
+    loadHikes,
+    loadHikeDetail,
+    isLoadingHikes,
+    isFavorite: isFavoriteHike,
+    toggleFavorite,
+  } = useAdventure();
+  const isFavorite = !!id && isFavoriteHike(String(id));
 
   // Local interactive states
   const [refreshing, setRefreshing] = useState(false);
-  const [isFavorite, setIsFavorite] = useState(false);
   const [isOffline, setIsOffline] = useState(false);
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [hasOpenedMapModal, setHasOpenedMapModal] = useState(false);
@@ -235,8 +243,8 @@ export default function RandoDetailScreen() {
 
   useEffect(() => {
     let isMounted = true;
-    const lat = rando?.startStationCoords?.latitude ?? 45.9237;
-    const lon = rando?.startStationCoords?.longitude ?? 6.8694;
+    const lat = rando?.start_lat ?? rando?.startStationCoords?.latitude ?? 45.9237;
+    const lon = rando?.start_lng ?? rando?.startStationCoords?.longitude ?? 6.8694;
 
     const fetchWeather = async () => {
       try {
@@ -278,7 +286,7 @@ export default function RandoDetailScreen() {
     return () => {
       isMounted = false;
     };
-  }, [rando?.startStationCoords?.latitude, rando?.startStationCoords?.longitude]);
+  }, [rando?.start_lat, rando?.start_lng, rando?.startStationCoords?.latitude, rando?.startStationCoords?.longitude]);
 
   // Mock weather fallback
   const weatherForecast = realWeather || [
@@ -457,7 +465,7 @@ export default function RandoDetailScreen() {
                   fill={isFavorite ? '#EF4444' : 'none'}
                 />
               }
-              onPress={() => setIsFavorite(!isFavorite)}
+              onPress={() => id && toggleFavorite(String(id))}
             />
             <IconButton
               variant="circle"
@@ -897,7 +905,7 @@ export default function RandoDetailScreen() {
             color={isFavorite ? '#EF4444' : undefined}
             onPress={() => {
               actionsSheetRef.current?.dismiss();
-              setIsFavorite(!isFavorite);
+              if (id) toggleFavorite(String(id));
             }}
           />
 
