@@ -1,12 +1,6 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabase } from './supabase-admin';
 import * as fs from 'fs';
 import * as readline from 'readline';
-
-// Supabase configuration
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://gealgvgsnhskyrbbnxay.supabase.co';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdlYWxndmdzbmhza3lyYmJueGF5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODA5MjM2NzEsImV4cCI6MjA5NjQ5OTY3MX0.Cx7HazV2sW85bKBFYiML4RcaXPDoWpcMBH8Xp8oU7Vc';
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const CSV_FILE_PATH = 'data/hiking_foot_routes_line.csv';
 // Limite configurable via variable d'environnement (ex: LIMIT=5000 npm run seed:csv)
