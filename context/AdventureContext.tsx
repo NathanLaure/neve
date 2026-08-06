@@ -14,6 +14,7 @@ import * as Location from 'expo-location';
 import { RandoData, TrainOption, MOCK_RANDOS } from '@/constants/RandosData';
 import { supabase } from '@/utils/supabase';
 import { findNearestStation } from '@/services/transitService';
+import { formatStationLabel } from '@/utils/stationLabel';
 import { useAuth } from '@/context/AuthContext';
 
 export interface PlannedAdventure {
@@ -221,18 +222,20 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   if (!startStation) {
     const matchedStart = findNearestStation(startLat, startLng);
     if (matchedStart) {
-      startStation = `Gare de ${matchedStart.name}`;
+      startStation = formatStationLabel(matchedStart.name);
       startStationLat = matchedStart.latitude;
       startStationLng = matchedStart.longitude;
     } else {
-      startStation = row.location_name ? `Gare de ${row.location_name.split('-')[0].trim()}` : 'Gare Île-de-France';
+      startStation = row.location_name
+        ? formatStationLabel(row.location_name.split('-')[0].trim())
+        : 'Gare Île-de-France';
     }
   }
 
   if (!endStation) {
     const matchedEnd = findNearestStation(endLat, endLng);
     if (matchedEnd) {
-      endStation = `Gare de ${matchedEnd.name}`;
+      endStation = formatStationLabel(matchedEnd.name);
       endStationLat = matchedEnd.latitude;
       endStationLng = matchedEnd.longitude;
     } else {

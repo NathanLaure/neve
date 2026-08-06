@@ -1,4 +1,5 @@
 import { supabase } from './supabase-admin';
+import { formatStationLabel } from '../utils/stationLabel';
 import * as fs from 'fs';
 import * as readline from 'readline';
 
@@ -331,11 +332,15 @@ async function run() {
     const startStationMatch = findNearestStation(startLat, startLng);
     const endStationMatch = findNearestStation(endLat, endLng);
 
-    const startStationName = startStationMatch ? `Gare de ${startStationMatch.station.name}` : 'Gare Île-de-France';
+    const startStationName = startStationMatch
+      ? formatStationLabel(startStationMatch.station.name)
+      : 'Gare Île-de-France';
     const startStationLat = startStationMatch ? startStationMatch.station.latitude : startLat;
     const startStationLng = startStationMatch ? startStationMatch.station.longitude : startLng;
 
-    const endStationName = endStationMatch ? `Gare de ${endStationMatch.station.name}` : startStationName;
+    const endStationName = endStationMatch
+      ? formatStationLabel(endStationMatch.station.name)
+      : startStationName;
     const endStationLat = endStationMatch ? endStationMatch.station.latitude : endLat;
     const endStationLng = endStationMatch ? endStationMatch.station.longitude : endLng;
 
