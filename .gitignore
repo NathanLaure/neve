@@ -28,6 +28,10 @@ expo-env.d.ts
 *.p12
 *.key
 *.pem
+
+# Artefacts locaux du CLI Supabase (`supabase link`) : référence du projet lié et
+# URL du pooler Postgres. Propres à la machine, et rien à faire dans un dépôt public.
+supabase/.temp/
 *.mobileprovision
 google-services.json
 GoogleService-Info.plist

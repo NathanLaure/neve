@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,13 +9,55 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { ChevronLeft, Check, ChevronRight, CheckCircle2 } from 'lucide-react-native';
+import { ChevronLeft, Check, ChevronRight, CheckCircle2, RefreshCw } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
+import Skeleton from '@/components/Skeleton';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useAdventure } from '@/context/AdventureContext';
+import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { TrainOption } from '@/constants/RandosData';
-import { generateTransitOptions, calculateCo2Impact } from '@/services/transitService';
+import {
+  calculateCo2Impact,
+  fetchTransitOptions,
+  findNearestStations,
+  toTrainOption,
+  TimeMode,
+  TransitOption,
+  TransitSource,
+} from '@/services/transitService';
+
+/** Heure de départ proposée par défaut pour l'aller — on vise la matinée. */
+const DEFAULT_OUTWARD_TIME = '08:00';
+
+/** Créneaux proposés pour l'aller. Amplitude d'une journée de rando classique. */
+const SELECTABLE_TIMES = [
+  '06:00',
+  '07:00',
+  '08:00',
+  '09:00',
+  '10:00',
+  '11:00',
+  '12:00',
+  '13:00',
+  '14:00',
+];
+
+const TIME_MODES: { value: TimeMode; label: string }[] = [
+  { value: 'departure', label: 'Partir après' },
+  { value: 'arrival', label: 'Arriver avant' },
+];
+/** Repli pour le retour tant que l'aller n'est pas choisi, ou en séjour sur plusieurs jours. */
+const DEFAULT_RETURN_TIME = '16:00';
+/** On ne propose pas de retour au-delà : au-delà, les dessertes franciliennes se raréfient. */
+const LATEST_RETURN_TIME_MINUTES = 21 * 60;
+
+type LoadState = 'loading' | 'ready' | 'error';
+
+interface DeparturePoint {
+  name: string;
+  latitude: number;
+  longitude: number;
+}
 
 // Generate dynamic dates (next 7 days starting tomorrow)
 const generateDates = () => {
@@ -42,13 +84,144 @@ const generateDates = () => {
   return dates;
 };
 
+/** `cache` reste de la vraie donnée IDFM, seul `fallback` est une estimation. */
+function isRealSource(source: TransitSource): boolean {
+  return source !== 'fallback';
+}
+
+interface TransitOptionsListProps {
+  options: TransitOption[];
+  state: LoadState;
+  source: TransitSource;
+  selectedId: string | null;
+  onSelect: (option: TransitOption) => void;
+  onRetry: () => void;
+  theme: (typeof Colors)['light'];
+}
+
+/**
+ * Liste d'itinéraires avec ses trois états : chargement, erreur, résultat (dont
+ * le cas vide). Avant, l'écran se contentait d'un tableau vide et n'affichait
+ * strictement rien — l'utilisateur restait bloqué sans explication.
+ *
+ * Habillage volontairement sobre : le design définitif attend les maquettes.
+ */
+function TransitOptionsList({
+  options,
+  state,
+  source,
+  selectedId,
+  onSelect,
+  onRetry,
+  theme,
+}: TransitOptionsListProps) {
+  if (state === 'loading') {
+    return (
+      <View style={styles.trainOptionsList}>
+        {[0, 1, 2].map((index) => (
+          <View
+            key={index}
+            style={[
+              styles.trainCard,
+              { backgroundColor: theme.background, borderColor: theme.border },
+            ]}>
+            <View style={styles.trainCardHeader}>
+              <Skeleton width={70} height={18} style={{ backgroundColor: theme.border }} />
+              <Skeleton width={50} height={18} style={{ backgroundColor: theme.border }} />
+            </View>
+            <Skeleton width="65%" height={12} style={{ backgroundColor: theme.border }} />
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  if (state === 'error') {
+    return (
+      <View style={[styles.listMessage, { borderColor: theme.border }]}>
+        <Text style={[styles.listMessageText, { color: theme.textMuted }]}>
+          Impossible de récupérer les horaires pour le moment.
+        </Text>
+        <Pressable onPress={onRetry} style={[styles.retryBtn, { borderColor: theme.tint }]}>
+          <RefreshCw size={13} color={theme.tint} />
+          <Text style={[styles.retryBtnText, { color: theme.tint }]}>Réessayer</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
+  if (options.length === 0) {
+    return (
+      <View style={[styles.listMessage, { borderColor: theme.border }]}>
+        <Text style={[styles.listMessageText, { color: theme.textMuted }]}>
+          Aucun trajet en transports en commun trouvé à cette date. Essayez une autre date ou un
+          autre point de départ.
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.trainOptionsList}>
+      {options.map((option) => {
+        const isSelected = selectedId === option.id;
+        const lines = option.legs
+          .filter((leg) => leg.mode !== 'walk' && leg.lineName)
+          .map((leg) => leg.lineName)
+          .join(' → ');
+
+        return (
+          <Pressable
+            key={option.id}
+            onPress={() => onSelect(option)}
+            style={[
+              styles.trainCard,
+              {
+                backgroundColor: isSelected ? theme.blueBadge : theme.background,
+                borderColor: isSelected ? theme.secondary : theme.border,
+              },
+            ]}>
+            <View style={styles.trainCardHeader}>
+              <Text style={[styles.trainCardTime, { color: theme.text }]}>
+                {option.departureTime} → {option.arrivalTime}
+              </Text>
+              <Text style={[styles.trainCardPrice, { color: theme.secondary }]}>
+                {option.priceEstimate.toFixed(2)}€
+              </Text>
+            </View>
+            <View style={styles.trainCardFooter}>
+              <Text style={[styles.trainCardMeta, { color: theme.textMuted }]}>
+                🚆 {lines || 'Transports en commun'} •{' '}
+                {option.transfers === 0
+                  ? 'direct'
+                  : `${option.transfers} corresp.`}
+              </Text>
+              <Text style={[styles.trainCardDuration, { color: theme.textMuted }]}>
+                Durée : {option.durationFormatted}
+              </Text>
+            </View>
+          </Pressable>
+        );
+      })}
+
+      {/* On ne fait jamais passer une estimation pour un horaire officiel. */}
+      {!isRealSource(source) && (
+        <Text style={[styles.fallbackNotice, { color: theme.textMuted }]}>
+          Horaires indicatifs — le calculateur Île-de-France Mobilités est momentanément
+          indisponible. Vérifiez avant de partir.
+        </Text>
+      )}
+    </View>
+  );
+}
+
 export default function PlanScreen() {
   const { randoId } = useLocalSearchParams();
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const { addAdventure, userLocationName, hikes } = useAdventure();
+  const { addAdventure, userLocationName, userLocation, hikes } = useAdventure();
 
   // Find the hike
   const rando = hikes.find((r) => r.id === randoId);
@@ -63,12 +236,221 @@ export default function PlanScreen() {
   );
   const [selectedReturnDate, setSelectedReturnDate] = useState<string>(availableDates[0].isoString); // Default same day
 
-  // Step 2 State: Outward Train & Departure Station
-  const [departureStation, setDepartureStation] = useState<string>(userLocationName);
-  const [selectedOutwardTrain, setSelectedOutwardTrain] = useState<TrainOption | null>(null);
+  // Step 2 State: Departure Point
+  const [departurePoint, setDeparturePoint] = useState<DeparturePoint>({
+    name: userLocationName,
+    latitude: userLocation.latitude,
+    longitude: userLocation.longitude,
+  });
 
-  // Step 3 State: Return Train
-  const [selectedReturnTrain, setSelectedReturnTrain] = useState<TrainOption | null>(null);
+  // Heure souhaitée pour l'aller, et sens dans lequel la lire : « je pars après »
+  // ou « je veux être arrivé avant ». Navitia traite les deux nativement, donc le
+  // second mode ne coûte pas un appel de plus.
+  const [outwardTime, setOutwardTime] = useState<string>(DEFAULT_OUTWARD_TIME);
+  const [outwardTimeMode, setOutwardTimeMode] = useState<TimeMode>('departure');
+
+  // Incrémenté par les boutons « Réessayer » pour relancer les effets de chargement.
+  const [retryToken, setRetryToken] = useState(0);
+
+  // Départ possible : la position de l'utilisateur, plus les gares réellement
+  // proches de lui. Remplace la liste figée de trois terminus parisiens, qui
+  // n'avait aucun sens pour quelqu'un habitant hors de Paris.
+  const departureOptions = useMemo<DeparturePoint[]>(() => {
+    const nearby = findNearestStations(userLocation.latitude, userLocation.longitude, 3, 15).map(
+      (station) => ({
+        name: station.name,
+        latitude: station.latitude,
+        longitude: station.longitude,
+      })
+    );
+    return [
+      {
+        name: userLocationName,
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+      },
+      ...nearby.filter((station) => station.name !== userLocationName),
+    ];
+  }, [userLocation, userLocationName]);
+
+  // Itinéraires récupérés auprès du calculateur Île-de-France Mobilités.
+  //
+  // Chaque résultat et chaque sélection est étiqueté par la « clé » de la requête
+  // qui l'a produit, et l'état affiché en découle. C'est plus robuste qu'un
+  // setState('loading') en début d'effet : une réponse lente ne peut pas se
+  // rattacher à une autre date ni à un autre point de départ, et la sélection de
+  // l'utilisateur s'invalide d'elle-même quand la question change.
+  const outwardKey = [
+    rando?.id ?? '',
+    departurePoint.latitude,
+    departurePoint.longitude,
+    selectedOutwardDate,
+    outwardTime,
+    outwardTimeMode,
+    retryToken,
+  ].join('|');
+
+  const [outwardResult, setOutwardResult] = useState<{
+    key: string;
+    options: TransitOption[];
+    source: TransitSource;
+  } | null>(null);
+  const [outwardErrorKey, setOutwardErrorKey] = useState<string | null>(null);
+  const [outwardSelection, setOutwardSelection] = useState<{
+    key: string;
+    train: TrainOption;
+  } | null>(null);
+
+  const outwardMatches = outwardResult?.key === outwardKey;
+  const outwardOptions = outwardMatches ? outwardResult!.options : [];
+  const outwardSource: TransitSource = outwardMatches ? outwardResult!.source : 'live';
+  const outwardState: LoadState = outwardMatches
+    ? 'ready'
+    : outwardErrorKey === outwardKey
+      ? 'error'
+      : 'loading';
+  const selectedOutwardTrain =
+    outwardSelection?.key === outwardKey ? outwardSelection.train : null;
+
+  // Heure à partir de laquelle chercher un retour : arrivée de l'aller + durée de
+  // la rando, pour ne pas proposer un train que le randonneur ne peut pas prendre.
+  // Sur un séjour de plusieurs jours, ce calcul n'a plus de sens : on retombe sur
+  // une fin d'après-midi.
+  const returnStartTime = useMemo(() => {
+    if (!rando || !selectedOutwardTrain?.arrivalTime) return DEFAULT_RETURN_TIME;
+    if (selectedReturnDate !== selectedOutwardDate) return DEFAULT_RETURN_TIME;
+
+    const [hours, minutes] = selectedOutwardTrain.arrivalTime.split(':').map(Number);
+    const readyAt = hours * 60 + minutes + Math.round((rando.durationHours || 0) * 60);
+    const capped = Math.min(readyAt, LATEST_RETURN_TIME_MINUTES);
+    return `${String(Math.floor(capped / 60)).padStart(2, '0')}:${String(capped % 60).padStart(2, '0')}`;
+  }, [rando, selectedOutwardTrain, selectedOutwardDate, selectedReturnDate]);
+
+  const returnKey = [
+    rando?.id ?? '',
+    departurePoint.latitude,
+    departurePoint.longitude,
+    selectedReturnDate,
+    returnStartTime,
+    retryToken,
+  ].join('|');
+
+  const [returnResult, setReturnResult] = useState<{
+    key: string;
+    options: TransitOption[];
+    source: TransitSource;
+  } | null>(null);
+  const [returnErrorKey, setReturnErrorKey] = useState<string | null>(null);
+  const [returnSelection, setReturnSelection] = useState<{
+    key: string;
+    train: TrainOption;
+  } | null>(null);
+
+  const returnMatches = returnResult?.key === returnKey;
+  const returnOptions = returnMatches ? returnResult!.options : [];
+  const returnSource: TransitSource = returnMatches ? returnResult!.source : 'live';
+  const returnState: LoadState = returnMatches
+    ? 'ready'
+    : returnErrorKey === returnKey
+      ? 'error'
+      : 'loading';
+  const selectedReturnTrain = returnSelection?.key === returnKey ? returnSelection.train : null;
+
+  // Dépendances d'effet en valeurs primitives, jamais en objets : `hikes` est
+  // rechargé par AdventureContext (sync realtime des favoris, retour au premier
+  // plan), ce qui recrée l'objet `rando` à l'identique. Sur des objets, chaque
+  // rechargement relancerait deux appels à PRIM pour rien — et le quota est à
+  // 1 000 par jour.
+  const startStationLat = rando?.startStationCoords?.latitude;
+  const startStationLng = rando?.startStationCoords?.longitude;
+  const endStationLat = rando?.endStationCoords?.latitude;
+  const endStationLng = rando?.endStationCoords?.longitude;
+  const startStationName = rando?.startStation;
+  const endStationName = rando?.endStation;
+
+  const departureName = departurePoint.name;
+  const departureLat = departurePoint.latitude;
+  const departureLng = departurePoint.longitude;
+
+  // Aller : du point de départ choisi vers la gare de début de rando.
+  useEffect(() => {
+    if (startStationLat == null || startStationLng == null || !startStationName) return;
+
+    // Une réponse lente ne doit jamais s'appliquer à une question devenue obsolète.
+    let isStale = false;
+    fetchTransitOptions({
+      from: { latitude: departureLat, longitude: departureLng },
+      to: { latitude: startStationLat, longitude: startStationLng },
+      fromName: departureName,
+      toName: startStationName,
+      date: selectedOutwardDate,
+      time: outwardTime,
+      timeMode: outwardTimeMode,
+      direction: 'go',
+    })
+      .then((result) => {
+        if (isStale) return;
+        setOutwardResult({ key: outwardKey, options: result.options, source: result.source });
+      })
+      .catch(() => {
+        if (!isStale) setOutwardErrorKey(outwardKey);
+      });
+
+    return () => {
+      isStale = true;
+    };
+  }, [
+    outwardKey,
+    departureLat,
+    departureLng,
+    departureName,
+    startStationLat,
+    startStationLng,
+    startStationName,
+    selectedOutwardDate,
+    outwardTime,
+    outwardTimeMode,
+  ]);
+
+  // Retour : de la gare de fin de rando vers le point de départ.
+  useEffect(() => {
+    if (endStationLat == null || endStationLng == null || !endStationName) return;
+
+    let isStale = false;
+    fetchTransitOptions({
+      from: { latitude: endStationLat, longitude: endStationLng },
+      to: { latitude: departureLat, longitude: departureLng },
+      fromName: endStationName,
+      toName: departureName,
+      date: selectedReturnDate,
+      time: returnStartTime,
+      timeMode: 'departure',
+      direction: 'back',
+    })
+      .then((result) => {
+        if (isStale) return;
+        setReturnResult({ key: returnKey, options: result.options, source: result.source });
+      })
+      .catch(() => {
+        if (!isStale) setReturnErrorKey(returnKey);
+      });
+
+    return () => {
+      isStale = true;
+    };
+  }, [
+    returnKey,
+    departureLat,
+    departureLng,
+    departureName,
+    endStationLat,
+    endStationLng,
+    endStationName,
+    selectedReturnDate,
+    returnStartTime,
+  ]);
+
+  const handleRetry = useCallback(() => setRetryToken((token) => token + 1), []);
 
   if (!rando) {
     return (
@@ -109,7 +491,7 @@ export default function PlanScreen() {
         returnDate: selectedReturnDate,
         outwardTrain: selectedOutwardTrain,
         returnTrain: selectedReturnTrain,
-        departureStationName: departureStation,
+        departureStationName: departurePoint.name,
         isBooked: false,
       });
 
@@ -147,8 +529,19 @@ export default function PlanScreen() {
         showsVerticalScrollIndicator={false}>
         {/* Hike Header Summary */}
         {(() => {
-          const distKm = parseFloat(rando.distance) || 12;
-          const co2 = calculateCo2Impact(distKm);
+          // Le CO₂ économisé porte sur le TRAJET (aller-retour depuis chez soi),
+          // pas sur la longueur de la randonnée : comparer des kilomètres à pied
+          // à des kilomètres en voiture n'avait aucun sens.
+          const travelDistanceKm =
+            startStationLat != null && startStationLng != null
+              ? calculateDistanceKm(
+                  departureLat,
+                  departureLng,
+                  startStationLat,
+                  startStationLng
+                ) * 2
+              : 0;
+          const co2 = calculateCo2Impact(travelDistanceKm);
           const isTraverse = rando.startStation !== rando.endStation;
 
           return (
@@ -171,7 +564,7 @@ export default function PlanScreen() {
               </View>
               <Text style={[styles.hikeSummaryTitle, { color: theme.text }]}>{rando.title}</Text>
               <Text style={[styles.hikeSummarySpecs, { color: theme.tint, marginTop: 4 }]}>
-                🚆 {departureStation} → {rando.startStation} {isTraverse ? `→ ${rando.endStation}` : ''} • 🥾 {rando.distance} ({rando.durationHours}h)
+                🚆 {departurePoint.name} → {rando.startStation} {isTraverse ? `→ ${rando.endStation}` : ''} • 🥾 {rando.distance} ({rando.durationHours}h)
               </Text>
               
               {/* Eco CO2 Impact Banner */}
@@ -379,28 +772,32 @@ export default function PlanScreen() {
               </View>
 
               <Text style={[styles.stepHelperText, { color: theme.textMuted }]}>
-                Trajet de {departureStation} vers {rando.startStation} le {outwardDateLabel}.
+                Trajet de {departurePoint.name} vers {rando.startStation} le {outwardDateLabel},{' '}
+                {outwardTimeMode === 'arrival'
+                  ? `en arrivant avant ${outwardTime}`
+                  : `en partant après ${outwardTime}`}
+                .
               </Text>
 
-              {/* Station Changer */}
+              {/* Departure Point Changer */}
               <View
                 style={[
                   styles.stationSelector,
                   { backgroundColor: theme.background, borderColor: theme.border },
                 ]}>
                 <Text style={[styles.stationSelectorText, { color: theme.text }]}>
-                  Gare de départ :
+                  Point de départ :
                 </Text>
                 <ScrollView
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={{ gap: 6 }}>
-                  {['Paris Gare de Lyon', 'Paris Montparnasse', 'Paris Est'].map((st) => {
-                    const isSel = departureStation === st;
+                  {departureOptions.map((option) => {
+                    const isSel = departurePoint.name === option.name;
                     return (
                       <Pressable
-                        key={st}
-                        onPress={() => setDepartureStation(st)}
+                        key={option.name}
+                        onPress={() => setDeparturePoint(option)}
                         style={[
                           styles.stationPill,
                           {
@@ -413,7 +810,7 @@ export default function PlanScreen() {
                             styles.stationPillText,
                             { color: isSel ? '#FFFFFF' : theme.text },
                           ]}>
-                          {st.replace('Paris ', '')}
+                          {option.name}
                         </Text>
                       </Pressable>
                     );
@@ -421,41 +818,81 @@ export default function PlanScreen() {
                 </ScrollView>
               </View>
 
-              {/* List of Train Options */}
-              <View style={styles.trainOptionsList}>
-                {rando.trainOptionsGo.map((train) => {
-                  const isSelected = selectedOutwardTrain?.id === train.id;
-                  return (
-                    <Pressable
-                      key={train.id}
-                      onPress={() => setSelectedOutwardTrain(train)}
-                      style={[
-                        styles.trainCard,
-                        {
-                          backgroundColor: isSelected ? theme.blueBadge : theme.background,
-                          borderColor: isSelected ? theme.secondary : theme.border,
-                        },
-                      ]}>
-                      <View style={styles.trainCardHeader}>
-                        <Text style={[styles.trainCardTime, { color: theme.text }]}>
-                          {train.time}
+              {/* Horaire souhaité + sens de lecture (partir après / arriver avant) */}
+              <View
+                style={[
+                  styles.stationSelector,
+                  { backgroundColor: theme.background, borderColor: theme.border },
+                ]}>
+                <View style={styles.timeModeRow}>
+                  {TIME_MODES.map((mode) => {
+                    const isSel = outwardTimeMode === mode.value;
+                    return (
+                      <Pressable
+                        key={mode.value}
+                        onPress={() => setOutwardTimeMode(mode.value)}
+                        style={[
+                          styles.timeModePill,
+                          {
+                            backgroundColor: isSel ? theme.tint : theme.card,
+                            borderColor: isSel ? theme.tint : theme.border,
+                          },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.stationPillText,
+                            { color: isSel ? '#FFFFFF' : theme.text },
+                          ]}>
+                          {mode.label}
                         </Text>
-                        <Text style={[styles.trainCardPrice, { color: theme.secondary }]}>
-                          {train.price.toFixed(2)}€
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={{ gap: 6 }}>
+                  {SELECTABLE_TIMES.map((time) => {
+                    const isSel = outwardTime === time;
+                    return (
+                      <Pressable
+                        key={time}
+                        onPress={() => setOutwardTime(time)}
+                        style={[
+                          styles.stationPill,
+                          {
+                            backgroundColor: isSel ? theme.tint : theme.card,
+                            borderColor: isSel ? theme.tint : theme.border,
+                          },
+                        ]}>
+                        <Text
+                          style={[
+                            styles.stationPillText,
+                            { color: isSel ? '#FFFFFF' : theme.text },
+                          ]}>
+                          {time}
                         </Text>
-                      </View>
-                      <View style={styles.trainCardFooter}>
-                        <Text style={[styles.trainCardMeta, { color: theme.textMuted }]}>
-                          🚆 {train.type} • {train.trainNumber}
-                        </Text>
-                        <Text style={[styles.trainCardDuration, { color: theme.textMuted }]}>
-                          Durée : {train.duration}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
               </View>
+
+              <TransitOptionsList
+                options={outwardOptions}
+                state={outwardState}
+                source={outwardSource}
+                selectedId={selectedOutwardTrain?.id ?? null}
+                onSelect={(option) =>
+                  setOutwardSelection({
+                    key: outwardKey,
+                    train: toTrainOption(option, isRealSource(outwardSource)),
+                  })
+                }
+                onRetry={handleRetry}
+                theme={theme}
+              />
 
               <Pressable
                 disabled={!selectedOutwardTrain}
@@ -520,44 +957,24 @@ export default function PlanScreen() {
               </View>
 
               <Text style={[styles.stepHelperText, { color: theme.textMuted }]}>
-                Trajet de {rando.endStation} vers {departureStation} le {returnDateLabel}.
+                Trajet de {rando.endStation} vers {departurePoint.name} le {returnDateLabel}, à
+                partir de {returnStartTime}.
               </Text>
 
-              {/* List of Train Options */}
-              <View style={styles.trainOptionsList}>
-                {rando.trainOptionsBack.map((train) => {
-                  const isSelected = selectedReturnTrain?.id === train.id;
-                  return (
-                    <Pressable
-                      key={train.id}
-                      onPress={() => setSelectedReturnTrain(train)}
-                      style={[
-                        styles.trainCard,
-                        {
-                          backgroundColor: isSelected ? theme.blueBadge : theme.background,
-                          borderColor: isSelected ? theme.secondary : theme.border,
-                        },
-                      ]}>
-                      <View style={styles.trainCardHeader}>
-                        <Text style={[styles.trainCardTime, { color: theme.text }]}>
-                          {train.time}
-                        </Text>
-                        <Text style={[styles.trainCardPrice, { color: theme.secondary }]}>
-                          {train.price.toFixed(2)}€
-                        </Text>
-                      </View>
-                      <View style={styles.trainCardFooter}>
-                        <Text style={[styles.trainCardMeta, { color: theme.textMuted }]}>
-                          🚆 {train.type} • {train.trainNumber}
-                        </Text>
-                        <Text style={[styles.trainCardDuration, { color: theme.textMuted }]}>
-                          Durée : {train.duration}
-                        </Text>
-                      </View>
-                    </Pressable>
-                  );
-                })}
-              </View>
+              <TransitOptionsList
+                options={returnOptions}
+                state={returnState}
+                source={returnSource}
+                selectedId={selectedReturnTrain?.id ?? null}
+                onSelect={(option) =>
+                  setReturnSelection({
+                    key: returnKey,
+                    train: toTrainOption(option, isRealSource(returnSource)),
+                  })
+                }
+                onRetry={handleRetry}
+                theme={theme}
+              />
 
               <Pressable
                 disabled={!selectedReturnTrain}
@@ -774,6 +1191,17 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 1,
   },
+  timeModeRow: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  timeModePill: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
   stationPillText: {
     fontFamily: 'Satoshi',
     fontSize: 10,
@@ -782,6 +1210,42 @@ const styles = StyleSheet.create({
   trainOptionsList: {
     gap: 8,
     marginBottom: 16,
+  },
+  listMessage: {
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderStyle: 'dashed',
+    padding: 14,
+    marginBottom: 16,
+    gap: 10,
+    alignItems: 'center',
+  },
+  listMessageText: {
+    fontFamily: 'Satoshi',
+    fontSize: 12,
+    lineHeight: 18,
+    textAlign: 'center',
+  },
+  retryBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
+    borderWidth: 1.5,
+  },
+  retryBtnText: {
+    fontFamily: 'Satoshi',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  fallbackNotice: {
+    fontFamily: 'Satoshi',
+    fontSize: 11,
+    lineHeight: 16,
+    fontStyle: 'italic',
+    marginTop: 2,
   },
   trainCard: {
     borderRadius: 14,

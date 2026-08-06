@@ -9,5 +9,9 @@
       "@/*": ["*"]
     }
   },
-  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"]
+  "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts", "nativewind-env.d.ts"],
+  // Les Edge Functions tournent sous Deno, pas sous React Native : globales (`Deno`),
+  // imports (`jsr:`) et lib standard n'ont rien à voir avec ceux de l'app.
+  // Elles sont typées par le toolchain Deno / Supabase CLI, pas par ce tsconfig.
+  "exclude": ["supabase/functions"]
 }

@@ -1,0 +1,3 @@
+# Edge Functions Supabase : code Deno, formaté par `deno fmt` et non par la
+# config Prettier de l'app (largeur de ligne et conventions différentes).
+supabase/functions

@@ -1,4 +1,6 @@
 import idfStationsData from '@/data/idf-train-stations.json';
+import type { TrainOption } from '@/constants/RandosData';
+import { supabase } from '@/utils/supabase';
 
 export interface Station {
   id: string;
@@ -10,8 +12,13 @@ export interface Station {
   uic?: string;
 }
 
+export interface Coordinates {
+  latitude: number;
+  longitude: number;
+}
+
 export interface TransitLeg {
-  mode: 'train' | 'walk' | 'rer';
+  mode: 'train' | 'rer' | 'metro' | 'tram' | 'bus' | 'walk';
   lineName?: string;
   lineColor?: string;
   fromName: string;
@@ -27,10 +34,24 @@ export interface TransitOption {
   durationFormatted: string;
   transfers: number;
   lineName: string;
-  lineType: 'Transilien' | 'RER' | 'TER' | 'Métro';
+  /** Mode du premier tronçon en transport (`rer`, `train`, `bus`…), tel que normalisé côté serveur. */
+  lineType: string;
   priceEstimate: number;
   isLastTrain?: boolean;
+  co2Grams?: number;
   legs: TransitLeg[];
+}
+
+/**
+ * D'où viennent les horaires affichés.
+ * `live`/`cache` : calculateur Île-de-France Mobilités, horaires réels.
+ * `fallback` : estimation locale, à signaler comme indicative dans l'UI.
+ */
+export type TransitSource = 'live' | 'cache' | 'fallback';
+
+export interface TransitResult {
+  options: TransitOption[];
+  source: TransitSource;
 }
 
 export interface Co2Impact {
@@ -56,25 +77,31 @@ export function searchStations(query: string, limit = 8): Station[] {
 }
 
 /**
+ * Returns the `limit` closest stations to a point, nearest first, dropping any
+ * beyond `maxDistanceKm`. Used to offer the user a realistic departure station
+ * instead of a hardcoded list of Paris terminals.
+ */
+export function findNearestStations(
+  lat: number,
+  lng: number,
+  limit = 3,
+  maxDistanceKm = 10.0
+): Station[] {
+  return STATIONS.map((station) => ({
+    station,
+    distanceKm: getDistanceKm(lat, lng, station.latitude, station.longitude),
+  }))
+    .filter((entry) => entry.distanceKm <= maxDistanceKm)
+    .sort((a, b) => a.distanceKm - b.distanceKm)
+    .slice(0, limit)
+    .map((entry) => entry.station);
+}
+
+/**
  * Find station by name or closest to coordinates
  */
 export function findNearestStation(lat: number, lng: number, maxDistanceKm = 10.0): Station | null {
-  if (STATIONS.length === 0) return null;
-  let nearest: Station | null = null;
-  let minDist = Infinity;
-
-  for (const s of STATIONS) {
-    const d = getDistanceKm(lat, lng, s.latitude, s.longitude);
-    if (d < minDist) {
-      minDist = d;
-      nearest = s;
-    }
-  }
-
-  if (nearest && minDist <= maxDistanceKm) {
-    return nearest;
-  }
-  return null;
+  return findNearestStations(lat, lng, 1, maxDistanceKm)[0] ?? null;
 }
 
 function getDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -125,71 +152,165 @@ export function calculateCo2Impact(distanceKm: number): Co2Impact {
   };
 }
 
+// Tarif Île-de-France 2026, ticket Métro-Train-RER à l'unité. Doit rester aligné
+// sur FARE_RAIL_EUR dans supabase/functions/transit-journeys/index.ts.
+const FALLBACK_FARE_EUR = 2.55;
+
+/** `HH:MM` -> minutes depuis minuit. */
+function parseHHMM(time: string): number {
+  const [h, m] = time.split(':').map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+/** Minutes depuis minuit -> `HH:MM`, borné à la journée. */
+function formatHHMM(minutesFromMidnight: number): string {
+  const clamped = Math.max(0, Math.min(23 * 60 + 59, Math.round(minutesFromMidnight)));
+  const h = Math.floor(clamped / 60);
+  const m = clamped % 60;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 /**
- * Generates realistic transit schedules for a given origin station and target station
+ * Horaires de repli, utilisés quand le calculateur IDFM est indisponible (clé non
+ * configurée, panne, hors couverture). Ce sont des ESTIMATIONS : la durée dérive
+ * de la distance à vol d'oiseau, et les départs sont supposés horaires. L'appelant
+ * doit les signaler comme indicatifs — jamais les présenter comme de vrais horaires.
  */
-export function generateTransitOptions(
-  originStationName: string,
-  targetStationName: string,
+export function generateFallbackOptions(
+  from: Coordinates,
+  to: Coordinates,
+  fromName: string,
+  toName: string,
+  time: string,
+  timeMode: TimeMode = 'departure',
   direction: 'go' | 'back' = 'go'
 ): TransitOption[] {
-  const isGo = direction === 'go';
-  const baseHours = isGo ? [7, 8, 9, 10, 11] : [16, 17, 18, 19, 20, 21, 22];
+  const distanceKm = getDistanceKm(from.latitude, from.longitude, to.latitude, to.longitude);
+  // Même heuristique que getTransitInfo dans AdventureContext : ~1,4 min/km de
+  // trajet, plus 12 min d'accès/attente, bornée pour rester plausible.
+  const durationMinutes = Math.max(15, Math.min(180, Math.round(distanceKm * 1.4 + 12)));
 
-  // Infer train line type
-  let lineType: 'Transilien' | 'RER' | 'TER' | 'Métro' = 'Transilien';
-  let lineName = 'Ligne N';
+  // En mode « arriver avant », on remonte le temps depuis l'heure demandée : le
+  // dernier départ possible est celui qui arrive pile à l'heure, les précédents
+  // sont espacés d'une heure avant lui.
+  const reference = parseHHMM(time);
+  const firstDeparture =
+    timeMode === 'arrival' ? reference - durationMinutes - 4 * 60 : reference;
 
-  const nameUpper = (originStationName + ' ' + targetStationName).toUpperCase();
-  if (nameUpper.includes('RER') || nameUpper.includes('CHATELET') || nameUpper.includes('MARNE')) {
-    lineType = 'RER';
-    lineName = nameUpper.includes('RER A') ? 'RER A' : nameUpper.includes('RER C') ? 'RER C' : 'RER B';
-  } else if (nameUpper.includes('FONTAINEBLEAU') || nameUpper.includes('MELUN')) {
-    lineType = 'Transilien';
-    lineName = 'Ligne R';
-  } else if (nameUpper.includes('RAMBOUILLET') || nameUpper.includes('CHEVREUSE')) {
-    lineType = 'Transilien';
-    lineName = 'Ligne N';
-  } else if (nameUpper.includes('ST-LAZARE') || nameUpper.includes('MANTES')) {
-    lineType = 'Transilien';
-    lineName = 'Ligne J';
-  }
-
-  const baseDuration = Math.min(75, Math.max(25, Math.round(originStationName.length * 2.5 + targetStationName.length * 1.2)));
-
-  const options: TransitOption[] = baseHours.map((hour, idx) => {
-    const minute = (idx * 22) % 60;
-    const depTime = `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-
-    const totalMinutes = hour * 60 + minute + baseDuration;
-    const arrHour = Math.floor(totalMinutes / 60) % 24;
-    const arrMin = totalMinutes % 60;
-    const arrTime = `${String(arrHour).padStart(2, '0')}:${String(arrMin).padStart(2, '0')}`;
-
-    const isLast = !isGo && idx === baseHours.length - 1;
-
+  return Array.from({ length: 5 }, (_, idx) => {
+    const departureMinutes = firstDeparture + idx * 60;
     return {
-      id: `transit-${direction}-${idx}`,
-      departureTime: depTime,
-      arrivalTime: arrTime,
-      durationMinutes: baseDuration,
-      durationFormatted: formatDuration(baseDuration),
-      transfers: idx % 3 === 0 ? 1 : 0,
-      lineName,
-      lineType,
-      priceEstimate: lineType === 'TER' ? 8.5 : 2.1,
-      isLastTrain: isLast,
+      id: `fallback-${direction}-${idx}`,
+      departureTime: formatHHMM(departureMinutes),
+      arrivalTime: formatHHMM(departureMinutes + durationMinutes),
+      durationMinutes,
+      durationFormatted: formatDuration(durationMinutes),
+      transfers: 0,
+      lineName: '',
+      lineType: 'train',
+      priceEstimate: FALLBACK_FARE_EUR,
       legs: [
         {
-          mode: lineType === 'RER' ? 'rer' : 'train',
-          lineName,
-          fromName: isGo ? originStationName : targetStationName,
-          toName: isGo ? targetStationName : originStationName,
-          durationMinutes: baseDuration,
+          mode: 'train' as const,
+          fromName,
+          toName,
+          durationMinutes,
         },
       ],
     };
   });
+}
 
-  return options;
+/**
+ * `departure` : « je pars après cette heure ». `arrival` : « je veux être arrivé
+ * avant cette heure ».
+ */
+export type TimeMode = 'departure' | 'arrival';
+
+export interface TransitQuery {
+  from: Coordinates;
+  to: Coordinates;
+  fromName: string;
+  toName: string;
+  /** `YYYY-MM-DD` */
+  date: string;
+  /** `HH:MM`, interprété selon `timeMode`. */
+  time: string;
+  timeMode?: TimeMode;
+  direction?: 'go' | 'back';
+}
+
+/**
+ * Fetches real journeys from the Île-de-France Mobilités calculator, through the
+ * `transit-journeys` Edge Function (which holds the API key and the shared cache).
+ *
+ * Never rejects: any failure downgrades to local estimates flagged as `fallback`,
+ * so the planning screen always has something to show.
+ */
+export async function fetchTransitOptions(query: TransitQuery): Promise<TransitResult> {
+  const { from, to, fromName, toName, date, time, timeMode = 'departure', direction = 'go' } = query;
+
+  const fallback = (): TransitResult => ({
+    options: generateFallbackOptions(from, to, fromName, toName, time, timeMode, direction),
+    source: 'fallback',
+  });
+
+  try {
+    const { data, error } = await supabase.functions.invoke('transit-journeys', {
+      body: {
+        from: { lat: from.latitude, lng: from.longitude },
+        to: { lat: to.latitude, lng: to.longitude },
+        date,
+        time,
+        timeMode,
+        direction,
+      },
+    });
+
+    if (error) {
+      console.warn('transit-journeys function failed, using local estimates:', error);
+      return fallback();
+    }
+
+    // La fonction signale explicitement « calculateur indisponible » : on estime.
+    if (data?.reason === 'unavailable') {
+      return fallback();
+    }
+
+    const options: TransitOption[] = Array.isArray(data?.options) ? data.options : [];
+    // Zéro itinéraire est une réponse légitime (dernier train passé, pas de
+    // desserte ce jour-là) : on la remonte telle quelle plutôt que d'inventer
+    // des trains qui n'existent pas.
+    return { options, source: data?.source === 'cache' ? 'cache' : 'live' };
+  } catch (err) {
+    console.warn('Could not reach the transit calculator, using local estimates:', err);
+    return fallback();
+  }
+}
+
+/**
+ * Adapts a journey to the `TrainOption` shape persisted in planned adventures.
+ * `time` stays `HH:MM`: recap.tsx builds the Trainline booking URL from it.
+ */
+export function toTrainOption(option: TransitOption, isRealtime: boolean): TrainOption {
+  const transitLegs = option.legs.filter((leg) => leg.mode !== 'walk');
+  const lineNames = transitLegs
+    .map((leg) => leg.lineName)
+    .filter((name): name is string => Boolean(name));
+
+  return {
+    id: option.id,
+    time: option.departureTime,
+    duration: option.durationFormatted,
+    price: option.priceEstimate,
+    // Pas de numéro de train dans la réponse IDFM : on affiche l'enchaînement de
+    // lignes, plus parlant pour un trajet francilien qu'un numéro de circulation.
+    trainNumber: lineNames.join(' → ') || '—',
+    type: lineNames[0] ? `Ligne ${lineNames[0]}` : 'Transports en commun',
+    arrivalTime: option.arrivalTime,
+    transfers: option.transfers,
+    legs: option.legs,
+    co2Grams: option.co2Grams,
+    isRealtime,
+  };
 }

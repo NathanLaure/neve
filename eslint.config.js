@@ -4,7 +4,8 @@ const expoConfig = require('eslint-config-expo/flat');
 module.exports = defineConfig([
   expoConfig,
   {
-    ignores: ['dist/*', '.agents/*'],
+    // supabase/functions : code Deno, hors périmètre des règles React Native.
+    ignores: ['dist/*', '.agents/*', 'supabase/functions/*'],
   },
   {
     rules: {

@@ -1,10 +1,21 @@
+import type { TransitLeg } from '@/services/transitService';
+
 export interface TrainOption {
   id: string;
+  /** Heure de départ, toujours au format `HH:MM` — recap.tsx l'injecte tel quel dans l'URL Trainline. */
   time: string;
   duration: string;
   price: number;
   trainNumber: string;
   type: string;
+  // Champs renseignés par les itinéraires réels (PRIM / Île-de-France Mobilités).
+  // Optionnels : les anciennes aventures planifiées et les horaires de repli n'en ont pas.
+  arrivalTime?: string;
+  transfers?: number;
+  legs?: TransitLeg[];
+  co2Grams?: number;
+  /** `false` quand l'horaire vient de l'estimation locale et non du calculateur IDFM. */
+  isRealtime?: boolean;
 }
 
 export interface GPXPoint {
