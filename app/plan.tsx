@@ -9,6 +9,14 @@ import {
   LayoutAnimation,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import {
   ArrowLeft,
@@ -17,10 +25,13 @@ import {
   ChevronDown,
   ChevronUp,
   CircleDot,
+  EllipsisVertical,
   Info,
   MapPin,
   RefreshCw,
+  Undo2,
   User,
+  X,
 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
@@ -41,6 +52,9 @@ import PassengersEditor from '@/components/plan/PassengersEditor';
 import PassengersBottomSheet from '@/components/plan/PassengersBottomSheet';
 import AutoReturnInfoSheet from '@/components/plan/AutoReturnInfoSheet';
 import DeparturePointSheet from '@/components/plan/DeparturePointSheet';
+import ItinerarySummary from '@/components/plan/ItinerarySummary';
+import JourneyOptionsSheet from '@/components/plan/JourneyOptionsSheet';
+import { ItineraryCard } from '@/components/plan/ItineraryCard';
 import {
   Passenger,
   createDefaultPassengers,
@@ -243,12 +257,79 @@ export default function PlanScreen() {
   const passengersSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const autoReturnSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const departureSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const returnSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const journeyOptionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
+
+  /* --- En-tête repliable au scroll -------------------------------------
+   *
+   * La carte d'itinéraire est le premier élément du contenu défilant : c'est le
+   * ScrollView natif, et lui seul, qui la fait remonter puis disparaître sous la
+   * barre d'actions. Rien n'est animé, rien ne se redimensionne pendant le geste.
+   *
+   * C'est la seule structure qui reste fluide. Tant que la carte vivait dans
+   * l'en-tête, la replier faisait remonter le corps — donc le cadre du
+   * ScrollView — pendant que le doigt le défilait. Or un défileur natif mesure
+   * le geste dans son propre repère : en déplaçant ce repère sous le doigt, on
+   * annule une partie du mouvement, et le défilement devient dur puis se bloque.
+   *
+   * Ne restent animés que les échanges de l'en-tête, qui ne touchent ni à la
+   * mise en page ni au défileur.
+   */
+  const bodyScrollRef = useRef<ScrollView>(null);
+  const scrollY = useSharedValue(0);
+  // Hauteur réelle du bloc carte, mesurée : elle dépend de la variante (boucle,
+  // traversée, avec ou sans lieu de retour) et de la taille de police système.
+  const headerCardHeight = useSharedValue(0);
+
+  const headerScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  /** 0 = carte entièrement visible, 1 = entièrement sortie sous la barre. */
+  const collapse = useDerivedValue(() => {
+    if (headerCardHeight.value <= 0) return 0;
+    return Math.min(1, Math.max(0, scrollY.value / headerCardHeight.value));
+  });
+
+  // Relais plutôt que fondu croisé : le titre s'efface sur la première moitié du
+  // parcours, le résumé n'apparaît que sur la seconde. Les superposer à mi-course
+  // donnerait deux textes à moitié transparents l'un sur l'autre.
+  const headerTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0, 0.45], [1, 0], Extrapolation.CLAMP),
+    transform: [{ translateY: -8 * collapse.value }],
+  }));
+
+  const headerSummaryStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: 8 * (1 - collapse.value) }],
+  }));
+
+  // La puce sort par la droite plutôt que de simplement s'effacer : hors de
+  // l'écran elle ne capte plus les appuis, et le résumé récupère la largeur.
+  // 200px : largement de quoi sortir la puce du bord droit quelle que soit sa
+  // largeur. Une vue à opacité nulle reste tactile, il faut vraiment l'éloigner.
+  const headerChipStyle = useAnimatedStyle(() => ({
+    opacity: 1 - collapse.value,
+    transform: [{ translateX: 200 * collapse.value }],
+  }));
 
   // Configuration puis résultats. Les maquettes séparent les deux : la recherche
   // n'est lancée qu'au clic sur « Voir les trajets disponibles », ce qui évite
   // aussi de brûler du quota PRIM à chaque tape sur le calendrier.
   const [phase, setPhase] = useState<Phase>('config');
   const [openSection, setOpenSection] = useState<OpenSection>('dates');
+
+  /**
+   * Changer de section ou de phase remplace tout le contenu : on repart du haut.
+   * C'est bien le défilement qu'on remet à zéro, et non la seule valeur suivie —
+   * les fausser l'une par rapport à l'autre afficherait un en-tête déplié devant
+   * une carte déjà sortie de l'écran.
+   */
+  useEffect(() => {
+    bodyScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, [openSection, phase]);
 
   // Position GPS, proposée par défaut. Dérivée plutôt que stockée pour qu'elle
   // suive le capteur quand la localisation se précise après le premier rendu.
@@ -265,6 +346,12 @@ export default function PlanScreen() {
   const [customDeparture, setCustomDeparture] = useState<DeparturePoint | null>(null);
   const departurePoint = customDeparture ?? gpsDeparture;
 
+  // Lieu où l'on rentre le soir, quand ce n'est pas celui d'où l'on est parti :
+  // on part de chez soi et on rejoint de la famille, on enchaîne sur un autre
+  // séjour… Tant qu'il est nul, le retour ramène au point de départ.
+  const [returnPoint, setReturnPoint] = useState<DeparturePoint | null>(null);
+  const arrivalPoint = returnPoint ?? departurePoint;
+
   const [passengers, setPassengers] = useState<Passenger[]>(createDefaultPassengers);
 
   // Sens de parcours. Sur une traversée (gare de fin ≠ gare de début), l'inverser
@@ -278,6 +365,10 @@ export default function PlanScreen() {
   const [endDate, setEndDate] = useState<string | null>(null);
   // Tant que l'utilisateur n'a pas touché au retour, il suit la durée de la rando.
   const [hasCustomReturn, setHasCustomReturn] = useState(false);
+  // Un départ vient d'être posé, la prochaine tape désigne donc le retour. Sans ce
+  // drapeau, `!endDate` serait déjà vrai à l'ouverture — la toute première tape
+  // partirait alors dans la branche « retour » et laisserait le départ sur demain.
+  const [isPickingReturn, setIsPickingReturn] = useState(false);
   // La carte « Qui part à l'aventure ? » n'apparaît qu'une fois les dates posées
   // et le calendrier replié — c'est l'enchaînement des maquettes 1 puis 6.
   const [datesValidated, setDatesValidated] = useState(false);
@@ -313,6 +404,9 @@ export default function PlanScreen() {
   const isTraverse =
     !!rando && !!rando.endStation && rando.startStation !== rando.endStation;
 
+  // Deux adresses sont en jeu : il faut dire laquelle est laquelle.
+  const showPointPrefix = isTraverse || returnPoint !== null;
+
   // Gare visée par l'aller, et gare d'où repart le retour. Sur une traversée non
   // inversée ce sont deux gares différentes — c'est le cas d'usage à couvrir.
   const arrivalStation =
@@ -338,14 +432,17 @@ export default function PlanScreen() {
    * l'utilisateur doit appuyer sur le bouton « Confirmer les dates ».
    */
   const handleSelectDate = (date: string) => {
-    if (tripType === 'round' && startDate && !endDate && date > startDate) {
+    // Seconde tape, postérieure au départ qu'on vient de poser : c'est le retour.
+    if (tripType === 'round' && isPickingReturn && date > startDate) {
       setEndDate(date);
       setHasCustomReturn(true);
+      setIsPickingReturn(false);
       return;
     }
     setStartDate(date);
     setEndDate(null);
     setHasCustomReturn(false);
+    setIsPickingReturn(true);
   };
 
   const outwardKey = [
@@ -392,8 +489,8 @@ export default function PlanScreen() {
 
   const returnKey = [
     rando?.id ?? '',
-    departurePoint.latitude,
-    departurePoint.longitude,
+    arrivalPoint.latitude,
+    arrivalPoint.longitude,
     effectiveEndDate ?? '',
     returnStartTime,
     retryToken,
@@ -437,6 +534,10 @@ export default function PlanScreen() {
   const departureName = departurePoint.name;
   const departureLat = departurePoint.latitude;
   const departureLng = departurePoint.longitude;
+
+  const arrivalName = arrivalPoint.name;
+  const arrivalLat = arrivalPoint.latitude;
+  const arrivalLng = arrivalPoint.longitude;
 
   // La recherche ne part qu'en phase résultats : en configuration, chaque tape
   // sur le calendrier aurait coûté deux appels PRIM.
@@ -489,9 +590,9 @@ export default function PlanScreen() {
     let isStale = false;
     fetchTransitOptions({
       from: { latitude: endStationLat, longitude: endStationLng },
-      to: { latitude: departureLat, longitude: departureLng },
+      to: { latitude: arrivalLat, longitude: arrivalLng },
       fromName: endStationName,
-      toName: departureName,
+      toName: arrivalName,
       date: effectiveEndDate,
       time: returnStartTime,
       timeMode: 'departure',
@@ -511,9 +612,9 @@ export default function PlanScreen() {
   }, [
     isSearching,
     returnKey,
-    departureLat,
-    departureLng,
-    departureName,
+    arrivalLat,
+    arrivalLng,
+    arrivalName,
     endStationLat,
     endStationLng,
     endStationName,
@@ -556,6 +657,7 @@ export default function PlanScreen() {
       outwardTrain: selectedOutwardTrain,
       returnTrain,
       departureStationName: departurePoint.name,
+      returnStationName: returnPoint?.name,
       isBooked: false,
     });
 
@@ -569,10 +671,17 @@ export default function PlanScreen() {
     <>
       <Stack.Screen options={{ headerShown: false }} />
 
-      <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
         {/* En-tête FIXE : actions + carte origine/destination. Ne défile jamais. */}
         <View style={styles.header}>
-          <View style={styles.actions}>
+          {/* La zone d'encoche fait partie de la barre, et non d'une marge du
+              conteneur : c'est elle qui masque la carte qui remonte, il faut donc
+              qu'elle soit opaque jusqu'au bord haut de l'écran. */}
+          <View
+            style={[
+              styles.actions,
+              { paddingTop: insets.top + 8, backgroundColor: theme.background },
+            ]}>
             {/* Même bouton que la fiche rando (IconButton `circle`), seule la
                 couleur change : fond clair sur cet écran, icône sombre. */}
             <IconButton
@@ -581,72 +690,74 @@ export default function PlanScreen() {
               style={{ backgroundColor: theme.buttonBgIcon }}
               onPress={() => (phase === 'results' ? setPhase('config') : router.back())}
             />
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Planification</Text>
-            <View style={styles.actionsSpacer} />
-            <Pressable
-              onPress={() => passengersSheetRef.current?.present()}
-              style={[styles.passengerChip, { backgroundColor: theme.card }]}>
-              <User size={20} color={theme.text} />
-              <Text style={[styles.passengerChipText, { color: theme.text }]}>
-                {formatPassengerCount(passengers)}
-              </Text>
-            </Pressable>
-          </View>
-
-          <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <View style={styles.journeyRow}>
-              <View style={styles.journeyColumn}>
-                <Pressable
-                  accessibilityLabel="Changer le point de départ"
-                  onPress={() => departureSheetRef.current?.present()}
-                  style={styles.journeyLine}>
-                  <CircleDot size={16} color={theme.text} />
-                  <Text style={[styles.journeyText, { color: theme.text }]} numberOfLines={1}>
-                    {departurePoint.name}
-                  </Text>
-                </Pressable>
-
-                <View
-                  style={[styles.journeySeparator, { backgroundColor: theme.borderStrong }]}
+            {/* Titre et résumé se relaient au même endroit : le second est en
+                absolu pour que la barre ne change pas de hauteur au passage. */}
+            <View style={styles.headerCenter}>
+              <Animated.Text
+                style={[styles.headerTitle, { color: theme.text }, headerTitleStyle]}>
+                Planification
+              </Animated.Text>
+              <Animated.View
+                pointerEvents="none"
+                style={[styles.headerSummary, headerSummaryStyle]}>
+                <ItinerarySummary
+                  isTraverse={isTraverse}
+                  departureName={departurePoint.name?.trim() || 'Votre position'}
+                  returnName={returnPoint?.name?.trim() || departurePoint.name?.trim() || 'Votre position'}
+                  arrivalStationName={arrivalStation.name}
+                  departBackStationName={isTraverse ? departBackStation.name : arrivalStation.name}
                 />
-
-                <View style={styles.journeyLine}>
-                  <MapPin size={16} color={theme.text} />
-                  <Text style={[styles.journeyText, { color: theme.text }]} numberOfLines={1}>
-                    {arrivalStation.name}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Inverser n'a de sens que sur une traversée : sur une boucle, les
-                  deux gares sont les mêmes et le bouton ne ferait rien. */}
-              {isTraverse && (
-                <Pressable
-                  accessibilityLabel="Parcourir la randonnée en sens inverse"
-                  onPress={() => setIsReversed((value) => !value)}
-                  style={[styles.swapButton, { backgroundColor: theme.surfaceSecondary }]}>
-                  <ArrowUpDown size={16} color={theme.text} />
-                </Pressable>
-              )}
+              </Animated.View>
             </View>
+
+            <Animated.View style={headerChipStyle}>
+              <Pressable
+                onPress={() => passengersSheetRef.current?.present()}
+                style={[styles.passengerChip, { backgroundColor: theme.card }]}>
+                <User size={20} color={theme.text} />
+                <Text style={[styles.passengerChipText, { color: theme.text }]}>
+                  {formatPassengerCount(passengers)}
+                </Text>
+              </Pressable>
+            </Animated.View>
           </View>
         </View>
 
-        {/* Corps : en configuration, seul le calendrier défile. */}
-        <View
-          style={[
-            styles.body,
-            (!datesValidated || openSection === 'dates') &&
-              phase === 'config' && { paddingBottom: Math.max(insets.bottom, 34) },
-          ]}>
-          {/* Quand partir à l'aventure ? — la carte prend la hauteur disponible
-              quand elle est ouverte, et seule la grille du calendrier défile. */}
+        {/* Corps : une seule zone défilante, dont la carte d'itinéraire est le
+            premier élément. C'est le défileur natif qui la fait sortir — voir le
+            bloc « En-tête repliable au scroll ». */}
+        <Animated.ScrollView
+          ref={bodyScrollRef}
+          style={styles.body}
+          contentContainerStyle={[
+            styles.bodyContent,
+            { paddingBottom: Math.max(insets.bottom, 34) },
+          ]}
+          onScroll={headerScrollHandler}
+          scrollEventThrottle={16}
+          showsVerticalScrollIndicator={false}>
+          {/* Carte d'itinéraire réutilisable (Figma 582:16283, 588:17244 & 590:17370) */}
           <View
-            style={[
-              styles.card,
-              openSection === 'dates' && phase === 'config' && styles.cardExpanded,
-              { backgroundColor: theme.card },
-            ]}>
+            onLayout={(event) => {
+              const height = event.nativeEvent.layout.height;
+              if (height > 0) headerCardHeight.value = height;
+            }}>
+            <ItineraryCard
+              isTraverse={isTraverse}
+              departurePoint={departurePoint}
+              returnPoint={returnPoint}
+              arrivalStation={arrivalStation}
+              departBackStation={departBackStation}
+              onPressDeparture={() => departureSheetRef.current?.present()}
+              onPressReturnPoint={() => returnSheetRef.current?.present()}
+              onClearReturnPoint={() => setReturnPoint(null)}
+              onPressOptions={() => journeyOptionsSheetRef.current?.present()}
+              onSwapStations={() => setIsReversed((val) => !val)}
+            />
+          </View>
+
+          {/* Quand partir à l'aventure ? */}
+          <View style={[styles.card, { backgroundColor: theme.card }]}>
             <Pressable onPress={() => toggleSection('dates')} style={styles.sectionHeader}>
               <Text
                 style={[
@@ -663,18 +774,16 @@ export default function PlanScreen() {
             {openSection === 'dates' && (
               <>
                 <DateRangeCalendarHeader />
-                <ScrollView
-                  style={styles.calendarScroll}
-                  showsVerticalScrollIndicator={false}>
-                  <DateRangeCalendar
-                    hideWeekdayRow
-                    startDate={startDate}
-                    endDate={effectiveEndDate}
-                    minDate={today}
-                    maxDate={horizon}
-                    onSelectDate={handleSelectDate}
-                  />
-                </ScrollView>
+                {/* Plus de zone défilante propre : la grille est rendue en entier
+                    et c'est le corps de l'écran qui défile. */}
+                <DateRangeCalendar
+                  hideWeekdayRow
+                  startDate={startDate}
+                  endDate={effectiveEndDate}
+                  minDate={today}
+                  maxDate={horizon}
+                  onSelectDate={handleSelectDate}
+                />
 
                 {/* Uniquement sur les randos qui débordent d'une journée : sur une
                     sortie à la journée, un retour le soir même est évident et le
@@ -718,6 +827,7 @@ export default function PlanScreen() {
                           setTripType(item.value);
                           setEndDate(null);
                           setHasCustomReturn(false);
+                          setIsPickingReturn(false);
                         }}
                         style={[
                           styles.segmentedItem,
@@ -774,10 +884,7 @@ export default function PlanScreen() {
 
           {/* Phase résultats : choix des trains, réutilise le mécanisme existant */}
           {phase === 'results' && (
-            <ScrollView
-              style={styles.resultsScroll}
-              contentContainerStyle={styles.resultsContent}
-              showsVerticalScrollIndicator={false}>
+            <View style={styles.resultsContent}>
               {(() => {
                 const travelDistanceKm =
                   startStationLat != null && startStationLng != null
@@ -873,7 +980,7 @@ export default function PlanScreen() {
                 <View style={[styles.card, { backgroundColor: theme.card }]}>
                   <Text style={[styles.sectionTitle, { color: theme.text }]}>Train retour</Text>
                   <Text style={[styles.helperText, { color: theme.textMuted }]}>
-                    {rando.endStation} → {departurePoint.name}, à partir de {returnStartTime}.
+                    {rando.endStation} → {arrivalPoint.name}, à partir de {returnStartTime}.
                   </Text>
 
                   <TransitOptionsList
@@ -892,29 +999,39 @@ export default function PlanScreen() {
                   />
                 </View>
               )}
-            </ScrollView>
+            </View>
           )}
-        </View>
+        </Animated.ScrollView>
 
         {/* CTA collant */}
-        {phase === 'config' ? (
-          datesValidated && openSection !== 'dates' ? (
-            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34) }]}>
-              <Button
-                title="Lancer la recherche"
-                variant="primary"
-                disabled={!canSearch}
-                onPress={() => setPhase('results')}
-              />
-            </View>
-          ) : null
-        ) : (
+        {datesValidated && openSection !== 'dates' && (
           <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34) }]}>
             <Button
-              title="Finaliser ma planification"
+              title="Lancer la recherche"
               variant="primary"
-              disabled={!selectedOutwardTrain || (tripType === 'round' && !selectedReturnTrain)}
-              onPress={handleFinalize}
+              disabled={!canSearch}
+              onPress={() =>
+                router.push({
+                  pathname: '/plan/outward',
+                  params: {
+                    randoId: rando.id,
+                    // Les coordonnées voyagent avec le nom : sans elles, les
+                    // écrans suivants routent depuis le GPS et une adresse
+                    // saisie à la main n'est plus qu'un libellé.
+                    departureName: departurePoint.name,
+                    departureLat: String(departurePoint.latitude),
+                    departureLng: String(departurePoint.longitude),
+                    // Lieu de retour, quand on ne rentre pas d'où l'on est parti.
+                    // `arrivalPoint` retombe sur le départ le reste du temps.
+                    returnName: arrivalPoint.name,
+                    returnLat: String(arrivalPoint.latitude),
+                    returnLng: String(arrivalPoint.longitude),
+                    outwardDate: startDate,
+                    returnDate: effectiveEndDate ?? undefined,
+                    passengersCount: formatPassengerCount(passengers),
+                  },
+                })
+              }
             />
           </View>
         )}
@@ -938,6 +1055,38 @@ export default function PlanScreen() {
         onSelect={(point) => {
           setCustomDeparture(point);
           departureSheetRef.current?.dismiss();
+        }}
+      />
+
+      <DeparturePointSheet
+        ref={returnSheetRef}
+        title="Où rentres-tu ?"
+        currentLocation={gpsDeparture}
+        onSelect={(point) => {
+          setReturnPoint(point);
+          returnSheetRef.current?.dismiss();
+        }}
+      />
+
+      <JourneyOptionsSheet
+        ref={journeyOptionsSheetRef}
+        hasReturnPoint={returnPoint !== null}
+        canReverse={isTraverse}
+        onChangeDeparture={() => {
+          journeyOptionsSheetRef.current?.dismiss();
+          departureSheetRef.current?.present();
+        }}
+        onChangeReturnPoint={() => {
+          journeyOptionsSheetRef.current?.dismiss();
+          returnSheetRef.current?.present();
+        }}
+        onClearReturnPoint={() => {
+          setReturnPoint(null);
+          journeyOptionsSheetRef.current?.dismiss();
+        }}
+        onReverse={() => {
+          setIsReversed((value) => !value);
+          journeyOptionsSheetRef.current?.dismiss();
         }}
       />
     </>
@@ -968,20 +1117,37 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi-Bold',
     color: '#FFFFFF',
   },
-  // En-tête fixe : ne défile jamais, conformément à la structure Figma où le
-  // bloc actions + carte origine/destination est hors du conteneur scrollable.
+  // Barre d'actions fixe : ne défile jamais. Opaque et posée au-dessus du corps,
+  // c'est elle qui masque la carte d'itinéraire qui sort par le haut.
   header: {
     paddingHorizontal: 24,
-    paddingTop: 8,
-    gap: 16,
+    // Pas de marge haute : la zone d'encoche appartient à la barre elle-même,
+    // faute de quoi la carte s'apercevrait dans la bande laissée transparente.
+    zIndex: 1,
   },
   actions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+    // Opaque et au-dessus : c'est elle qui masque la carte qui remonte, d'où
+    // l'impression que celle-ci passe dessous. Sans ça la carte lui passerait
+    // par-dessus, les frères se peignant dans l'ordre du rendu.
+    zIndex: 1,
   },
-  actionsSpacer: {
+  headerCenter: {
     flex: 1,
+    justifyContent: 'center',
+    // Le résumé fait deux lignes de 20 plus 2 d'interligne : sans cette hauteur
+    // minimale il déborderait de la barre d'actions, calée sur ses boutons de 40.
+    minHeight: 44,
+  },
+  headerSummary: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
   },
   headerTitle: {
     fontFamily: 'Satoshi-Bold',
@@ -990,22 +1156,14 @@ const styles = StyleSheet.create({
   },
   body: {
     flex: 1,
+  },
+  bodyContent: {
     paddingHorizontal: 24,
-    paddingTop: 8,
+    paddingTop: 16,
     gap: 12,
-  },
-  cardExpanded: {
-    flex: 1,
-  },
-  calendarScroll: {
-    flex: 1,
-  },
-  resultsScroll: {
-    flex: 1,
   },
   resultsContent: {
     gap: 12,
-    paddingBottom: 16,
   },
   passengerChip: {
     flexDirection: 'row',
@@ -1031,8 +1189,8 @@ const styles = StyleSheet.create({
   },
   card: {
     borderRadius: 20,
-    padding: 16,
-    gap: 12,
+    padding: 12,
+    gap: 8,
   },
   journeyRow: {
     flexDirection: 'row',
@@ -1043,19 +1201,65 @@ const styles = StyleSheet.create({
     flex: 1,
     gap: 12,
   },
+  // Variante « Default » : padding 12 / gap 12 (spacing/12).
+  journeyCardLoop: {
+    gap: 12,
+  },
+  // Variante « Type4 » : la carte se resserre à 8 pour laisser respirer les deux
+  // encarts qu'elle contient.
+  journeyCardTraverse: {
+    padding: 8,
+  },
+  // Encart posé sur le fond de page : spacing/8 + border-radius/S.
+  journeyInset: {
+    padding: 8,
+    borderRadius: 8,
+  },
   journeyLine: {
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
+  // Body/Medium : Satoshi Medium 14, interligne 1.4. Sans `flex` : ce texte sert
+  // aussi bien dans un conteneur en colonne — où une base nulle effondrerait sa
+  // hauteur — que comme enfant direct d'une rangée, cas traité par `journeyTextGrow`.
   journeyText: {
-    flex: 1,
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
     lineHeight: 20,
   },
+  // Enfant direct d'une rangée : occupe la largeur restante pour se tronquer
+  // proprement au lieu de pousser ses voisins.
+  journeyTextGrow: {
+    flex: 1,
+  },
+  // Body/Large : Satoshi Medium 16, interligne 1.5. Départ et retour sont d'un
+  // cran au-dessus des deux extrémités du sentier.
+  journeyPointText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
+    lineHeight: 24,
+  },
+  // La zone de texte prend toute la largeur restante pour que la tape porte sur
+  // toute la ligne, et non sur les seuls caractères.
+  journeyLabelPress: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  // Figma pose un fond `buttons/bg-btn-icon` sur ces boutons, mais il vaut la
+  // même valeur que l'encart qui les porte dans les deux thèmes : invisible.
+  //
+  // `marginLeft: 'auto'` plaque le bouton contre le bord droit sans dépendre du
+  // libellé voisin : il reste à droite même si celui-ci ne s'étire pas.
+  journeyInlineButton: {
+    marginLeft: 'auto',
+    padding: 4,
+    borderRadius: 100,
+  },
   journeySeparator: {
     height: 1,
+    borderRadius: 100,
   },
   swapButton: {
     width: 40,
@@ -1063,6 +1267,53 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  pointToPointBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  pointToPointContent: {
+    flex: 1,
+    gap: 4,
+  },
+  pointToPointBlock: {
+    gap: 4,
+  },
+  // Body/Extra-small : Satoshi Medium 10, interligne 1.35.
+  pointToPointLabel: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 10,
+    lineHeight: 14,
+  },
+  pointToPointStationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  pointToPointDivider: {
+    height: 1,
+    width: '100%',
+    borderRadius: 100,
+  },
+  stationBadge: {
+    width: 16,
+    height: 16,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stationBadgeText: {
+    color: '#FFFFFF',
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+  },
+  swapButtonCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 100,
   },
   departurePills: {
     gap: 6,

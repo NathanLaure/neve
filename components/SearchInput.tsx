@@ -19,7 +19,7 @@ export interface SearchInputProps extends TextInputProps {
   inputStyle?: TextStyle;
 }
 
-export const SearchInput = forwardRef<TextInput, SearchInputProps>(
+const SearchInput = forwardRef<TextInput, SearchInputProps>(
   (
     {
       value,

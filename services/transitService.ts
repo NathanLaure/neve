@@ -17,6 +17,25 @@ export interface Coordinates {
   longitude: number;
 }
 
+export interface IntermediateStop {
+  name: string;
+  time?: string;
+}
+
+/**
+ * Perturbation telle que publiée par Île-de-France Mobilités, déjà mise en forme
+ * par l'Edge Function (HTML aplati, période lisible, ligne concernée).
+ */
+export interface Disruption {
+  id: string;
+  severity: 'blocking' | 'warning' | 'info';
+  title: string;
+  message: string;
+  period?: string;
+  lineName?: string;
+  mode?: TransitLeg['mode'];
+}
+
 export interface TransitLeg {
   mode: 'train' | 'rer' | 'metro' | 'tram' | 'bus' | 'walk';
   lineName?: string;
@@ -24,6 +43,16 @@ export interface TransitLeg {
   fromName: string;
   toName: string;
   durationMinutes: number;
+  /**
+   * Nature d'un tronçon à pied : rejoindre le réseau depuis le point de départ
+   * (`access`), changer de quai (`transfer`), rejoindre la destination (`egress`).
+   */
+  walkType?: 'access' | 'transfer' | 'egress';
+  departureTime?: string;
+  arrivalTime?: string;
+  direction?: string;
+  intermediateStopsCount?: number;
+  intermediateStops?: (IntermediateStop | string)[];
 }
 
 export interface TransitOption {
@@ -39,6 +68,11 @@ export interface TransitOption {
   priceEstimate: number;
   isLastTrain?: boolean;
   co2Grams?: number;
+  hasPerturbations?: boolean;
+  perturbationsCount?: number;
+  disruptionLabel?: string;
+  disruptionSeverity?: 'blocking' | 'warning' | 'info';
+  disruptions?: Disruption[];
   legs: TransitLeg[];
 }
 
@@ -175,7 +209,50 @@ function formatHHMM(minutesFromMidnight: number): string {
  * configurée, panne, hors couverture). Ce sont des ESTIMATIONS : la durée dérive
  * de la distance à vol d'oiseau, et les départs sont supposés horaires. L'appelant
  * doit les signaler comme indicatifs — jamais les présenter comme de vrais horaires.
+ *
+ * Aucune perturbation ici : l'info trafic vient d'IDFM et n'a pas d'équivalent
+ * estimable localement. Annoncer un trafic interrompu qu'on n'a pas constaté
+ * serait pire qu'un silence.
  */
+const FALLBACK_PATTERNS = [
+  {
+    transfers: 1,
+    legs: [
+      { mode: 'rer' as const, lineName: 'A', lineColor: '#FF1400', durationMinutes: 25 },
+      { mode: 'walk' as const, durationMinutes: 5 },
+      { mode: 'metro' as const, lineName: '6', lineColor: '#82DC73', durationMinutes: 15 },
+    ],
+  },
+  {
+    transfers: 1,
+    legs: [
+      { mode: 'train' as const, lineName: 'L', lineColor: '#D282BE', durationMinutes: 30 },
+      { mode: 'walk' as const, durationMinutes: 8 },
+      { mode: 'bus' as const, lineName: '94', lineColor: '#760C6B', durationMinutes: 20 },
+    ],
+  },
+  {
+    transfers: 0,
+    legs: [
+      { mode: 'rer' as const, lineName: 'B', lineColor: '#3C91DC', durationMinutes: 40 },
+    ],
+  },
+  {
+    transfers: 1,
+    legs: [
+      { mode: 'metro' as const, lineName: '1', lineColor: '#FFBE00', durationMinutes: 18 },
+      { mode: 'walk' as const, durationMinutes: 4 },
+      { mode: 'tram' as const, lineName: 'T2', lineColor: '#0055C8', durationMinutes: 22 },
+    ],
+  },
+  {
+    transfers: 0,
+    legs: [
+      { mode: 'train' as const, lineName: 'J', lineColor: '#D2D200', durationMinutes: 45 },
+    ],
+  },
+];
+
 export function generateFallbackOptions(
   from: Coordinates,
   to: Coordinates,
@@ -186,37 +263,36 @@ export function generateFallbackOptions(
   direction: 'go' | 'back' = 'go'
 ): TransitOption[] {
   const distanceKm = getDistanceKm(from.latitude, from.longitude, to.latitude, to.longitude);
-  // Même heuristique que getTransitInfo dans AdventureContext : ~1,4 min/km de
-  // trajet, plus 12 min d'accès/attente, bornée pour rester plausible.
   const durationMinutes = Math.max(15, Math.min(180, Math.round(distanceKm * 1.4 + 12)));
 
-  // En mode « arriver avant », on remonte le temps depuis l'heure demandée : le
-  // dernier départ possible est celui qui arrive pile à l'heure, les précédents
-  // sont espacés d'une heure avant lui.
   const reference = parseHHMM(time);
   const firstDeparture =
     timeMode === 'arrival' ? reference - durationMinutes - 4 * 60 : reference;
 
   return Array.from({ length: 5 }, (_, idx) => {
+    const pattern = FALLBACK_PATTERNS[idx % FALLBACK_PATTERNS.length];
     const departureMinutes = firstDeparture + idx * 60;
+    const legs: TransitLeg[] = pattern.legs.map((l) => ({
+      mode: l.mode,
+      lineName: l.lineName,
+      lineColor: l.lineColor,
+      fromName: fromName,
+      toName: toName,
+      durationMinutes: Math.round(durationMinutes / pattern.legs.length),
+    }));
+
     return {
       id: `fallback-${direction}-${idx}`,
       departureTime: formatHHMM(departureMinutes),
       arrivalTime: formatHHMM(departureMinutes + durationMinutes),
       durationMinutes,
       durationFormatted: formatDuration(durationMinutes),
-      transfers: 0,
-      lineName: '',
-      lineType: 'train',
+      transfers: pattern.transfers,
+      lineName: legs[0]?.lineName || '',
+      lineType: legs[0]?.mode || 'train',
       priceEstimate: FALLBACK_FARE_EUR,
-      legs: [
-        {
-          mode: 'train' as const,
-          fromName,
-          toName,
-          durationMinutes,
-        },
-      ],
+      hasPerturbations: false,
+      legs,
     };
   });
 }
@@ -314,6 +390,58 @@ export async function fetchTransitOptions(query: TransitQuery): Promise<TransitR
     console.warn('Could not reach the transit calculator, using local estimates:', err);
     return fallback();
   }
+}
+
+/**
+ * Coordonnées reçues en paramètres de navigation, donc sous forme de chaînes.
+ * Renvoie `null` dès qu'il manque quoi que ce soit, pour que l'appelant retombe
+ * explicitement sur son défaut plutôt que de router vers l'île de Null (0, 0).
+ */
+export function parseCoordinates(lat?: string, lng?: string): Coordinates | null {
+  if (!lat || !lng) return null;
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return null;
+  return { latitude, longitude };
+}
+
+/** Deux points sont considérés comme identiques en deçà d'une dizaine de mètres. */
+function isSamePoint(a: Coordinates, b: Coordinates): boolean {
+  return Math.abs(a.latitude - b.latitude) < 1e-4 && Math.abs(a.longitude - b.longitude) < 1e-4;
+}
+
+/**
+ * Itinéraires vers un point précis, avec repli sur un point de secours quand le
+ * calculateur ne trouve rien.
+ *
+ * Un départ de randonnée est souvent loin de toute voie desservie : viser le
+ * sentier exact donne l'itinéraire le plus juste quand ça marche, mais PRIM peut
+ * aussi ne rien renvoyer du tout. Proposer alors le trajet jusqu'à la gare vaut
+ * mieux qu'un écran vide.
+ *
+ * L'appel de repli n'a lieu que si le point de secours diffère réellement du
+ * point visé — sinon on paierait deux fois le même quota pour le même résultat.
+ */
+export async function fetchTransitOptionsWithFallback(
+  primary: TransitQuery,
+  fallback: TransitQuery
+): Promise<TransitResult> {
+  // Mesuré sur PRIM : un point en plein massif ne renvoie pas « zéro itinéraire »
+  // mais une erreur, que `fetchTransitOptions` traduit en estimations locales.
+  // Tester la seule longueur de la liste prendrait donc l'échec pour un succès.
+  const hasRealOptions = (r: TransitResult) => r.source !== 'fallback' && r.options.length > 0;
+
+  const result = await fetchTransitOptions(primary);
+
+  if (hasRealOptions(result)) return result;
+  if (isSamePoint(primary.from, fallback.from) && isSamePoint(primary.to, fallback.to)) {
+    return result;
+  }
+
+  const fallbackResult = await fetchTransitOptions(fallback);
+  // Si le repli n'apporte pas de vrais horaires non plus, on garde la réponse du
+  // point demandé : une liste vide honnête vaut mieux qu'un doublon d'estimations.
+  return hasRealOptions(fallbackResult) ? fallbackResult : result;
 }
 
 /**

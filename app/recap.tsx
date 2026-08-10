@@ -494,7 +494,7 @@ export default function RecapScreen() {
                       </Text>
                       <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
                         {adventure.returnTrain.time} : {rando.endStation} →{' '}
-                        {adventure.departureStationName}
+                        {adventure.returnStationName ?? adventure.departureStationName}
                       </Text>
                     </View>
                     {expandedStep === 3 ? (

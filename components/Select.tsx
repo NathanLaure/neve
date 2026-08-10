@@ -73,7 +73,7 @@ export function Select({
           },
         ]}>
         {label ? (
-          <View style={[styles.floatingLabelBadge, { backgroundColor: theme.background }]}>
+          <View style={[styles.floatingLabelBadge, { backgroundColor: theme.card }]}>
             <Text
               style={[
                 styles.floatingLabelText,
@@ -100,9 +100,12 @@ export function Select({
       </Pressable>
 
       {/* Bottom Sheet Options Modal */}
+      {/* `push` : le Select peut vivre dans une feuille (voir PassengersBottomSheet).
+          Sans ça, gorhom remplacerait la feuille parente au lieu de s'empiler dessus. */}
       <BaseBottomSheetModal
         ref={bottomSheetRef}
         showHeader={false}
+        stackBehavior="push"
         enableDynamicSizing>
         <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 34) }]}>
           {options.map((option, idx) => {

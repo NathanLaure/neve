@@ -130,18 +130,18 @@ export default function PassengersEditor({
         </View>
       )}
 
-      <Pressable
-        onPress={() => setDraftBracket(draftBracket === null ? DEFAULT_AGE_BRACKET : draftBracket)}
-        disabled={draftBracket !== null}
-        style={[
-          styles.addRow,
-          { backgroundColor: theme.card, opacity: draftBracket !== null ? 0.5 : 1 },
-        ]}>
-        <Text style={[styles.addLabel, { color: theme.text }]}>Ajouter un voyageur</Text>
-        <View style={[styles.addIcon, { backgroundColor: theme.surfaceSecondary }]}>
-          <Plus size={16} color={theme.text} />
-        </View>
-      </Pressable>
+      {/* Masqué pendant la saisie : la carte « Nouveau voyageur » et ses deux
+          boutons tiennent déjà le rôle, un « Ajouter » grisé en plus embrouille. */}
+      {draftBracket === null && (
+        <Pressable
+          onPress={() => setDraftBracket(DEFAULT_AGE_BRACKET)}
+          style={[styles.addRow, { backgroundColor: theme.card }]}>
+          <Text style={[styles.addLabel, { color: theme.text }]}>Ajouter un voyageur</Text>
+          <View style={[styles.addIcon, { backgroundColor: theme.surfaceSecondary }]}>
+            <Plus size={16} color={theme.text} />
+          </View>
+        </Pressable>
+      )}
 
       {draftBracket !== null ? (
         <View style={styles.actions}>

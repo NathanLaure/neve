@@ -49,6 +49,10 @@ const MAPBOX_STYLES: Record<MapStyleType | 'dark', string> = {
 const DEFAULT_LAT = 48.8566;
 const DEFAULT_LNG = 2.3522;
 
+// Marge autour du tracé quand on cadre dessus, pour qu'il ne colle pas aux bords
+// ni ne passe sous les contrôles de la carte.
+const TRACE_PADDING = 40;
+
 const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function ExplorerMap(
   {
     userLocation,
@@ -79,7 +83,19 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
   const programmaticMoveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setCameraProgrammatically = (
-    config: { centerCoordinate?: number[]; zoomLevel?: number; heading?: number },
+    config: {
+      centerCoordinate?: number[];
+      zoomLevel?: number;
+      heading?: number;
+      bounds?: {
+        ne: number[];
+        sw: number[];
+        paddingTop?: number;
+        paddingBottom?: number;
+        paddingLeft?: number;
+        paddingRight?: number;
+      };
+    },
     duration: number
   ) => {
     isProgrammaticMoveRef.current = true;
@@ -172,6 +188,30 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     };
   }, [showGpxTrace, selectedHike]);
 
+  /**
+   * Cadre englobant le tracé affiché.
+   *
+   * La caméra doit montrer le parcours entier et pas seulement son départ : sur
+   * une rando de 15 km, cadrer sur le point de départ laisse tout le reste hors
+   * écran. Nul tant que la géométrie n'est pas chargée — sur la fiche rando elle
+   * arrive après le premier rendu, d'où le repli sur le point de départ.
+   */
+  const traceBounds = useMemo(() => {
+    const coords = gpxTraceGeoJSON?.features[0]?.geometry.coordinates;
+    if (!coords || coords.length < 2) return null;
+
+    let [minLng, minLat] = coords[0];
+    let [maxLng, maxLat] = coords[0];
+    for (const [lng, lat] of coords) {
+      if (lng < minLng) minLng = lng;
+      if (lng > maxLng) maxLng = lng;
+      if (lat < minLat) minLat = lat;
+      if (lat > maxLat) maxLat = lat;
+    }
+
+    return { ne: [maxLng, maxLat], sw: [minLng, minLat] };
+  }, [gpxTraceGeoJSON]);
+
   // Handle press on hike marker or cluster
   const handleShapePress = (event: any) => {
     const feature = event.features?.[0];
@@ -188,9 +228,30 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
 
   const hasCenteredInitialLocationRef = useRef(false);
 
+  /** Point de cadrage d'une rando : son vrai départ, à défaut sa gare. */
+  const hikeCenter = (hike: RandoData): [number, number] => [
+    (hike as any).start_lng ?? hike.startStationCoords?.longitude ?? DEFAULT_LNG,
+    (hike as any).start_lat ?? hike.startStationCoords?.latitude ?? DEFAULT_LAT,
+  ];
+
+  // Cadrage d'ouverture. Une carte ouverte sur une rando doit s'ouvrir DESSUS :
+  // partir de la position de l'utilisateur puis dériver vers le tracé se voit à
+  // l'écran, et `defaultSettings` ne s'applique qu'au montage.
+  const initialCenter: [number, number] = selectedHike
+    ? hikeCenter(selectedHike)
+    : [safeUserLng, safeUserLat];
+
   // Smoothly center camera on user's real GPS position once resolved at startup
   useEffect(() => {
     if (!userLocation || hasCenteredInitialLocationRef.current) return;
+    // On se fie à `selectedHikeId` et non à `selectedHike` : l'identifiant est
+    // connu dès le montage, alors que la rando peut n'être résolue qu'une fois
+    // la liste chargée. Attendre l'objet laisserait cet effet recentrer sur
+    // l'utilisateur entre-temps.
+    if (selectedHikeId) {
+      hasCenteredInitialLocationRef.current = true;
+      return;
+    }
     hasCenteredInitialLocationRef.current = true;
     setCameraProgrammatically(
       {
@@ -199,16 +260,34 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
       },
       700
     );
-  }, [userLocation, initialZoomLevel]);
+  }, [userLocation, initialZoomLevel, selectedHikeId]);
 
   // Center camera when selected hike changes
   useEffect(() => {
     if (!selectedHike) return;
-    const lat = (selectedHike as any).start_lat ?? selectedHike.startStationCoords?.latitude ?? DEFAULT_LAT;
-    const lng = (selectedHike as any).start_lng ?? selectedHike.startStationCoords?.longitude ?? DEFAULT_LNG;
 
-    setCameraProgrammatically({ centerCoordinate: [lng, lat], zoomLevel: 12.5 }, 800);
-  }, [selectedHikeId]);
+    // `selectedHike` et `traceBounds` en dépendances, et pas seulement
+    // l'identifiant : quand la carte se monte avant le chargement de la liste,
+    // l'objet n'arrive qu'après, et la géométrie plus tard encore. Sur le seul
+    // identifiant, l'effet sortait à vide et ne repassait jamais.
+    if (traceBounds) {
+      setCameraProgrammatically(
+        {
+          bounds: {
+            ...traceBounds,
+            paddingTop: TRACE_PADDING,
+            paddingBottom: TRACE_PADDING,
+            paddingLeft: TRACE_PADDING,
+            paddingRight: TRACE_PADDING,
+          },
+        },
+        800
+      );
+      return;
+    }
+
+    setCameraProgrammatically({ centerCoordinate: hikeCenter(selectedHike), zoomLevel: 12.5 }, 800);
+  }, [selectedHikeId, selectedHike, traceBounds]);
 
   return (
     <View style={[styles.container, style]}>
@@ -257,18 +336,22 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         <Mapbox.Camera
           ref={cameraRef}
           defaultSettings={{
-            centerCoordinate: [safeUserLng, safeUserLat],
+            centerCoordinate: initialCenter,
             zoomLevel: initialZoomLevel,
           }}
         />
 
-        {/* User Location Marker */}
-        <Mapbox.PointAnnotation id="userLocation" coordinate={[safeUserLng, safeUserLat]}>
-          <View style={styles.userMarkerContainer}>
-            <View style={styles.userPulse} />
-            <View style={styles.userDot} />
-          </View>
-        </Mapbox.PointAnnotation>
+        {/* User Location Marker — seulement si on connaît vraiment la position.
+            Sans ce garde-fou, `safeUserLat/Lng` retombent sur le centre de Paris
+            et la carte affiche un « vous êtes ici » qui n'a aucun fondement. */}
+        {userLocation && (
+          <Mapbox.PointAnnotation id="userLocation" coordinate={[safeUserLng, safeUserLat]}>
+            <View style={styles.userMarkerContainer}>
+              <View style={styles.userPulse} />
+              <View style={styles.userDot} />
+            </View>
+          </Mapbox.PointAnnotation>
+        )}
 
         {/* Native GPX Trace Layer */}
         {gpxTraceGeoJSON && (

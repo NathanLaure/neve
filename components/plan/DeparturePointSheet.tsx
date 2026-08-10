@@ -1,6 +1,7 @@
 import React, { forwardRef, useEffect, useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -21,6 +22,8 @@ export interface DeparturePointSheetProps {
   /** Position GPS courante, proposée en tête de liste. */
   currentLocation: DeparturePoint | null;
   onSelect: (point: DeparturePoint) => void;
+  /** La même feuille sert au point de départ et au lieu de retour. */
+  title?: string;
 }
 
 /** Même délai que l'écran de recherche : on ne géocode pas à chaque frappe. */
@@ -34,9 +37,10 @@ const DEBOUNCE_MS = 300;
  * de la même façon aux deux endroits.
  */
 const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSheetProps>(
-  ({ currentLocation, onSelect }, ref) => {
+  ({ currentLocation, onSelect, title = 'D’où pars-tu ?' }, ref) => {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
+    const insets = useSafeAreaInsets();
 
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<GeocodedPlace[]>([]);
@@ -75,8 +79,15 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
 
     const showEmptyState = query.trim().length >= 2 && !isSearching && results.length === 0;
 
+    // Pleine hauteur, arrêtée sous la barre d'état : la liste de résultats a
+    // besoin de toute la place, et la feuille s'ouvre avec le clavier.
     return (
-      <BaseBottomSheetModal ref={ref} title="D’où pars-tu ?" showHeader snapPoints={['85%']}>
+      <BaseBottomSheetModal
+        ref={ref}
+        title={title}
+        showHeader
+        snapPoints={['100%']}
+        topInset={insets.top}>
         <View style={styles.content}>
           <SearchInput
             value={query}

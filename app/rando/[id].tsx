@@ -78,6 +78,7 @@ export default function RandoDetailScreen() {
 
   const {
     userLocationName,
+    userLocation,
     hikes,
     loadHikes,
     loadHikeDetail,
@@ -585,8 +586,10 @@ export default function RandoDetailScreen() {
             <Text style={[styles.title, { color: theme.text }]}>{rando.title}</Text>
 
             {/* Geo Location */}
+            {/* Gare de départ : c'est celle qu'on doit rejoindre pour attaquer
+                la rando, pas celle d'où l'on repart. */}
             <Text style={[styles.locationSubtitle, { color: theme.textMuted }]}>
-              {rando.endStation ? `${rando.endStation}, France` : 'Haute-Savoie, France'}
+              {rando.startStation ? `${rando.startStation}, France` : 'Île-de-France, France'}
             </Text>
 
             {/* Description Description */}
@@ -689,13 +692,11 @@ export default function RandoDetailScreen() {
 
           <View style={styles.inlineMapCardContainer}>
             <ExplorerMap
-              userLocation={
-                rando?.startStationCoords || {
-                  latitude: (rando as any)?.start_lat || 48.8566,
-                  longitude: (rando as any)?.start_lng || 2.3522,
-                }
-              }
-              userLocationName={rando?.startStation || rando?.location || ''}
+              // La vraie position de l'utilisateur, pas celle de la rando : le
+              // marqueur « vous êtes ici » doit dire où l'on est. Le cadrage sur
+              // la rando vient de `selectedHikeId`.
+              userLocation={userLocation}
+              userLocationName={userLocationName}
               hikes={[rando]}
               selectedHikeId={rando?.id || null}
               showGpxTrace={true}
@@ -719,10 +720,24 @@ export default function RandoDetailScreen() {
           </View>
 
           <View style={styles.transitContainer}>
-            <Text style={[styles.transitText, { color: theme.text }]}>
-              Cette randonnée commence et se termine à proximité de la gare de{' '}
-              <Text style={{ fontFamily: 'Satoshi-Bold' }}>{rando.endStation || 'Station Nature'}</Text>.
-            </Text>
+            {/* Une boucle part et revient à la même gare ; un point à point non,
+                et annoncer une seule gare y ferait rater le trajet de retour. */}
+            {rando.endStation && rando.endStation !== rando.startStation ? (
+              <Text style={[styles.transitText, { color: theme.text }]}>
+                Cette randonnée commence à proximité de la gare de{' '}
+                <Text style={{ fontFamily: 'Satoshi-Bold' }}>{rando.startStation}</Text> et se
+                termine à proximité de la gare de{' '}
+                <Text style={{ fontFamily: 'Satoshi-Bold' }}>{rando.endStation}</Text>.
+              </Text>
+            ) : (
+              <Text style={[styles.transitText, { color: theme.text }]}>
+                Cette randonnée commence et se termine à proximité de la gare de{' '}
+                <Text style={{ fontFamily: 'Satoshi-Bold' }}>
+                  {rando.startStation || 'Station Nature'}
+                </Text>
+                .
+              </Text>
+            )}
 
             <Text style={[styles.transitSubtext, { color: theme.textMuted, marginTop: 12 }]}>
               Pour un trajet éco-responsable, nous vous recommandons d'utiliser les transports en commun. Pensez à vérifier les horaires de train et de navette locale avant votre départ.
@@ -747,8 +762,10 @@ export default function RandoDetailScreen() {
 
           <View style={[styles.weatherCard, { backgroundColor: theme.blueBadge }]}>
             <View style={styles.weatherCardHeader}>
+              {/* La météo est relevée sur `start_lat`/`start_lng` : le libellé
+                  doit désigner le même endroit, donc la gare de départ. */}
               <Text style={[styles.weatherCity, { color: theme.text }]}>
-                {rando.location || rando.endStation || 'Haute-Savoie, France'}
+                {rando.location || rando.startStation || 'Île-de-France, France'}
               </Text>
               <ChevronRight size={24} color={theme.text} />
             </View>
@@ -879,7 +896,6 @@ export default function RandoDetailScreen() {
       {/* Actions Bottom Sheet Modal (Figma node 424:5042) */}
       <BaseBottomSheetModal
         ref={actionsSheetRef}
-        snapPoints={['30%']}
         showHeader={false}>
         <View style={styles.actionsOptionsList}>
           {/* Item 1: Partager la randonnée */}
@@ -901,8 +917,7 @@ export default function RandoDetailScreen() {
                 fill={isFavorite ? '#EF4444' : 'none'}
               />
             }
-            label={isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-            color={isFavorite ? '#EF4444' : undefined}
+            label="Ajouter aux favoris"
             onPress={() => {
               actionsSheetRef.current?.dismiss();
               if (id) toggleFavorite(String(id));
@@ -960,13 +975,8 @@ export default function RandoDetailScreen() {
           <View style={[styles.fullMapContainer, { backgroundColor: theme.background }]}>
             <ExplorerMap
               ref={fullMapRef}
-              userLocation={
-                rando?.startStationCoords || {
-                  latitude: (rando as any)?.start_lat || 48.8566,
-                  longitude: (rando as any)?.start_lng || 2.3522,
-                }
-              }
-              userLocationName={rando?.startStation || rando?.location || ''}
+              userLocation={userLocation}
+              userLocationName={userLocationName}
               hikes={[rando]}
               selectedHikeId={rando?.id || null}
               showGpxTrace={true}

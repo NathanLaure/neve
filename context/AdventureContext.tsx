@@ -25,6 +25,12 @@ export interface PlannedAdventure {
   outwardTrain: TrainOption;
   returnTrain: TrainOption;
   departureStationName: string;
+  /**
+   * Destination du trajet retour quand elle diffère du point de départ. Optionnel
+   * pour ne pas invalider les aventures déjà enregistrées : absent, le retour
+   * ramène au départ.
+   */
+  returnStationName?: string;
   isBooked: boolean;
 }
 

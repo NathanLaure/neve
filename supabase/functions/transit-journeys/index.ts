@@ -61,6 +61,21 @@ interface Coords {
   lng: number;
 }
 
+interface IntermediateStop {
+  name: string;
+  time?: string;
+}
+
+interface Disruption {
+  id: string;
+  severity: 'blocking' | 'warning' | 'info';
+  title: string;
+  message: string;
+  period?: string;
+  lineName?: string;
+  mode?: TransitLeg['mode'];
+}
+
 interface TransitLeg {
   mode: 'train' | 'rer' | 'metro' | 'tram' | 'bus' | 'walk';
   lineName?: string;
@@ -68,6 +83,14 @@ interface TransitLeg {
   fromName: string;
   toName: string;
   durationMinutes: number;
+  /**
+   * Nature d'un tronçon à pied : rejoindre le réseau depuis le point de départ
+   * (`access`), changer de quai (`transfer`), rejoindre la destination (`egress`).
+   */
+  walkType?: 'access' | 'transfer' | 'egress';
+  direction?: string;
+  intermediateStopsCount?: number;
+  intermediateStops?: IntermediateStop[];
 }
 
 interface TransitOption {
@@ -81,6 +104,11 @@ interface TransitOption {
   lineType: string;
   priceEstimate: number;
   co2Grams?: number;
+  hasPerturbations?: boolean;
+  perturbationsCount?: number;
+  disruptionLabel?: string;
+  disruptionSeverity?: Disruption['severity'];
+  disruptions?: Disruption[];
   legs: TransitLeg[];
 }
 
@@ -244,40 +272,314 @@ function estimateFare(legs: TransitLeg[]): number {
   return Number(total.toFixed(2));
 }
 
-function normalizeJourney(journey: any, index: number): TransitOption | null {
+// --------------------------------------------------------------------------
+// Perturbations
+// --------------------------------------------------------------------------
+
+// `severity.effect` suit la nomenclature GTFS-RT. Seul NO_SERVICE veut dire
+// « le trajet ne peut pas se faire » ; les autres dégradent sans bloquer, et tout
+// le reste (ADDITIONAL_SERVICE, OTHER_EFFECT, travaux annoncés…) est informatif.
+const BLOCKING_EFFECTS = new Set(['NO_SERVICE']);
+const WARNING_EFFECTS = new Set([
+  'REDUCED_SERVICE',
+  'SIGNIFICANT_DELAYS',
+  'DETOUR',
+  'MODIFIED_SERVICE',
+  'STOP_MOVED',
+]);
+
+const SEVERITY_RANK: Record<Disruption['severity'], number> = {
+  blocking: 0,
+  warning: 1,
+  info: 2,
+};
+
+const MONTHS_FR = [
+  'janvier', 'février', 'mars', 'avril', 'mai', 'juin',
+  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre',
+];
+
+function toDisruptionSeverity(raw: any): Disruption['severity'] {
+  const effect = String(raw?.severity?.effect ?? raw?.status ?? '').toUpperCase();
+  if (BLOCKING_EFFECTS.has(effect)) return 'blocking';
+  if (WARNING_EFFECTS.has(effect)) return 'warning';
+  return 'info';
+}
+
+// Entités nommées rencontrées dans les messages IDFM. Le français en produit
+// beaucoup (`&eacute;`, `&agrave;`…) et un message non décodé se lit très mal.
+const HTML_ENTITIES: Record<string, string> = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  agrave: 'à', acirc: 'â', ccedil: 'ç', eacute: 'é', egrave: 'è', ecirc: 'ê',
+  euml: 'ë', icirc: 'î', iuml: 'ï', ocirc: 'ô', oelig: 'œ', ugrave: 'ù',
+  ucirc: 'û', uuml: 'ü', Agrave: 'À', Eacute: 'É', Egrave: 'È', Ccedil: 'Ç',
+  laquo: '«', raquo: '»', rsquo: '’', hellip: '…', deg: '°', euro: '€',
+  times: '×', ndash: '–', mdash: '—',
+};
+
+/** Décode entités nommées et numériques (`&#233;`, `&#xE9;`) en une seule passe. */
+function decodeEntities(value: string): string {
+  return value.replace(/&(#x?[0-9a-fA-F]+|[a-zA-Z]+);/g, (match, entity: string) => {
+    if (entity[0] !== '#') return HTML_ENTITIES[entity] ?? match;
+    const hex = entity[1] === 'x' || entity[1] === 'X';
+    const code = parseInt(entity.slice(hex ? 2 : 1), hex ? 16 : 10);
+    return Number.isFinite(code) && code > 0 ? String.fromCodePoint(code) : match;
+  });
+}
+
+/**
+ * Les messages IDFM arrivent en HTML (`<p>`, `<br>`, liens). L'app les rend dans
+ * un `<Text>` : on aplatit en texte brut plutôt que d'embarquer un moteur de rendu
+ * HTML dans une bottom sheet.
+ */
+function htmlToText(value: unknown): string {
+  if (typeof value !== 'string') return '';
+  const stripped = value
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|div|li|ul|h\d)>/gi, '\n')
+    .replace(/<[^>]+>/g, '');
+  return decodeEntities(stripped)
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** `20260807T081500` -> `7 août 2026`, ou `7 août` sans l'année. */
+function navitiaDateToLabel(value: unknown, withYear = true): string {
+  if (typeof value !== 'string') return '';
+  const day = Number(value.slice(6, 8));
+  const month = Number(value.slice(4, 6)) - 1;
+  const year = Number(value.slice(0, 4));
+  if (!Number.isFinite(day) || !MONTHS_FR[month] || !Number.isFinite(year)) return '';
+  const dayLabel = `${day === 1 ? '1er' : day} ${MONTHS_FR[month]}`;
+  return withYear ? `${dayLabel} ${year}` : dayLabel;
+}
+
+/**
+ * Période de validité lisible. Navitia peut en renvoyer plusieurs (une par jour
+ * d'application, typiquement) : on borne de la première à la dernière plutôt que
+ * d'égrener la liste.
+ */
+function formatApplicationPeriod(periods: unknown): string | undefined {
+  if (!Array.isArray(periods) || periods.length === 0) return undefined;
+
+  const begin = periods[0]?.begin;
+  const end = periods[periods.length - 1]?.end;
+  const beginLabel = navitiaDateToLabel(begin);
+  if (!beginLabel) return undefined;
+
+  const beginDay = String(begin).split('T')[0];
+  const endDay = typeof end === 'string' ? end.split('T')[0] : '';
+
+  if (!endDay) return `À partir du ${beginLabel}`;
+
+  if (endDay === beginDay) {
+    const from = navitiaTimeToHHMM(String(begin));
+    const to = navitiaTimeToHHMM(String(end));
+    const allDay = from === '00:00' && (to === '23:59' || to === '00:00');
+    return allDay ? `Le ${beginLabel}, toute la journée` : `Le ${beginLabel}, de ${from} à ${to}`;
+  }
+
+  const endLabel = navitiaDateToLabel(end);
+  if (!endLabel) return `À partir du ${beginLabel}`;
+
+  // L'année ne se répète pas quand les deux bornes tombent dessus.
+  const sameYear = beginDay.slice(0, 4) === endDay.slice(0, 4);
+  return `Du ${navitiaDateToLabel(begin, !sameYear)} au ${endLabel}`;
+}
+
+/**
+ * Pannes d'équipement de station (ascenseurs, escaliers mécaniques). IDFM en
+ * publie en continu et elles noient l'info trafic utile au randonneur, qui n'a
+ * pas de correspondance à revoir pour autant.
+ *
+ * NOTE ACCESSIBILITÉ : c'est précisément l'information dont un voyageur à
+ * mobilité réduite a besoin. Si l'app expose un jour un filtre d'accessibilité,
+ * c'est ce test qu'il faudra conditionner plutôt que supprimer.
+ */
+const EQUIPMENT_PATTERN =
+  /\b(ascenseur|escalier m[ée]canique|escalator|trottoir roulant|[ée]l[ée]vateur)/i;
+
+function isEquipmentOnly(disruption: Disruption): boolean {
+  // Une interruption de trafic reste affichée même si son texte cite un
+  // ascenseur : seul le bruit d'équipement est écarté.
+  if (disruption.severity === 'blocking') return false;
+  return EQUIPMENT_PATTERN.test(`${disruption.title} ${disruption.message}`);
+}
+
+/**
+ * Un message peut porter le titre plutôt que le corps : IDFM le signale par le
+ * canal (`titre`) et non par sa position dans le tableau.
+ */
+function isTitleChannel(message: any): boolean {
+  const name = String(message?.channel?.name ?? '').toLowerCase();
+  const types: unknown[] = Array.isArray(message?.channel?.types) ? message.channel.types : [];
+  return name.includes('titre') || name.includes('title') || types.includes('title');
+}
+
+/**
+ * Perturbations de la réponse, indexées par identifiant. Navitia les publie une
+ * seule fois à la racine ; les sections ne portent que des liens vers elles.
+ */
+function indexDisruptions(payload: any): Map<string, any> {
+  const byId = new Map<string, any>();
+  const raws: any[] = Array.isArray(payload?.disruptions) ? payload.disruptions : [];
+  for (const raw of raws) {
+    if (typeof raw?.id === 'string') byId.set(raw.id, raw);
+    // `disruption_id` regroupe les impacts d'une même perturbation : les liens de
+    // section pointent tantôt sur l'un, tantôt sur l'autre.
+    if (typeof raw?.disruption_id === 'string' && !byId.has(raw.disruption_id)) {
+      byId.set(raw.disruption_id, raw);
+    }
+  }
+  return byId;
+}
+
+/** Identifiants de perturbation référencés par une section. */
+function sectionDisruptionIds(section: any): string[] {
+  const links: any[] = [
+    ...(Array.isArray(section?.links) ? section.links : []),
+    ...(Array.isArray(section?.display_informations?.links)
+      ? section.display_informations.links
+      : []),
+  ];
+  return links
+    .filter((link) => link?.type === 'disruption' || link?.rel === 'disruptions')
+    .map((link) => link?.id)
+    .filter((id: unknown): id is string => typeof id === 'string');
+}
+
+function buildDisruption(
+  raw: any,
+  lineName?: string,
+  mode?: TransitLeg['mode']
+): Disruption | null {
+  const id = typeof raw?.id === 'string' ? raw.id : raw?.disruption_id;
+  if (typeof id !== 'string') return null;
+
+  const messages: any[] = Array.isArray(raw?.messages) ? raw.messages : [];
+  const titleMessage = messages.find(isTitleChannel);
+  const bodyMessage = messages.find((m) => m !== titleMessage);
+
+  const cause = htmlToText(raw?.cause);
+  const severityName = typeof raw?.severity?.name === 'string' ? raw.severity.name : '';
+
+  const title =
+    htmlToText(titleMessage?.text) || cause || severityName || 'Perturbation en cours';
+  // `cause` ne sert de corps que s'il n'a pas déjà été promu en titre.
+  const message = htmlToText(bodyMessage?.text) || (cause === title ? '' : cause);
+
+  // Une perturbation sans texte exploitable n'apprend rien : mieux vaut ne pas la
+  // compter que d'afficher une carte vide.
+  if (!message && !titleMessage) return null;
+
+  const disruption: Disruption = {
+    id,
+    severity: toDisruptionSeverity(raw),
+    title,
+    message,
+    period: formatApplicationPeriod(raw?.application_periods),
+    lineName,
+    mode,
+  };
+
+  return isEquipmentOnly(disruption) ? null : disruption;
+}
+
+// Sous ce seuil, un tronçon à pied alourdit l'affichage sans rien apprendre.
+const WALK_MIN_MINUTES = 3;
+
+/** Vrai quand le lieu est un arrêt du réseau, et non une adresse, un POI ou des coordonnées. */
+function isStopPlace(place: any): boolean {
+  const type = place?.embedded_type;
+  return type === 'stop_point' || type === 'stop_area';
+}
+
+function normalizeJourney(
+  journey: any,
+  index: number,
+  disruptionIndex: Map<string, any>
+): TransitOption | null {
   const sections: any[] = Array.isArray(journey?.sections) ? journey.sections : [];
 
   const legs: TransitLeg[] = [];
-  for (const section of sections) {
+  // Une même perturbation peut être référencée par plusieurs sections : on garde
+  // la première rencontrée, dont on connaît la ligne et le mode.
+  const disruptions = new Map<string, Disruption>();
+
+  for (let sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+    const section = sections[sectionIndex];
     const durationMinutes = Math.round((section?.duration ?? 0) / 60);
 
     if (section?.type === 'public_transport') {
       const info = section.display_informations ?? {};
       const commercialMode: string = info.commercial_mode ?? info.physical_mode ?? '';
+
+      // Extraction des arrêts intermédiaires depuis Navitia stop_date_times
+      const stopDateTimes: any[] = Array.isArray(section?.stop_date_times) ? section.stop_date_times : [];
+      const intermediateStops = stopDateTimes.length > 2
+        ? stopDateTimes.slice(1, -1).map((s: any) => ({
+            name: s.stop_point?.name ?? s.stop_area?.name ?? '',
+            time: s.departure_date_time ? navitiaTimeToHHMM(s.departure_date_time) : (s.arrival_date_time ? navitiaTimeToHHMM(s.arrival_date_time) : undefined),
+          })).filter((s: any) => Boolean(s.name))
+        : [];
+
+      const mode = toLegMode(commercialMode);
+      const lineName = info.code || info.label || commercialMode || undefined;
+
+      // La ligne et le mode viennent de la section qui référence la perturbation,
+      // pas de ses `impacted_objects` : c'est ce que l'utilisateur emprunte.
+      for (const id of sectionDisruptionIds(section)) {
+        if (disruptions.has(id)) continue;
+        const raw = disruptionIndex.get(id);
+        if (!raw) continue;
+        const disruption = buildDisruption(raw, lineName, mode);
+        if (disruption) disruptions.set(id, disruption);
+      }
+
       legs.push({
-        mode: toLegMode(commercialMode),
-        lineName: info.code || info.label || commercialMode || undefined,
+        mode,
+        lineName,
         lineColor: info.color ? `#${info.color}` : undefined,
         fromName: section.from?.name ?? '',
         toName: section.to?.name ?? '',
+        direction: info.direction ?? undefined,
         durationMinutes,
+        intermediateStopsCount: stopDateTimes.length > 1 ? stopDateTimes.length - 2 : 0,
+        intermediateStops: intermediateStops.length > 0 ? intermediateStops : undefined,
       });
       continue;
     }
 
-    // Marche d'accès / de correspondance. On ignore les micro-segments (< 3 min),
-    // qui alourdissent l'affichage sans rien apprendre au randonneur.
+    // Tronçon à pied. `crow_fly` est la variante à vol d'oiseau que Navitia
+    // produit quand il ne détaille pas le cheminement rue par rue — c'est très
+    // souvent la forme que prend justement l'accès depuis une adresse.
     const isWalk =
-      (section?.type === 'street_network' && section?.mode === 'walking') ||
+      ((section?.type === 'street_network' || section?.type === 'crow_fly') &&
+        section?.mode === 'walking') ||
       section?.type === 'transfer';
-    if (isWalk && durationMinutes >= 3) {
-      legs.push({
-        mode: 'walk',
-        fromName: section.from?.name ?? '',
-        toName: section.to?.name ?? '',
-        durationMinutes,
-      });
-    }
+    if (!isWalk) continue;
+
+    const isAccess = sectionIndex === 0;
+    const walkType: TransitLeg['walkType'] = isAccess
+      ? 'access'
+      : sectionIndex === sections.length - 1
+      ? 'egress'
+      : 'transfer';
+
+    // L'accès depuis une adresse ou une position GPS est conservé quelle que soit
+    // sa durée : sans lui la timeline démarre sur un quai sans dire comment on y
+    // arrive. Partir d'une gare ne pose pas ce problème, le seuil s'y applique.
+    const startsFromPlace = isAccess && !isStopPlace(section?.from);
+    if (durationMinutes < WALK_MIN_MINUTES && !startsFromPlace) continue;
+
+    legs.push({
+      mode: 'walk',
+      walkType,
+      fromName: section.from?.name ?? '',
+      toName: section.to?.name ?? '',
+      durationMinutes,
+    });
   }
 
   // Un itinéraire 100 % à pied n'a pas sa place dans une liste de trains.
@@ -291,15 +593,18 @@ function normalizeJourney(journey: any, index: number): TransitOption | null {
   const durationMinutes = Math.round((journey?.duration ?? 0) / 60);
   const headLeg = transitLegs[0];
 
+  // Le plus grave en tête : c'est lui que la carte résume avant ouverture de la
+  // bottom sheet.
+  const journeyDisruptions = [...disruptions.values()].sort(
+    (a, b) => SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity]
+  );
+
   return {
     id: `prim-${departure}-${index}`,
     departureTime: navitiaTimeToHHMM(departure),
     arrivalTime: navitiaTimeToHHMM(arrival),
     durationMinutes,
     durationFormatted: formatDuration(durationMinutes),
-    // `nb_transfers` compte les correspondances entre modes lourds, ce qui
-    // correspond à ce qu'on veut afficher. On retombe sur le nombre de segments
-    // s'il manque.
     transfers: journey?.nb_transfers ?? Math.max(0, transitLegs.length - 1),
     lineName: headLeg.lineName ?? '',
     lineType: headLeg.mode,
@@ -308,18 +613,24 @@ function normalizeJourney(journey: any, index: number): TransitOption | null {
       typeof journey?.co2_emission?.value === 'number'
         ? Math.round(journey.co2_emission.value)
         : undefined,
+    hasPerturbations: journeyDisruptions.length > 0,
+    perturbationsCount: journeyDisruptions.length || undefined,
+    disruptionLabel: journeyDisruptions[0]?.title,
+    disruptionSeverity: journeyDisruptions[0]?.severity,
+    disruptions: journeyDisruptions.length > 0 ? journeyDisruptions : undefined,
     legs,
   };
 }
 
 function normalizeJourneys(payload: any): TransitOption[] {
   const journeys: any[] = Array.isArray(payload?.journeys) ? payload.journeys : [];
+  const disruptionIndex = indexDisruptions(payload);
 
   const options: TransitOption[] = [];
   const seen = new Set<string>();
 
   journeys.forEach((journey, index) => {
-    const option = normalizeJourney(journey, index);
+    const option = normalizeJourney(journey, index, disruptionIndex);
     if (!option) return;
     // PRIM renvoie plusieurs variantes (`best`, `rapid`, `comfort`…) qui se
     // recoupent souvent sur le même train : on ne garde qu'une entrée par
