@@ -21,6 +21,12 @@
       "expo-font",
       "expo-splash-screen",
       [
+        "expo-navigation-bar",
+        {
+          "enforceContrast": false
+        }
+      ],
+      [
         "@rnmapbox/maps",
         {
           "RNMapboxMapsImpl": "mapbox"

@@ -317,7 +317,7 @@ export interface TransitQuery {
 }
 
 /** Repli quand l'horizon PRIM n'est pas lisible : on borne à 30 jours. */
-const FALLBACK_HORIZON_DAYS = 30;
+const FALLBACK_HORIZON_DAYS = 365;
 
 /**
  * Dernière date pour laquelle le calculateur a des horaires (`YYYY-MM-DD`).
@@ -469,4 +469,44 @@ export function toTrainOption(option: TransitOption, isRealtime: boolean): Train
     co2Grams: option.co2Grams,
     isRealtime,
   };
+}
+
+/**
+ * Calcule l'indice du trajet recommandé selon :
+ * 1. Absence de perturbations majeures
+ * 2. Minimum de correspondances (priorité aux trajets directs)
+ * 3. Tarif le plus bas
+ * 4. Durée de transport minimale
+ */
+export function getRecommendedOptionIndex(options: TransitOption[]): number {
+  if (options.length === 0) return -1;
+
+  let bestIndex = 0;
+  let bestScore = Infinity;
+
+  options.forEach((option, idx) => {
+    // 1. Pénalité de perturbation
+    let perturbationPenalty = 0;
+    if (option.disruptionSeverity === 'blocking') perturbationPenalty = 10000;
+    else if (option.disruptionSeverity === 'warning') perturbationPenalty = 500;
+    else if (option.hasPerturbations) perturbationPenalty = 100;
+
+    // 2. Nombre de correspondances (1 correspondance = équivalent 30 min de pénalité)
+    const transfersPenalty = option.transfers * 30;
+
+    // 3. Prix (1€ = équivalent 5 min)
+    const pricePenalty = (option.priceEstimate ?? 0) * 5;
+
+    // 4. Durée de transport en minutes
+    const duration = option.durationMinutes || 60;
+
+    const score = duration + transfersPenalty + pricePenalty + perturbationPenalty;
+
+    if (score < bestScore) {
+      bestScore = score;
+      bestIndex = idx;
+    }
+  });
+
+  return bestIndex;
 }

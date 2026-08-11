@@ -23,17 +23,16 @@ const MONTH_NAMES = [
 ];
 
 export interface DateRangeCalendarProps {
-  /** `YYYY-MM-DD` — début de la plage, ou date unique en aller simple. */
-  startDate: string;
+  /** `YYYY-MM-DD` — début de la plage, ou date unique en aller simple (`null` si aucune date sélectionnée). */
+  startDate: string | null;
   /** `YYYY-MM-DD` — fin de la plage. `null` en aller simple. */
   endDate: string | null;
   /** Première date sélectionnable (incluse). Par défaut : aujourd'hui. */
   minDate?: string;
   /**
-   * Dernière date sélectionnable (incluse). Au-delà, PRIM n'a pas d'horaire :
-   * les jours sont grisés plutôt que de mener à une recherche vide.
+   * Dernière date sélectionnable (incluse). Si omise, toutes les dates futures sont sélectionnables.
    */
-  maxDate: string;
+  maxDate?: string;
   onSelectDate: (date: string) => void;
   /** Nombre de mois affichés à partir du mois de `minDate`. */
   monthsToShow?: number;
@@ -85,7 +84,8 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /** « 20 → 22 mars » ou « 20 mars » — le résumé affiché quand la carte est repliée. */
-export function formatDateRangeSummary(startDate: string, endDate: string | null): string {
+export function formatDateRangeSummary(startDate: string | null, endDate: string | null): string {
+  if (!startDate) return 'Choisir une date';
   const start = fromISODate(startDate);
   const startMonth = MONTH_NAMES[start.getMonth()].toLowerCase();
 
@@ -104,8 +104,8 @@ export function formatDateRangeSummary(startDate: string, endDate: string | null
 interface MonthGrid {
   key: string;
   label: string;
-  /** 42 cases max ; `null` = case vide de début de mois. */
-  days: (string | null)[];
+  /** Semaines de 7 cases ; `null` = case vide de début/fin de mois. */
+  weeks: (string | null)[][];
 }
 
 /**
@@ -122,10 +122,19 @@ function buildMonthGrid(year: number, month: number): MonthGrid {
     days.push(toISODate(new Date(year, month, day)));
   }
 
+  while (days.length % 7 !== 0) {
+    days.push(null);
+  }
+
+  const weeks: (string | null)[][] = [];
+  for (let i = 0; i < days.length; i += 7) {
+    weeks.push(days.slice(i, i + 7));
+  }
+
   return {
     key: `${year}-${month}`,
     label: `${MONTH_NAMES[month]} ${year}`,
-    days,
+    weeks,
   };
 }
 
@@ -158,6 +167,8 @@ export default function DateRangeCalendar({
     });
   }, [floor, monthsToShow]);
 
+  const todayIso = useMemo(() => toISODate(new Date()), []);
+
   return (
     <View style={styles.container}>
       {!hideWeekdayRow && <DateRangeCalendarHeader />}
@@ -166,67 +177,113 @@ export default function DateRangeCalendar({
         <View key={month.key} style={styles.month}>
           <Text style={[styles.monthLabel, { color: theme.text }]}>{month.label}</Text>
 
-          <View style={styles.grid}>
-            {month.days.map((iso, index) => {
-              if (!iso) {
-                return <View key={`blank-${month.key}-${index}`} style={styles.cell} />;
-              }
-
-              const isBeforeFloor = iso < floor;
-              const isAfterHorizon = iso > maxDate;
-              const isDisabled = isBeforeFloor || isAfterHorizon;
-
-              const isStart = iso === startDate;
-              const isEnd = endDate !== null && iso === endDate;
-              const isBetween =
-                endDate !== null && iso > startDate && iso < endDate;
-
-              const dayNumber = Number(iso.split('-')[2]);
-
-              return (
-                <Pressable
-                  key={iso}
-                  disabled={isDisabled}
-                  onPress={() => onSelectDate(iso)}
-                  style={styles.cell}>
-                  {/* Liseré continu entre les deux bornes de la plage. */}
-                  {isBetween && (
+          {month.weeks.map((week, weekIndex) => (
+            <View key={`${month.key}-week-${weekIndex}`} style={styles.weekRow}>
+              {week.map((iso, dayIndex) => {
+                if (!iso) {
+                  return (
                     <View
-                      style={[styles.rangeFill, { backgroundColor: theme.surfaceSecondary }]}
+                      key={`blank-${month.key}-${weekIndex}-${dayIndex}`}
+                      style={styles.cell}
                     />
-                  )}
-                  <View
-                    style={[
-                      styles.dayCircle,
-                      (isStart || isEnd) && { backgroundColor: theme.tint },
-                    ]}>
-                    <Text
-                      style={[
-                        styles.dayLabel,
-                        {
-                          color: isDisabled
-                            ? theme.textDisabled
-                            : isStart || isEnd
-                              ? theme.buttonTextOnBrand
-                              : theme.text,
-                        },
-                        // Les jours révolus sont barrés, comme sur les maquettes.
-                        isBeforeFloor && styles.dayStruck,
-                      ]}>
-                      {dayNumber}
-                    </Text>
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
+                  );
+                }
+
+                const isBeforeFloor = iso < floor;
+                const isAfterHorizon = !!maxDate && iso > maxDate;
+                const isDisabled = isBeforeFloor || isAfterHorizon;
+                const isToday = iso === todayIso;
+
+                const isStart = startDate !== null && iso === startDate;
+                const isEnd = endDate !== null && iso === endDate;
+                const isBetween =
+                  startDate !== null && endDate !== null && iso > startDate && iso < endDate;
+                const isRangeActive =
+                  startDate !== null && endDate !== null && endDate > startDate;
+
+                const dayNumber = Number(iso.split('-')[2]);
+
+                return (
+                  <Pressable
+                    key={iso}
+                    disabled={isDisabled}
+                    onPress={() => onSelectDate(iso)}
+                    android_ripple={{ color: 'transparent' }}
+                    style={styles.cell}>
+                    {({ pressed }) => (
+                      <>
+                        {/* Liseré continu entre les deux bornes de la plage. */}
+                        {isRangeActive && isStart && (
+                          <View
+                            style={[
+                              styles.rangeFill,
+                              { left: '50%', right: 0, backgroundColor: theme.surfaceSecondary },
+                            ]}
+                          />
+                        )}
+                        {isRangeActive && isEnd && (
+                          <View
+                            style={[
+                              styles.rangeFill,
+                              { left: 0, right: '50%', backgroundColor: theme.surfaceSecondary },
+                            ]}
+                          />
+                        )}
+                        {isBetween && (
+                          <View
+                            style={[
+                              styles.rangeFill,
+                              { left: 0, right: 0, backgroundColor: theme.surfaceSecondary },
+                            ]}
+                          />
+                        )}
+                        <View
+                          style={[
+                            styles.dayCircle,
+                            (isStart || isEnd) && { backgroundColor: theme.tint },
+                            pressed && !isStart && !isEnd && { backgroundColor: theme.borderLight },
+                            pressed && (isStart || isEnd) && { opacity: 0.8 },
+                          ]}>
+                          <Text
+                            style={[
+                              styles.dayLabel,
+                              {
+                                color: isDisabled
+                                  ? theme.textDisabled
+                                  : isStart || isEnd
+                                    ? theme.buttonTextOnBrand
+                                    : theme.text,
+                              },
+                              isBeforeFloor && styles.dayStruck,
+                            ]}>
+                            {dayNumber}
+                          </Text>
+                          {isToday && (
+                            <View
+                              style={[
+                                styles.todayIndicator,
+                                {
+                                  backgroundColor:
+                                    isStart || isEnd ? theme.buttonTextOnBrand : theme.text,
+                                },
+                              ]}
+                            />
+                          )}
+                        </View>
+                      </>
+                    )}
+                  </Pressable>
+                );
+              })}
+            </View>
+          ))}
         </View>
       ))}
     </View>
   );
 }
 
-const CELL_HEIGHT = 44;
+const CELL_HEIGHT = 52;
 
 const styles = StyleSheet.create({
   container: {
@@ -240,7 +297,7 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'center',
     fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
+    fontSize: 16,
   },
   month: {
     marginTop: 12,
@@ -251,35 +308,40 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingLeft: 2,
   },
-  grid: {
+  weekRow: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
   },
   cell: {
-    width: `${100 / 7}%`,
+    flex: 1,
     height: CELL_HEIGHT,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // `StyleSheet.absoluteFillObject` n'est pas typé dans RN 0.85 (cf. les erreurs
-  // existantes sur (tabs)/index.tsx et results.tsx) : on pose les bords à la main.
   rangeFill: {
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 1,
-    bottom: 1,
+    top: 4,
+    bottom: 4,
   },
   dayCircle: {
-    width: 42,
-    height: 42,
-    borderRadius: 100,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
   },
   dayLabel: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 16,
+  },
+  todayIndicator: {
+    position: 'absolute',
+    bottom: 8,
+    width: 16,
+    height: 2,
+    borderRadius: 2,
   },
   dayStruck: {
     textDecorationLine: 'line-through',

@@ -980,8 +980,10 @@ export default function SearchModal() {
               </View>
             </View>
 
-            {/* Footer Action Buttons */}
-            <View style={[styles.footerContainer, { paddingBottom: Math.max(insets.bottom, 34) }]}>
+            {/* Footer Action Buttons. Pas d'inset bas ici : `innerContainer` l'applique
+                déjà pour toute la page. Le redemander décalait les boutons du double
+                de la barre système. */}
+            <View style={styles.footerContainer}>
               <Button
                 variant="text"
                 title="Tout effacer"

@@ -29,6 +29,12 @@ import RandoCardSkeleton from '@/components/RandoCardSkeleton';
 import Skeleton from '@/components/Skeleton';
 import { type RandoData } from '@/constants/RandosData';
 
+// Hauteur repliée : de quoi laisser dépasser la poignée et l'en-tête « X randos ».
+const COLLAPSED_SNAP_POINT = 72;
+// Hauteur à laquelle flotte le bouton « Voir la carte », mesurée depuis le bas de
+// la feuille. Comme le point d'accroche, elle ne dépend pas de la barre système.
+const FLOATING_BUTTON_BOTTOM = 88;
+
 export interface HikesBottomSheetRef {
   snapToIndex: (index: number) => void;
   sheetIndex: number;
@@ -195,11 +201,11 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     [theme.tabIconDefault, animatedHandleStyle]
   );
 
-  const collapsedSnapPoint = useMemo(() => {
-    return Math.max(62, 50 + insets.bottom);
-  }, [insets.bottom]);
-
-  const snapPoints = useMemo(() => [collapsedSnapPoint, '50%', '100%'], [collapsedSnapPoint]);
+  // Aucun inset bas ici : la feuille vit dans la scène des onglets, qui s'arrête au
+  // bord supérieur de la TabBar — laquelle absorbe déjà la barre système. Le
+  // réappliquer faisait remonter la feuille de tout l'inset, soit 24px de plus en
+  // navigation à boutons (48) qu'en navigation gestuelle (24).
+  const snapPoints = useMemo(() => [COLLAPSED_SNAP_POINT, '50%', '100%'], []);
 
   // Ensure sheet stays visible at index 0 when hikes load or component mounts
   React.useEffect(() => {
@@ -343,7 +349,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
           { backgroundColor: theme.tint },
           animatedButtonStyle,
           animatedButtonWidthStyle,
-          { bottom: insets.bottom + 64 },
+          { bottom: FLOATING_BUTTON_BOTTOM },
         ]}
         pointerEvents={sheetIndex === 2 ? 'auto' : 'none'}>
         <Pressable

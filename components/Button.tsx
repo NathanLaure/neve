@@ -70,6 +70,8 @@ export const Button = forwardRef<View, ButtonProps>(
         ref={ref}
         disabled={disabled || loading}
         activeOpacity={0.8}
+        delayPressIn={0}
+        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         style={[
           defaultStyles.button,
           // Avant `variantStyles` : `iconOnlyContainer` pose `width: undefined`

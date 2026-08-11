@@ -47,6 +47,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
+import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
 import Chip from '@/components/Chip';
 import { IconButton } from '@/components/IconButton';
 import Tag from '@/components/Tag';
@@ -75,6 +76,10 @@ export default function RandoDetailScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const insets = useSafeAreaInsets();
+  // Le footer est en `position: absolute` : il ne prend aucune place dans le flux.
+  // C'est ce dégagement qui évite que le dernier bloc de contenu finisse caché
+  // dessous — il suit le padding bas du footer, plus la hauteur de sa rangée.
+  const scrollBottomClearance = useScreenFooterPadding() + 72;
 
   const {
     userLocationName,
@@ -540,7 +545,7 @@ export default function RandoDetailScreen() {
             progressViewOffset={60}
           />
         }
-        contentContainerStyle={{ paddingBottom: 120 }}>
+        contentContainerStyle={{ paddingBottom: scrollBottomClearance }}>
 
         {/* Transparent Spacer to reveal the fixed image underneath */}
         <View style={{ height: 380 }} />
@@ -861,42 +866,31 @@ export default function RandoDetailScreen() {
       </Animated.ScrollView>
 
       {/* Floating Bottom Booking Section with Double Buttons from Figma */}
-      <View
-        style={[
-          styles.floatingBottom,
-          {
-            backgroundColor: theme.background,
-            borderTopColor: theme.borderLight,
-            paddingBottom: Math.max(insets.bottom, 34),
-          },
-        ]}>
-        <View style={styles.bottomBarButtonsRow}>
+      <ScreenFooter row>
 
-          {/* Navigate Button */}
-          <Button
-            variant="secondary"
-            title="Naviguer"
-            icon={<Navigation/>}
-            onPress={() => Alert.alert('Navigation', 'Lancement de l’itinéraire GPX vers le point de départ.')}
-            style={{ flex: 1 }}
-          />
+        {/* Navigate Button */}
+        <Button
+          variant="secondary"
+          title="Naviguer"
+          icon={<Navigation/>}
+          onPress={() => Alert.alert('Navigation', 'Lancement de l’itinéraire GPX vers le point de départ.')}
+          style={{ flex: 1 }}
+        />
 
-          {/* Plan/Book Button */}
-          <Button
-            variant="primary"
-            title="Planifier"
-            icon={<Calendar/>}
-            onPress={() => router.push(`/plan?randoId=${rando.id}`)}
-            style={{ flex: 1 }}
-          />
+        {/* Plan/Book Button */}
+        <Button
+          variant="primary"
+          title="Planifier"
+          icon={<Calendar/>}
+          onPress={() => router.push(`/plan?randoId=${rando.id}`)}
+          style={{ flex: 1 }}
+        />
 
-        </View>
-      </View>
+      </ScreenFooter>
 
       {/* Actions Bottom Sheet Modal (Figma node 424:5042) */}
       <BaseBottomSheetModal
-        ref={actionsSheetRef}
-        showHeader={false}>
+        ref={actionsSheetRef}>
         <View style={styles.actionsOptionsList}>
           {/* Item 1: Partager la randonnée */}
           <ItemButton
@@ -1036,7 +1030,6 @@ export default function RandoDetailScreen() {
             <BaseBottomSheetModal
               ref={mapLayerSheetRef}
               snapPoints={['30%']}
-              showHeader={true}
               title="Type de carte"
               showCloseButton={true}>
               <View style={styles.layerOptionsList}>
@@ -1622,33 +1615,6 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     marginTop: 12,
   },
-  floatingBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    borderTopWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 10,
-      },
-    }),
-  },
-  bottomBarButtonsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    width: '100%',
-    gap: 12,
-  },
-
   instructionsContainer: {
     marginTop: 4,
   },

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { StyleSheet, Text, View, PanResponder } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
@@ -30,12 +30,9 @@ export default function RangeSlider({
   const [localValues, setLocalValues] = useState<[number, number]>(values);
   const localValuesRef = useRef(localValues);
 
-  // Track previous prop values to sync changes during render
-  const [prevValues, setPrevValues] = useState<[number, number]>(values);
-  if (values[0] !== prevValues[0] || values[1] !== prevValues[1]) {
+  useEffect(() => {
     setLocalValues(values);
-    setPrevValues(values);
-  }
+  }, [values[0], values[1]]);
 
   useEffect(() => {
     localValuesRef.current = localValues;
@@ -61,10 +58,8 @@ export default function RangeSlider({
     onChangeRef.current = onChange;
   });
 
-  const [panResponder, setPanResponder] = useState<any>(null);
-
-  useEffect(() => {
-    setPanResponder(
+  const panResponder = useMemo(
+    () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
@@ -125,9 +120,9 @@ export default function RangeSlider({
           activeHandle.current = null;
           onChangeRef.current(localValuesRef.current);
         },
-      })
-    );
-  }, []);
+      }),
+    []
+  );
 
   const pctMin = ((localValues[0] - min) / (max - min)) * 100;
   const pctMax = ((localValues[1] - min) / (max - min)) * 100;

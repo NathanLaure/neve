@@ -1,12 +1,12 @@
 import React, { forwardRef, useRef, useImperativeHandle, useMemo } from 'react';
-import { StyleSheet, Text, Pressable } from 'react-native';
-import { BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import { StyleSheet, View } from 'react-native';
 import { Check, Crosshair, MapPin } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import ChoiceChip from '@/components/ChoiceChip';
 
 export interface RadiusBottomSheetRef {
   present: () => void;
@@ -91,15 +91,16 @@ const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetR
   return (
     <BaseBottomSheetModal
       ref={modalRef}
-      snapPoints={['62%']}
-      showHeader={true}
+      enableDynamicSizing
+      snapPoints={[]}
       title="Zone de recherche"
-      showCloseButton={true}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 0, flex: 1 }}>
-      <BottomSheetScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}>
+      showCloseButton={true}>
+      {/* Pas de zone défilante ici. `BottomSheetView` et `BottomSheetScrollView`
+          écrivent tous deux `animatedLayoutState.contentHeight` : imbriqués, le
+          scrollable gagnait la course et publiait la hauteur de sa seule liste,
+          en-tête exclu — la feuille ouvrait trop courte d'autant. La liste est
+          bornée à huit options, elle tient sans défilement. */}
+      <View style={styles.optionsList}>
         {options.map((option) => {
           const isSelected = option.isMapArea
             ? isMapAreaActive
@@ -108,30 +109,17 @@ const RadiusBottomSheetRender: React.ForwardRefRenderFunction<RadiusBottomSheetR
               : !isMapAreaActive && searchRadiusKm === option.value;
           const Icon = option.icon;
           return (
-            <Pressable
+            <ChoiceChip
               key={option.key}
+              label={option.label}
+              selected={isSelected}
               onPress={() => handleSelectOption(option)}
-              style={[
-                styles.option,
-                {
-                  backgroundColor: theme.card,
-                  borderColor: isSelected ? theme.primary : theme.border,
-                  borderWidth: isSelected ? 1.5 : 1,
-                },
-              ]}>
-              <Icon size={20} color={isSelected ? theme.primary : theme.textMuted} />
-              <Text
-                style={[
-                  styles.optionLabel,
-                  { color: theme.text, fontWeight: isSelected ? '700' : '500' },
-                ]}>
-                {option.label}
-              </Text>
-              {isSelected && <Check size={20} color={theme.primary} />}
-            </Pressable>
+              leading={<Icon size={20} color={isSelected ? theme.primary : theme.textMuted} />}
+              trailing={isSelected ? <Check size={20} color={theme.primary} /> : undefined}
+            />
           );
         })}
-      </BottomSheetScrollView>
+      </View>
     </BaseBottomSheetModal>
   );
 };
@@ -142,23 +130,8 @@ RadiusBottomSheet.displayName = 'RadiusBottomSheet';
 export default RadiusBottomSheet;
 
 const styles = StyleSheet.create({
-  scrollContent: {
-    paddingHorizontal: 24,
+  optionsList: {
     paddingTop: 8,
-    paddingBottom: 40,
-    gap: 10,
-  },
-  option: {
-    flexDirection: 'row',
-    alignItems: 'center',
     gap: 12,
-    minHeight: 56,
-    paddingHorizontal: 16,
-    borderRadius: 12,
-  },
-  optionLabel: {
-    flex: 1,
-    fontFamily: 'BricolageGrotesque-Medium',
-    fontSize: 16,
   },
 });

@@ -8,21 +8,16 @@ import React, {
 } from 'react';
 import {
   StyleSheet,
-  Text,
   View,
-  Pressable,
-  Platform,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
-import { LinearGradient } from 'expo-linear-gradient';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
-import { Button } from '@/components/Button';
 import FiltersForm from '@/components/FiltersForm';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import { useScrollFade } from '@/components/ScrollFade';
 
 export interface FiltersBottomSheetRef {
   present: () => void;
@@ -35,8 +30,9 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
 > = (_, ref) => {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const insets = useSafeAreaInsets();
   const bottomSheetModalRef = useRef<BaseBottomSheetModalRef>(null);
+  // Le pied de page ne porte son ombre que tant qu'il reste du contenu dessous.
+  const { hasMore, scrollProps } = useScrollFade();
 
   const {
     hikes,
@@ -265,78 +261,64 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   return (
     <BaseBottomSheetModal
       ref={bottomSheetModalRef}
-      snapPoints={['92%']}
-      showHeader={true}
+      snapPoints={['100%']}
       title="Filtres"
       showCloseButton={true}
       backdropOpacity={0.5}
-      contentContainerStyle={{ paddingHorizontal: 0, paddingBottom: 0, flex: 1 }}>
-      <View style={{ flex: 1 }}>
-
-        <BottomSheetScrollView
-          style={{ flex: 1 }}
-          contentContainerStyle={styles.scrollContent}
-          nestedScrollEnabled={true}
-          showsVerticalScrollIndicator={true}>
-          <FiltersForm
-            difficulties={localDifficulties}
-            setDifficulties={setLocalDifficulties}
-            trainRange={trainRange}
-            setTrainRange={setTrainRange}
-            distanceRange={distanceRange}
-            setDistanceRange={setDistanceRange}
-            elevationRange={elevationRange}
-            setElevationRange={setElevationRange}
-            highestPointRange={highestPointRange}
-            setHighestPointRange={setHighestPointRange}
-            geographicZone={geographicZone}
-            setGeographicZone={setGeographicZone}
-            dogsAllowed={localDogs}
-            setDogsAllowed={setLocalDogs}
-            kidsFriendly={localKids}
-            setKidsFriendly={setLocalKids}
-            wheelchairFriendly={wheelchairFriendly}
-            setWheelchairFriendly={setWheelchairFriendly}
-            activityTypes={localActivityTypes}
-            setActivityTypes={setLocalActivityTypes}
-            pointsOfInterest={localPointsOfInterest}
-            setPointsOfInterest={setLocalPointsOfInterest}
-            parcoursType={parcoursType}
-            setParcoursType={setParcoursType}
-            frequentation={frequentation}
-            setFrequentation={setFrequentation}
-            communityNote={communityNote}
-            setCommunityNote={setCommunityNote}
-            showDifficulties={true}
-            showTrainRange={true}
-            showDistanceRange={true}
-            showElevationRange={true}
-            showHighestPointRange={true}
-            showAccessibility={true}
-            showActivityTypes={true}
-            showPointsOfInterest={true}
-            showParcoursType={true}
-            showFrequentation={true}
-            showCommunityNote={true}
-          />
-        </BottomSheetScrollView>
-
-        {/* Footer Buttons */}
-        <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34), backgroundColor: theme.background }]}>
-          <Button
-            variant="text"
-            title="Tout effacer"
-            onPress={handleReset}
-            style={styles.resetButton}
-          />
-          <Button
-            variant="primary"
-            title={getResultsButtonTitle()}
-            onPress={handleApply}
-            style={styles.applyButton}
-          />
-        </View>
-      </View>
+      scrollableBody
+      footerShadow={hasMore}
+      secondaryButtonTitle="Tout effacer"
+      onSecondaryPress={handleReset}
+      primaryButtonTitle={getResultsButtonTitle()}
+      onPrimaryPress={handleApply}>
+      <BottomSheetScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={styles.scrollContent}
+        nestedScrollEnabled={true}
+        showsVerticalScrollIndicator={true}
+        {...scrollProps}>
+        <FiltersForm
+          difficulties={localDifficulties}
+          setDifficulties={setLocalDifficulties}
+          trainRange={trainRange}
+          setTrainRange={setTrainRange}
+          distanceRange={distanceRange}
+          setDistanceRange={setDistanceRange}
+          elevationRange={elevationRange}
+          setElevationRange={setElevationRange}
+          highestPointRange={highestPointRange}
+          setHighestPointRange={setHighestPointRange}
+          geographicZone={geographicZone}
+          setGeographicZone={setGeographicZone}
+          dogsAllowed={localDogs}
+          setDogsAllowed={setLocalDogs}
+          kidsFriendly={localKids}
+          setKidsFriendly={setLocalKids}
+          wheelchairFriendly={wheelchairFriendly}
+          setWheelchairFriendly={setWheelchairFriendly}
+          activityTypes={localActivityTypes}
+          setActivityTypes={setLocalActivityTypes}
+          pointsOfInterest={localPointsOfInterest}
+          setPointsOfInterest={setLocalPointsOfInterest}
+          parcoursType={parcoursType}
+          setParcoursType={setParcoursType}
+          frequentation={frequentation}
+          setFrequentation={setFrequentation}
+          communityNote={communityNote}
+          setCommunityNote={setCommunityNote}
+          showDifficulties={true}
+          showTrainRange={false}
+          showDistanceRange={true}
+          showElevationRange={true}
+          showHighestPointRange={true}
+          showAccessibility={true}
+          showActivityTypes={true}
+          showPointsOfInterest={true}
+          showParcoursType={true}
+          showFrequentation={true}
+          showCommunityNote={true}
+        />
+      </BottomSheetScrollView>
     </BaseBottomSheetModal>
   );
 };
@@ -347,58 +329,8 @@ FiltersBottomSheet.displayName = 'FiltersBottomSheet';
 export default FiltersBottomSheet;
 
 const styles = StyleSheet.create({
-  sheetShadow: {
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -18 },
-    shadowOpacity: 0.06,
-    shadowRadius: 15,
-    elevation: 12,
-  },
-  handle: {
-    width: 33,
-    height: 4,
-    borderRadius: 16777200,
-  },
-  headingRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 24,
-    paddingVertical: 16,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
-  heading: {
-    fontFamily: 'BricolageGrotesque-SemiBold',
-    fontSize: 20,
-    lineHeight: 30,
-  },
   scrollContent: {
-    paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 8,
     paddingBottom: 40,
-  },
-  footer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 24,
-    paddingTop: 16,
-    shadowColor: '#000000',
-    ...Platform.select({
-      ios: {
-        shadowOffset: { width: 0, height: -4 },
-        shadowOpacity: 0.12,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 6,
-      },
-    }),
-  },
-  resetButton: {
-    paddingHorizontal: 12,
-  },
-  applyButton: {
-    flex: 1,
   },
 });

@@ -18,7 +18,7 @@ export interface PassengersEditorProps {
   passengers: Passenger[];
   onChange: (passengers: Passenger[]) => void;
   /**
-   * Bouton de validation final. Affiché dans la feuille (« Valider les voyageurs »),
+   * Bouton de validation final. Affiché dans la feuille (« Valider les randonneurs »),
    * masqué en accordéon où le CTA de l'écran fait déjà office de validation.
    */
   onValidate?: () => void;
@@ -42,12 +42,12 @@ export default function PassengersEditor({
   passengers,
   onChange,
   onValidate,
-  validateLabel = 'Valider les voyageurs',
+  validateLabel = 'Valider les randonneurs',
 }: PassengersEditorProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  // Brouillon du voyageur en cours d'ajout. `null` = formulaire fermé.
+  // Brouillon du randonneur en cours d'ajout. `null` = formulaire fermé.
   const [draftBracket, setDraftBracket] = useState<AgeBracketId | null>(null);
 
   const groups = groupByBracket(passengers);
@@ -57,9 +57,9 @@ export default function PassengersEditor({
       onChange([...passengers, { id: nextPassengerId(), bracket }]);
       return;
     }
-    // On retire le dernier de la tranche, et jamais le dernier voyageur tout court :
-    // une aventure sans personne n'a pas de sens et casserait le calcul du prix.
-    if (passengers.length <= 1) return;
+    // On retire le dernier de la tranche. Vider complètement la liste est permis :
+    // la ligne « Ajouter un randonneur » reste là pour repartir, et bloquer la
+    // dernière suppression rendait la corbeille inerte sans l'expliquer.
     const lastIndex = passengers.map((p) => p.bracket).lastIndexOf(bracket);
     if (lastIndex === -1) return;
     onChange(passengers.filter((_, index) => index !== lastIndex));
@@ -74,29 +74,42 @@ export default function PassengersEditor({
   return (
     <View style={styles.container}>
       {groups.map(({ bracket, count }) => {
-        const canDecrement = passengers.length > 1;
+        // Au dernier randonneur d'une tranche, décrémenter ne réduit plus un
+        // nombre : ça fait disparaître la ligne. La corbeille le dit, le moins
+        // le laissait deviner.
+        const removesRow = count === 1;
         return (
           <View key={bracket.id} style={styles.bracketRow}>
             <Text style={[styles.bracketLabel, { color: theme.text }]}>{bracket.label}</Text>
 
             <View style={styles.stepper}>
               <Pressable
-                accessibilityLabel={`Retirer un voyageur ${bracket.label}`}
-                disabled={!canDecrement}
+                accessibilityLabel={
+                  removesRow
+                    ? `Supprimer les randonneurs ${bracket.label}`
+                    : `Retirer un randonneur ${bracket.label}`
+                }
                 onPress={() => changeCount(bracket.id, -1)}
                 style={[
                   styles.stepperButton,
-                  { backgroundColor: theme.surfaceSecondary, opacity: canDecrement ? 1 : 0.4 },
+                  { backgroundColor: theme.cardSecondary || theme.background },
                 ]}>
-                <Minus size={16} color={theme.text} />
+                {removesRow ? (
+                  <Trash2 size={16} color={theme.text} />
+                ) : (
+                  <Minus size={16} color={theme.text} />
+                )}
               </Pressable>
 
               <Text style={[styles.stepperCount, { color: theme.text }]}>{count}</Text>
 
               <Pressable
-                accessibilityLabel={`Ajouter un voyageur ${bracket.label}`}
+                accessibilityLabel={`Ajouter un randonneur ${bracket.label}`}
                 onPress={() => changeCount(bracket.id, 1)}
-                style={[styles.stepperButton, { backgroundColor: theme.surfaceSecondary }]}>
+                style={[
+                  styles.stepperButton,
+                  { backgroundColor: theme.cardSecondary || theme.background },
+                ]}>
                 <Plus size={16} color={theme.text} />
               </Pressable>
             </View>
@@ -105,11 +118,11 @@ export default function PassengersEditor({
       })}
 
       {draftBracket !== null && (
-        <View style={[styles.draftCard, { backgroundColor: theme.card }]}>
+        <View style={[styles.draftCard, { backgroundColor: theme.background }]}>
           <View style={[styles.draftHeader, { borderBottomColor: theme.border }]}>
-            <Text style={[styles.draftTitle, { color: theme.text }]}>Nouveau voyageur</Text>
+            <Text style={[styles.draftTitle, { color: theme.text }]}>Nouveau randonneur</Text>
             <Pressable
-              accessibilityLabel="Supprimer ce voyageur"
+              accessibilityLabel="Supprimer ce randonneur"
               hitSlop={8}
               onPress={() => setDraftBracket(null)}>
               <Trash2 size={20} color={theme.tint} />
@@ -117,7 +130,7 @@ export default function PassengersEditor({
           </View>
 
           <Select
-            label="Age du voyageur"
+            label="Age du randonneur"
             placeholder="30 - 59 ans"
             value={draftBracket}
             options={AGE_BRACKETS.map((bracket) => ({
@@ -125,27 +138,33 @@ export default function PassengersEditor({
               label: bracket.label,
             }))}
             onSelect={(value) => setDraftBracket(value as AgeBracketId)}
+            // Le badge du label masque la bordure derrière lui : il doit prendre
+            // le fond de l'encart, pas celui de la carte blanche qui l'entoure.
+            labelBackgroundColor={theme.background}
             containerStyle={styles.draftSelect}
           />
         </View>
       )}
 
-      {/* Masqué pendant la saisie : la carte « Nouveau voyageur » et ses deux
+      {/* Masqué pendant la saisie : la carte « Nouveau randonneur » et ses deux
           boutons tiennent déjà le rôle, un « Ajouter » grisé en plus embrouille. */}
       {draftBracket === null && (
         <Pressable
           onPress={() => setDraftBracket(DEFAULT_AGE_BRACKET)}
-          style={[styles.addRow, { backgroundColor: theme.card }]}>
-          <Text style={[styles.addLabel, { color: theme.text }]}>Ajouter un voyageur</Text>
-          <View style={[styles.addIcon, { backgroundColor: theme.surfaceSecondary }]}>
-            <Plus size={16} color={theme.text} />
+          style={[
+            styles.addRow,
+            { backgroundColor: theme.cardSecondary || theme.background },
+          ]}>
+          <Text style={[styles.addLabel, { color: theme.text }]}>Ajouter un randonneur</Text>
+          <View style={[styles.addIcon, { backgroundColor: theme.tint }]}>
+            <Plus size={16} color={theme.buttonTextOnBrand} />
           </View>
         </Pressable>
       )}
 
       {draftBracket !== null ? (
         <View style={styles.actions}>
-          <Button title="Ajouter ce voyageur" variant="primary" onPress={confirmDraft} />
+          <Button title="Ajouter ce randonneur" variant="primary" onPress={confirmDraft} />
           <Button title="Annuler" variant="transparent" onPress={() => setDraftBracket(null)} />
         </View>
       ) : (
@@ -210,18 +229,19 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 0,
   },
+  // Figma : fond `bg/background` sur la carte blanche, radius 8, 8px de padding.
   addRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderRadius: 20,
-    paddingVertical: 12,
-    paddingLeft: 16,
-    paddingRight: 12,
+    gap: 12,
+    borderRadius: 8,
+    padding: 8,
   },
   addLabel: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
+    flex: 1,
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
   },
   addIcon: {
     width: 32,

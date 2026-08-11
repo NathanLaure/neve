@@ -7,11 +7,11 @@ import {
   ViewStyle,
   Keyboard,
 } from 'react-native';
-import { ChevronDown, Check } from 'lucide-react-native';
+import { ChevronDown } from 'lucide-react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import ChoiceChip from '@/components/ChoiceChip';
 
 export interface SelectOption {
   value: string;
@@ -25,6 +25,14 @@ export interface SelectProps {
   options: SelectOption[];
   onSelect: (value: string) => void;
   containerStyle?: ViewStyle;
+  /**
+   * Fond du badge de label flottant. Il doit reprendre celui de la surface qui
+   * porte le champ, puisqu'il vient masquer la bordure derrière lui : blanc sur
+   * une carte, gris sur un encart. Par défaut, la couleur de carte.
+   */
+  labelBackgroundColor?: string;
+  /** Titre de la feuille de choix. Reprend `label` s'il n'est pas fourni. */
+  sheetTitle?: string;
   error?: string;
 }
 
@@ -35,11 +43,12 @@ export function Select({
   options,
   onSelect,
   containerStyle,
+  labelBackgroundColor,
+  sheetTitle,
   error,
 }: SelectProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const insets = useSafeAreaInsets();
   const bottomSheetRef = useRef<BaseBottomSheetModalRef>(null);
 
   const selectedOption = options.find((opt) => opt.value === value);
@@ -47,8 +56,8 @@ export function Select({
   const borderColor = error
     ? theme.statusTextError || '#E63946'
     : selectedOption
-    ? theme.borderLight
-    : theme.border;
+    ? theme.borderStrong
+    : theme.borderStrong;
 
   const labelColor = error
     ? theme.statusTextError || '#E63946'
@@ -73,7 +82,11 @@ export function Select({
           },
         ]}>
         {label ? (
-          <View style={[styles.floatingLabelBadge, { backgroundColor: theme.card }]}>
+          <View
+            style={[
+              styles.floatingLabelBadge,
+              { backgroundColor: labelBackgroundColor ?? theme.card },
+            ]}>
             <Text
               style={[
                 styles.floatingLabelText,
@@ -104,35 +117,21 @@ export function Select({
           Sans ça, gorhom remplacerait la feuille parente au lieu de s'empiler dessus. */}
       <BaseBottomSheetModal
         ref={bottomSheetRef}
-        showHeader={false}
+        title={sheetTitle ?? label}
         stackBehavior="push"
         enableDynamicSizing>
-        <View style={[styles.modalContent, { paddingBottom: Math.max(insets.bottom, 34) }]}>
-          {options.map((option, idx) => {
-            const isSelected = option.value === value;
-            const isLast = idx === options.length - 1;
-            return (
-              <Pressable
-                key={option.value}
-                onPress={() => {
-                  onSelect(option.value);
-                  bottomSheetRef.current?.dismiss();
-                }}
-                style={[
-                  styles.optionItem,
-                  isSelected && { backgroundColor: theme.primary + '15' },
-                ]}>
-                <Text
-                  style={[
-                    styles.optionText,
-                    { color: isSelected ? theme.primary : theme.text },
-                  ]}>
-                  {option.label}
-                </Text>
-                {isSelected ? <Check size={18} color={theme.primary} /> : null}
-              </Pressable>
-            );
-          })}
+        <View style={styles.optionList}>
+          {options.map((option) => (
+            <ChoiceChip
+              key={option.value}
+              label={option.label}
+              selected={option.value === value}
+              onPress={() => {
+                onSelect(option.value);
+                bottomSheetRef.current?.dismiss();
+              }}
+            />
+          ))}
         </View>
       </BaseBottomSheetModal>
 
@@ -177,22 +176,8 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi-Medium',
     fontSize: 16,
   },
-  modalContent: {
-    paddingHorizontal: 4,
-    paddingTop: 8,
-    gap: 4,
-  },
-  optionItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: 16,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-  },
-  optionText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
+  optionList: {
+    gap: 12,
   },
   errorText: {
     fontFamily: 'Satoshi-Medium',

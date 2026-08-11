@@ -361,13 +361,6 @@ export const SearchTransportCard: React.FC<SearchTransportCardProps> = ({
                     numberOfLines={1}>
                     {departureTitle}
                   </Text>
-                  {!!departureDetail && (
-                    <Text
-                      style={[styles.pointDetailText, { color: theme.textMuted }]}
-                      numberOfLines={1}>
-                      {departureDetail}
-                    </Text>
-                  )}
                 </View>
               </View>
 
@@ -604,13 +597,6 @@ export const SearchTransportCard: React.FC<SearchTransportCardProps> = ({
               <Text style={[styles.arrivalStationNameText, { color: theme.text }]} numberOfLines={1}>
                 {arrivalTitle}
               </Text>
-              {!!arrivalDetail && (
-                <Text
-                  style={[styles.pointDetailText, { color: theme.textMuted }]}
-                  numberOfLines={1}>
-                  {arrivalDetail}
-                </Text>
-              )}
             </View>
           </View>
         </View>

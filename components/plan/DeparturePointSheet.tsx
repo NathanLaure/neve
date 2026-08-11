@@ -85,7 +85,6 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
       <BaseBottomSheetModal
         ref={ref}
         title={title}
-        showHeader
         snapPoints={['100%']}
         topInset={insets.top}>
         <View style={styles.content}>

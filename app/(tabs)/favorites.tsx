@@ -310,7 +310,6 @@ export default function FavoritesScreen() {
         {/* Actions contextuelles — ouvertes par appui long sur une card */}
         <BaseBottomSheetModal
           ref={actionsSheetRef}
-          showHeader={false}
           enableDynamicSizing
           onClose={() => setActionHike(null)}>
           <View style={styles.actionsList}>

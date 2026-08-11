@@ -83,7 +83,6 @@ const JourneyOptionsSheet = forwardRef<BaseBottomSheetModalRef, JourneyOptionsSh
     return (
       <BaseBottomSheetModal
         ref={ref}
-        showHeader={true}
         title="Options du trajet"
         enableDynamicSizing
         snapPoints={[]}>

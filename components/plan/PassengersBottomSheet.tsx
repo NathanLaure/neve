@@ -21,7 +21,6 @@ const PassengersBottomSheet = forwardRef<BaseBottomSheetModalRef, PassengersBott
   ({ passengers, onChange, onValidate }, ref) => (
     <BaseBottomSheetModal
       ref={ref}
-      showHeader
       title="Qui part à l'aventure ?"
       enableDynamicSizing
       snapPoints={[]}>

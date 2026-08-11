@@ -21,13 +21,16 @@ import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import {
   ArrowLeft,
   ArrowUpDown,
+  CalendarDays,
   Check,
   ChevronDown,
+  ChevronRight,
   ChevronUp,
   CircleDot,
   EllipsisVertical,
   Info,
   MapPin,
+  Plus,
   RefreshCw,
   Undo2,
   User,
@@ -37,17 +40,15 @@ import {
 import Colors from '@/constants/Colors';
 import Skeleton from '@/components/Skeleton';
 import { Button } from '@/components/Button';
+import ScreenFooter from '@/components/ScreenFooter';
 import { IconButton } from '@/components/IconButton';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
 import { TrainOption } from '@/constants/RandosData';
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
-import DateRangeCalendar, {
-  DateRangeCalendarHeader,
-  addDays,
-  formatDateRangeSummary,
-  toISODate,
-} from '@/components/plan/DateRangeCalendar';
+import { usePlanDraft, resolveEndDate } from '@/context/PlanDraftContext';
+import { addDays, formatDateRangeSummary } from '@/components/plan/DateRangeCalendar';
+import { SELECTABLE_TIMES } from '@/components/plan/TimePickerSheet';
 import PassengersEditor from '@/components/plan/PassengersEditor';
 import PassengersBottomSheet from '@/components/plan/PassengersBottomSheet';
 import AutoReturnInfoSheet from '@/components/plan/AutoReturnInfoSheet';
@@ -62,29 +63,12 @@ import {
 } from '@/types/passenger';
 import {
   calculateCo2Impact,
-  fetchTransitHorizon,
   fetchTransitOptions,
   toTrainOption,
   TimeMode,
   TransitOption,
   TransitSource,
 } from '@/services/transitService';
-
-/** Heure de départ proposée par défaut pour l'aller — on vise la matinée. */
-const DEFAULT_OUTWARD_TIME = '08:00';
-
-/** Créneaux proposés pour l'aller. Amplitude d'une journée de rando classique. */
-const SELECTABLE_TIMES = [
-  '06:00',
-  '07:00',
-  '08:00',
-  '09:00',
-  '10:00',
-  '11:00',
-  '12:00',
-  '13:00',
-  '14:00',
-];
 
 const TIME_MODES: { value: TimeMode; label: string }[] = [
   { value: 'departure', label: 'Partir après' },
@@ -106,7 +90,8 @@ const HIKING_HOURS_PER_DAY = 8;
 type LoadState = 'loading' | 'ready' | 'error';
 type Phase = 'config' | 'results';
 type TripType = 'round' | 'oneway';
-type OpenSection = 'dates' | 'passengers' | null;
+/** Les dates ne sont plus une section dépliable : elles ont leur propre modale. */
+type OpenSection = 'passengers' | null;
 
 interface DeparturePoint {
   name: string;
@@ -319,7 +304,9 @@ export default function PlanScreen() {
   // n'est lancée qu'au clic sur « Voir les trajets disponibles », ce qui évite
   // aussi de brûler du quota PRIM à chaque tape sur le calendrier.
   const [phase, setPhase] = useState<Phase>('config');
-  const [openSection, setOpenSection] = useState<OpenSection>('dates');
+  // Ouverte d'emblée : la carte voyageurs reste masquée tant que les dates ne
+  // sont pas validées, elle apparaît donc déjà dépliée le moment venu.
+  const [openSection, setOpenSection] = useState<OpenSection>('passengers');
 
   /**
    * Changer de section ou de phase remplace tout le contenu : on repart du haut.
@@ -359,45 +346,38 @@ export default function PlanScreen() {
   // 156 des 431 randos franciliennes sont dans ce cas.
   const [isReversed, setIsReversed] = useState(false);
 
-  const [tripType, setTripType] = useState<TripType>('round');
-  const today = useMemo(() => toISODate(new Date()), []);
-  const [startDate, setStartDate] = useState<string>(() => addDays(toISODate(new Date()), 1));
-  const [endDate, setEndDate] = useState<string | null>(null);
-  // Tant que l'utilisateur n'a pas touché au retour, il suit la durée de la rando.
-  const [hasCustomReturn, setHasCustomReturn] = useState(false);
-  // Un départ vient d'être posé, la prochaine tape désigne donc le retour. Sans ce
-  // drapeau, `!endDate` serait déjà vrai à l'ouverture — la toute première tape
-  // partirait alors dans la branche « retour » et laisserait le départ sur demain.
-  const [isPickingReturn, setIsPickingReturn] = useState(false);
-  // La carte « Qui part à l'aventure ? » n'apparaît qu'une fois les dates posées
-  // et le calendrier replié — c'est l'enchaînement des maquettes 1 puis 6.
-  const [datesValidated, setDatesValidated] = useState(false);
+  // Les dates se choisissent dans la modale `/plan/dates`, une route frère de
+  // celle-ci. Elles transitent par le brouillon partagé plutôt que par des
+  // paramètres d'URL, qui imposeraient une synchronisation dans les deux sens.
+  const { draft, setOutwardTime, resetDraft } = usePlanDraft();
+  const { startDate, tripType, datesValidated, outwardTime } = draft;
 
-  // Horizon de production PRIM : au-delà, aucun horaire n'existe.
-  const [horizon, setHorizon] = useState<string>(() => addDays(toISODate(new Date()), 30));
+  // Réinitialiser automatiquement les données stockées uniquement lors du changement de rando.
+  const prevRandoIdRef = useRef<string | undefined>(rando?.id);
+  useEffect(() => {
+    if (prevRandoIdRef.current !== rando?.id) {
+      prevRandoIdRef.current = rando?.id;
+      resetDraft();
+    }
+  }, [rando?.id, resetDraft]);
 
-  const [outwardTime, setOutwardTime] = useState<string>(DEFAULT_OUTWARD_TIME);
+  // Le sens de lecture de l'heure (« partir après » / « arriver avant ») ne se
+  // règle qu'ici, en phase résultats : la modale des dates ne pose que la
+  // question du départ.
   const [outwardTimeMode, setOutwardTimeMode] = useState<TimeMode>('departure');
   const [retryToken, setRetryToken] = useState(0);
-
-  useEffect(() => {
-    let isStale = false;
-    fetchTransitHorizon().then((value) => {
-      if (!isStale) setHorizon(value);
-    });
-    return () => {
-      isStale = true;
-    };
-  }, []);
 
   // Nombre de jours de marche, d'où découle la date de retour pré-remplie.
   const hikeDays = Math.max(1, Math.ceil((rando?.durationHours ?? 0) / HIKING_HOURS_PER_DAY));
 
   // Retour auto : départ + (jours de marche - 1). Une sortie à la journée revient
   // le soir même, une rando de 3 jours deux jours plus tard.
-  const autoReturnDate = useMemo(() => addDays(startDate, hikeDays - 1), [startDate, hikeDays]);
+  const autoReturnDate = useMemo(
+    () => (startDate ? addDays(startDate, hikeDays - 1) : null),
+    [startDate, hikeDays]
+  );
 
-  const effectiveEndDate = tripType === 'oneway' ? null : (endDate ?? autoReturnDate);
+  const effectiveEndDate = resolveEndDate(draft, autoReturnDate);
 
   // Une rando qui commence et se termine à la même gare est une boucle :
   // l'inverser ne changerait rien, donc pas de bouton d'inversion.
@@ -418,40 +398,42 @@ export default function PlanScreen() {
       ? { name: rando.startStation, coords: rando.startStationCoords }
       : { name: rando?.endStation ?? '', coords: rando?.endStationCoords };
 
-  /** Replie le calendrier et fait apparaître la carte voyageurs. */
-  const validateDates = () => {
-    if (Platform.OS !== 'web') {
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    }
-    setDatesValidated(true);
-    setOpenSection('passengers');
+  /**
+   * Ouvre le calendrier. La sélection, le type de trajet et le retour auto vivent
+   * désormais dans `/plan/dates` : cet écran ne fait qu'afficher le résultat.
+   */
+  const openDatePicker = () => {
+    router.push({ pathname: '/plan/dates', params: { randoId: rando?.id } });
   };
 
-  /**
-   * Sélection d'une date sur le calendrier. Ne valide pas automatiquement les dates,
-   * l'utilisateur doit appuyer sur le bouton « Confirmer les dates ».
-   */
-  const handleSelectDate = (date: string) => {
-    // Seconde tape, postérieure au départ qu'on vient de poser : c'est le retour.
-    if (tripType === 'round' && isPickingReturn && date > startDate) {
-      setEndDate(date);
-      setHasCustomReturn(true);
-      setIsPickingReturn(false);
-      return;
-    }
-    setStartDate(date);
-    setEndDate(null);
-    setHasCustomReturn(false);
-    setIsPickingReturn(true);
-  };
+  // Les gares suivent le sens de parcours : sur une traversée inversée, l'aller
+  // vise la gare de fin et le retour repart de la gare de début.
+  const startStationLat = arrivalStation.coords?.latitude;
+  const startStationLng = arrivalStation.coords?.longitude;
+  const endStationLat = departBackStation.coords?.latitude;
+  const endStationLng = departBackStation.coords?.longitude;
+  const startStationName = arrivalStation.name || undefined;
+  const endStationName = departBackStation.name || undefined;
+
+  const departureName = departurePoint.name;
+  const departureLat = departurePoint.latitude;
+  const departureLng = departurePoint.longitude;
+
+  const arrivalName = arrivalPoint.name;
+  const arrivalLat = arrivalPoint.latitude;
+  const arrivalLng = arrivalPoint.longitude;
 
   const outwardKey = [
     rando?.id ?? '',
-    departurePoint.latitude,
-    departurePoint.longitude,
+    departureLat,
+    departureLng,
+    startStationLat ?? '',
+    startStationLng ?? '',
+    startStationName ?? '',
     startDate,
     outwardTime,
     outwardTimeMode,
+    isReversed ? 'rev' : 'fwd',
     retryToken,
   ].join('|');
 
@@ -489,10 +471,14 @@ export default function PlanScreen() {
 
   const returnKey = [
     rando?.id ?? '',
-    arrivalPoint.latitude,
-    arrivalPoint.longitude,
+    arrivalLat,
+    arrivalLng,
+    endStationLat ?? '',
+    endStationLng ?? '',
+    endStationName ?? '',
     effectiveEndDate ?? '',
     returnStartTime,
+    isReversed ? 'rev' : 'fwd',
     retryToken,
   ].join('|');
 
@@ -516,28 +502,6 @@ export default function PlanScreen() {
       ? 'error'
       : 'loading';
   const selectedReturnTrain = returnSelection?.key === returnKey ? returnSelection.train : null;
-
-  // Dépendances d'effet en valeurs primitives : `hikes` est rechargé par
-  // AdventureContext (sync realtime, retour au premier plan) et recrée l'objet
-  // `rando` à l'identique. Sur des objets, chaque rechargement relancerait deux
-  // appels à PRIM pour rien — et le quota est à 1 000 par jour.
-  //
-  // Les gares suivent le sens de parcours : sur une traversée inversée, l'aller
-  // vise la gare de fin et le retour repart de la gare de début.
-  const startStationLat = arrivalStation.coords?.latitude;
-  const startStationLng = arrivalStation.coords?.longitude;
-  const endStationLat = departBackStation.coords?.latitude;
-  const endStationLng = departBackStation.coords?.longitude;
-  const startStationName = arrivalStation.name || undefined;
-  const endStationName = departBackStation.name || undefined;
-
-  const departureName = departurePoint.name;
-  const departureLat = departurePoint.latitude;
-  const departureLng = departurePoint.longitude;
-
-  const arrivalName = arrivalPoint.name;
-  const arrivalLat = arrivalPoint.latitude;
-  const arrivalLng = arrivalPoint.longitude;
 
   // La recherche ne part qu'en phase résultats : en configuration, chaque tape
   // sur le calendrier aurait coûté deux appels PRIM.
@@ -658,6 +622,7 @@ export default function PlanScreen() {
       returnTrain,
       departureStationName: departurePoint.name,
       returnStationName: returnPoint?.name,
+      isReversed,
       isBooked: false,
     });
 
@@ -710,16 +675,21 @@ export default function PlanScreen() {
               </Animated.View>
             </View>
 
-            <Animated.View style={headerChipStyle}>
-              <Pressable
-                onPress={() => passengersSheetRef.current?.present()}
-                style={[styles.passengerChip, { backgroundColor: theme.card }]}>
-                <User size={20} color={theme.text} />
-                <Text style={[styles.passengerChipText, { color: theme.text }]}>
-                  {formatPassengerCount(passengers)}
-                </Text>
-              </Pressable>
-            </Animated.View>
+            {/* En configuration, les voyageurs se règlent dans la carte « Qui part
+                à l'aventure ? » : la puce ferait doublon. Elle reste en phase
+                résultats, où cette carte n'est plus à l'écran. */}
+            {phase === 'results' && (
+              <Animated.View style={headerChipStyle}>
+                <Pressable
+                  onPress={() => passengersSheetRef.current?.present()}
+                  style={[styles.passengerChip, { backgroundColor: theme.card }]}>
+                  <User size={20} color={theme.text} />
+                  <Text style={[styles.passengerChipText, { color: theme.text }]}>
+                    {formatPassengerCount(passengers)}
+                  </Text>
+                </Pressable>
+              </Animated.View>
+            )}
           </View>
         </View>
 
@@ -756,129 +726,64 @@ export default function PlanScreen() {
             />
           </View>
 
-          {/* Quand partir à l'aventure ? */}
+          {/* Quand partir à l'aventure ? (Figma 637:22958 vide / 650:33955 rempli) */}
           <View style={[styles.card, { backgroundColor: theme.card }]}>
-            <Pressable onPress={() => toggleSection('dates')} style={styles.sectionHeader}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: openSection === 'dates' ? theme.text : theme.textDisabled },
-                ]}>
-                Quand partir à l’aventure ?
-              </Text>
-              {openSection !== 'dates' && (
-                <Text style={[styles.sectionSummary, { color: theme.text }]}>{dateSummary}</Text>
-              )}
-            </Pressable>
-
-            {openSection === 'dates' && (
-              <>
-                <DateRangeCalendarHeader />
-                {/* Plus de zone défilante propre : la grille est rendue en entier
-                    et c'est le corps de l'écran qui défile. */}
-                <DateRangeCalendar
-                  hideWeekdayRow
-                  startDate={startDate}
-                  endDate={effectiveEndDate}
-                  minDate={today}
-                  maxDate={horizon}
-                  onSelectDate={handleSelectDate}
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              Quand partir à l’aventure ?
+            </Text>
+            <Pressable
+              onPress={openDatePicker}
+              style={[
+                styles.dashedBox,
+                {
+                  borderColor: theme.borderStrong || '#989898',
+                  borderStyle: datesValidated && startDate ? 'solid' : 'dashed',
+                },
+              ]}>
+              <View style={styles.dashedBoxContent}>
+                <CalendarDays
+                  size={20}
+                  color={datesValidated && startDate ? theme.tint : theme.text}
                 />
-
-                {/* Uniquement sur les randos qui débordent d'une journée : sur une
-                    sortie à la journée, un retour le soir même est évident et le
-                    bandeau n'apprendrait rien. */}
-                {tripType === 'round' && !hasCustomReturn && hikeDays > 1 && (
-                  <View
-                    style={[
-                      styles.autoReturnBanner,
-                      { borderColor: theme.statusBgInfo, backgroundColor: theme.blueBadge },
-                    ]}>
-                    <View style={styles.autoReturnHeader}>
-                      <Info size={18} color={theme.statusBgInfo} />
-                      <Text style={[styles.autoReturnTitle, { color: theme.text }]}>
-                        Retour calculé automatiquement !
-                      </Text>
-                    </View>
-                    <Text style={[styles.autoReturnBody, { color: theme.textMuted }]}>
-                      Nous avons calé le retour sur les {hikeDays} jours de marche de la rando. Tu
-                      peux le modifier si tu le souhaites.
-                    </Text>
-                    <Pressable onPress={() => autoReturnSheetRef.current?.present()}>
-                      <Text style={[styles.autoReturnLink, { color: theme.text }]}>
-                        Comment ça marche ?
-                      </Text>
-                    </Pressable>
-                  </View>
-                )}
-
-                <View style={[styles.segmented, { borderColor: theme.border }]}>
-                  {(
-                    [
-                      { value: 'round', label: 'Aller / Retour' },
-                      { value: 'oneway', label: 'Aller simple' },
-                    ] as { value: TripType; label: string }[]
-                  ).map((item) => {
-                    const isSel = tripType === item.value;
-                    return (
-                      <Pressable
-                        key={item.value}
-                        onPress={() => {
-                          setTripType(item.value);
-                          setEndDate(null);
-                          setHasCustomReturn(false);
-                          setIsPickingReturn(false);
-                        }}
-                        style={[
-                          styles.segmentedItem,
-                          isSel && { backgroundColor: theme.tint },
-                        ]}>
-                        {isSel && <Check size={16} color={theme.buttonTextOnBrand} />}
-                        <Text
-                          style={[
-                            styles.segmentedText,
-                            { color: isSel ? theme.buttonTextOnBrand : theme.text },
-                          ]}>
-                          {item.label}
-                        </Text>
-                      </Pressable>
-                    );
-                  })}
-                </View>
-
-                <Button
-                  title="Valider les dates"
-                  variant="primary"
-                  onPress={validateDates}
-                  style={{ marginTop: 12 }}
-                />
-              </>
-            )}
-          </View>
-
-          {/* Qui part à l'aventure ? — n'apparaît que si les dates sont validées et le calendrier replié. */}
-          {datesValidated && openSection !== 'dates' && phase === 'config' && (
-            <View style={[styles.card, { backgroundColor: theme.card }]}>
-              <Pressable onPress={() => toggleSection('passengers')} style={styles.sectionHeader}>
                 <Text
                   style={[
-                    styles.sectionTitle,
-                    { color: openSection === 'passengers' ? theme.text : theme.textDisabled },
-                  ]}>
-                  Qui part à l’aventure ?
+                    styles.dashedBoxLabel,
+                    datesValidated && startDate
+                      ? {
+                          fontFamily: 'BricolageGrotesque-SemiBold',
+                          fontSize: 16,
+                          color: theme.text,
+                        }
+                      : {
+                          fontFamily: 'Satoshi-Medium',
+                          fontSize: 14,
+                          color: theme.textMuted,
+                        },
+                  ]}
+                  numberOfLines={1}>
+                  {datesValidated && startDate
+                    ? `${dateSummary}, ${outwardTime}`
+                    : 'Choisir une date'}
                 </Text>
-                {openSection === 'passengers' ? (
-                  <ChevronUp size={20} color={theme.text} />
-                ) : (
-                  <ChevronDown size={20} color={theme.text} />
-                )}
-              </Pressable>
+              </View>
 
-              {openSection === 'passengers' && (
-                <View style={styles.passengersInline}>
-                  <PassengersEditor passengers={passengers} onChange={setPassengers} />
+              {datesValidated && startDate ? (
+                <ChevronRight size={20} color={theme.text} />
+              ) : (
+                <View style={[styles.plusButton, { backgroundColor: theme.tint }]}>
+                  <Plus size={16} color={theme.buttonTextOnBrand} />
                 </View>
               )}
+            </Pressable>
+          </View>
+
+          {/* Qui part ? (Figma 650:33691) */}
+          {phase === 'config' && (
+            <View style={[styles.card, { backgroundColor: theme.card }]}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                Qui part ?
+              </Text>
+              <PassengersEditor passengers={passengers} onChange={setPassengers} />
             </View>
           )}
 
@@ -1003,11 +908,13 @@ export default function PlanScreen() {
           )}
         </Animated.ScrollView>
 
-        {/* CTA collant */}
-        {datesValidated && openSection !== 'dates' && (
-          <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 34) }]}>
+        {/* Barre d'action collante en bas d'écran. */}
+        {phase === 'config' && (
+          // Aligné sur les cartes : mêmes 24px de marge latérale que le corps de page,
+          // au lieu des 20px partagés par les autres footers.
+          <ScreenFooter variant="inline" style={styles.footer}>
             <Button
-              title="Lancer la recherche"
+              title="Voir les trajets disponibles"
               variant="primary"
               disabled={!canSearch}
               onPress={() =>
@@ -1027,13 +934,16 @@ export default function PlanScreen() {
                     returnLat: String(arrivalPoint.latitude),
                     returnLng: String(arrivalPoint.longitude),
                     outwardDate: startDate,
+                    outwardTime: outwardTime,
                     returnDate: effectiveEndDate ?? undefined,
+                    returnTime: returnStartTime,
                     passengersCount: formatPassengerCount(passengers),
+                    isReversed: String(isReversed),
                   },
                 })
               }
             />
-          </View>
+          </ScreenFooter>
         )}
       </View>
 
@@ -1044,10 +954,7 @@ export default function PlanScreen() {
         onValidate={() => passengersSheetRef.current?.dismiss()}
       />
 
-      <AutoReturnInfoSheet
-        ref={autoReturnSheetRef}
-        onDismiss={() => autoReturnSheetRef.current?.dismiss()}
-      />
+      <AutoReturnInfoSheet ref={autoReturnSheetRef} />
 
       <DeparturePointSheet
         ref={departureSheetRef}
@@ -1187,10 +1094,18 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     gap: 12,
   },
+  // Boîte de section, commune aux cartes « Quand partir » et « Qui part ».
+  // Figma : radius 20, 20px horizontaux, 16px verticaux, ombre portée douce.
   card: {
     borderRadius: 20,
-    padding: 12,
-    gap: 8,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
+    gap: 12,
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 15,
+    elevation: 3,
   },
   journeyRow: {
     flexDirection: 'row',
@@ -1341,6 +1256,36 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi-Bold',
     fontSize: 16,
   },
+  dashedBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    height: 48,
+    gap: 8,
+  },
+  dashedBoxContent: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dashedBoxLabel: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  plusButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   helperText: {
     fontFamily: 'Satoshi',
     fontSize: 13,
@@ -1393,8 +1338,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   footer: {
-    paddingHorizontal: 16,
-    paddingTop: 12,
+    paddingHorizontal: 24,
   },
   timeModeRow: {
     flexDirection: 'row',

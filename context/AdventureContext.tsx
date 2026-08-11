@@ -31,6 +31,7 @@ export interface PlannedAdventure {
    * ramène au départ.
    */
   returnStationName?: string;
+  isReversed?: boolean;
   isBooked: boolean;
 }
 

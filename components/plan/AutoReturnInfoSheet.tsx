@@ -7,10 +7,9 @@ import { useColorScheme } from '@/components/useColorScheme';
 import BaseBottomSheetModal, {
   BaseBottomSheetModalRef,
 } from '@/components/BaseBottomSheetModal';
-import { Button } from '@/components/Button';
 
 export interface AutoReturnInfoSheetProps {
-  onDismiss: () => void;
+  onDismiss?: () => void;
 }
 
 const REASONS = [
@@ -39,21 +38,28 @@ const AutoReturnInfoSheet = forwardRef<BaseBottomSheetModalRef, AutoReturnInfoSh
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
+    const handleDismiss = () => {
+      (ref as any)?.current?.dismiss();
+      onDismiss?.();
+    };
+
     return (
       <BaseBottomSheetModal
         ref={ref}
-        showHeader
         title="On t'évite les calculs !"
-        enableDynamicSizing
-        snapPoints={[]}>
-        <View style={styles.content}>
-          <Text style={[styles.intro, { color: theme.text }]}>
+        subtitle={
+          <Text style={[styles.intro, { color: theme.textMuted }]}>
             Pour te faire gagner du temps, Névé pré remplit ta date de retour.{' '}
-            <Text style={styles.introBold}>Voici pourquoi :</Text>
+            <Text style={[styles.introBold, { color: theme.text }]}>Voici pourquoi :</Text>
           </Text>
-
+        }
+        enableDynamicSizing
+        snapPoints={[]}
+        primaryButtonTitle="Ça marche, j'ai compris !"
+        onPrimaryPress={handleDismiss}>
+        <View style={styles.content}>
           {REASONS.map(({ Icon, title, body }) => (
-            <View key={title} style={[styles.reasonCard, { backgroundColor: theme.card }]}>
+            <View key={title} style={[styles.reasonCard, { backgroundColor: theme.card, borderColor: theme.border, borderWidth: 1 }]}>
               <Icon size={28} color={theme.tint} />
               <View style={styles.reasonText}>
                 <Text style={[styles.reasonTitle, { color: theme.text }]}>{title}</Text>
@@ -61,13 +67,6 @@ const AutoReturnInfoSheet = forwardRef<BaseBottomSheetModalRef, AutoReturnInfoSh
               </View>
             </View>
           ))}
-
-          <Button
-            title="Ça marche, j'ai compris !"
-            variant="primary"
-            onPress={onDismiss}
-            style={styles.cta}
-          />
         </View>
       </BaseBottomSheetModal>
     );
@@ -81,11 +80,10 @@ export default AutoReturnInfoSheet;
 const styles = StyleSheet.create({
   content: {
     gap: 12,
-    paddingTop: 4,
   },
   intro: {
-    fontFamily: 'Satoshi',
-    fontSize: 14,
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
     lineHeight: 20,
     marginBottom: 4,
   },
@@ -101,18 +99,15 @@ const styles = StyleSheet.create({
   },
   reasonText: {
     flex: 1,
-    gap: 2,
+    gap: 4,
   },
   reasonTitle: {
     fontFamily: 'Satoshi-Bold',
-    fontSize: 14,
+    fontSize: 16,
   },
   reasonBody: {
-    fontFamily: 'Satoshi',
+    fontFamily: 'Satoshi-Medium',
     fontSize: 14,
-    lineHeight: 20,
-  },
-  cta: {
-    marginTop: 12,
+    lineHeight: 18,
   },
 });

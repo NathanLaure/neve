@@ -1,6 +1,6 @@
 import '../global.css';
 import React, { useEffect } from 'react';
-import { DevSettings, LogBox, View } from 'react-native';
+import { DevSettings, LogBox, View, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme, DefaultTheme } from 'expo-router/react-navigation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -9,8 +9,11 @@ import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { NavigationBar } from 'expo-navigation-bar';
+import * as SystemUI from 'expo-system-ui';
 
 import { AdventureProvider } from '@/context/AdventureContext';
+import { PlanDraftProvider } from '@/context/PlanDraftContext';
 import { useColorScheme, setThemeOverride } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { AuthProvider } from '@/context/AuthContext';
@@ -81,6 +84,32 @@ export default function RootLayout() {
     }
   }, [loaded, error]);
 
+  // Android button navigation: keep the bar background transparent (handled by the
+  // `enforceContrast: false` plugin option in app.json) and contrast the buttons
+  // against the app theme. `'dark'` means dark buttons, `'light'` means light ones.
+  // `'auto'` is not usable here: it reads `Appearance.getColorScheme()` and would
+  // ignore the in-app theme override handled by `useColorScheme`.
+  useEffect(() => {
+    if (Platform.OS === 'android') {
+      NavigationBar.setStyle(scheme === 'dark' ? 'light' : 'dark');
+    }
+  }, [scheme]);
+
+  // Root view background. Left unset, the Android window keeps AppCompat's default
+  // white, which shows through anywhere no screen paints over it — most visibly in
+  // the transparent navigation bar strip below the tab bar.
+  useEffect(() => {
+    // The native side resolves through the current Android activity and rejects when
+    // it is gone — Fast Refresh, backgrounding, teardown. Nothing to repair in that
+    // case: the window we were painting no longer exists, and the effect runs again
+    // on the next mount. Only that rejection is swallowed; anything else is logged.
+    SystemUI.setBackgroundColorAsync(themeColors.background).catch((e) => {
+      if (!String(e?.message).includes('activity is no longer available')) {
+        console.warn('SystemUI.setBackgroundColorAsync failed:', e);
+      }
+    });
+  }, [themeColors.background]);
+
   if (!loaded && !error) {
     return null;
   }
@@ -89,6 +118,7 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <AuthProvider>
         <AdventureProvider>
+          <PlanDraftProvider>
           <BottomSheetModalProvider>
             <SafeAreaProvider>
               <ThemeProvider value={customTheme}>
@@ -129,6 +159,18 @@ export default function RootLayout() {
                         contentStyle: { backgroundColor: 'transparent' },
                       }}
                     />
+                    {/* Calendrier : une route à part plutôt qu'une section
+                        dépliée dans la page. Trois mois de grille dans le corps
+                        défilant écrasaient le défilement de l'écran de
+                        planification ; en modale, le calendrier a son propre
+                        défileur et toute la hauteur. */}
+                    <Stack.Screen
+                      name="plan/dates"
+                      options={{
+                        headerShown: false,
+                        presentation: 'fullScreenModal',
+                      }}
+                    />
                     <Stack.Screen
                       name="rando/[id]"
                       options={{
@@ -143,6 +185,7 @@ export default function RootLayout() {
               </ThemeProvider>
             </SafeAreaProvider>
           </BottomSheetModalProvider>
+          </PlanDraftProvider>
         </AdventureProvider>
       </AuthProvider>
     </GestureHandlerRootView>

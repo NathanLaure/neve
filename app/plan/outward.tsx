@@ -14,6 +14,7 @@ import { useAdventure } from '@/context/AdventureContext';
 import {
   fetchTransitOptionsWithFallback,
   parseCoordinates,
+  getRecommendedOptionIndex,
   Disruption,
   TransitOption,
 } from '@/services/transitService';
@@ -39,9 +40,14 @@ export default function OutwardPlanScreen() {
     returnLat?: string;
     returnLng?: string;
     outwardDate?: string;
+    outwardTime?: string;
     returnDate?: string;
+    returnTime?: string;
     passengersCount?: string;
+    isReversed?: string;
   }>();
+
+  const isReversed = params.isReversed === 'true';
 
   const { hikes, userLocationName, userLocation } = useAdventure();
 
@@ -55,12 +61,17 @@ export default function OutwardPlanScreen() {
   // lui que le libellé affiche, l'itinéraire doit partir du même endroit.
   const departureCoords =
     parseCoordinates(params.departureLat, params.departureLng) ?? userLocation;
-  // `startStation` : c'est la gare desservant la rando, même si l'itinéraire va
-  // désormais jusqu'au sentier. Les champs visés jusqu'ici (`endStationName`,
-  // `stationName`) n'existent pas sur RandoData — le libellé valait donc
-  // toujours « Destination ».
-  const destinationName = rando?.startStation || rando?.title || 'Destination';
+
+  const destinationName = isReversed
+    ? rando?.endStation || rando?.title || 'Destination'
+    : rando?.startStation || rando?.title || 'Destination';
+
+  const targetStationCoords = isReversed
+    ? rando?.endStationCoords
+    : rando?.startStationCoords;
+
   const outwardDate = params.outwardDate || new Date().toISOString().split('T')[0];
+  const outwardTime = params.outwardTime || '08:00';
   const passengersCountText = params.passengersCount || '1 pers.';
 
   // State pour le transit
@@ -89,17 +100,20 @@ export default function OutwardPlanScreen() {
         // PRIM sait router jusqu'à une adresse : on vise le vrai départ du
         // sentier plutôt que la gare la plus proche, pour que la marche finale
         // fasse partie de l'itinéraire au lieu d'être laissée au randonneur.
-        const trailhead =
-          rando.start_lat != null && rando.start_lng != null
+        const trailhead = isReversed
+          ? rando.end_lat != null && rando.end_lng != null
+            ? { latitude: rando.end_lat, longitude: rando.end_lng }
+            : targetStationCoords
+          : rando.start_lat != null && rando.start_lng != null
             ? { latitude: rando.start_lat, longitude: rando.start_lng }
-            : rando.startStationCoords;
+            : targetStationCoords;
 
         const baseQuery = {
           from: departureCoords,
           fromName: departureName,
           toName: destinationName,
           date: outwardDate,
-          time: '08:00',
+          time: outwardTime,
           direction: 'go' as const,
         };
 
@@ -107,7 +121,7 @@ export default function OutwardPlanScreen() {
           { ...baseQuery, to: trailhead },
           // Repli : un sentier en pleine forêt peut être hors de portée du
           // calculateur, la gare reste toujours desservie.
-          { ...baseQuery, to: rando.startStationCoords }
+          { ...baseQuery, to: targetStationCoords }
         );
         setOptions(result.options);
       }
@@ -122,7 +136,15 @@ export default function OutwardPlanScreen() {
   useEffect(() => {
     loadTransit();
     // Primitives et non l'objet `departureCoords`, recréé à chaque rendu.
-  }, [rando?.id, outwardDate, departureName, departureCoords.latitude, departureCoords.longitude]);
+  }, [
+    rando?.id,
+    outwardDate,
+    outwardTime,
+    departureName,
+    departureCoords.latitude,
+    departureCoords.longitude,
+    isReversed,
+  ]);
 
   const handleSelectOption = (option: TransitOption) => {
     setSelectedId(option.id);
@@ -143,10 +165,21 @@ export default function OutwardPlanScreen() {
         returnLng: params.returnLng,
         outwardDate,
         returnDate: params.returnDate,
+        returnTime: params.returnTime,
         passengersCount: passengersCountText,
+        isReversed: String(isReversed),
       },
     });
   };
+
+  const sortedOptions = useMemo(() => {
+    if (options.length <= 1) return options;
+    const recIndex = getRecommendedOptionIndex(options);
+    if (recIndex <= 0) return options;
+    const recommended = options[recIndex];
+    const rest = options.filter((_, idx) => idx !== recIndex);
+    return [recommended, ...rest];
+  }, [options]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
@@ -192,7 +225,7 @@ export default function OutwardPlanScreen() {
           </View>
         ) : (
           <View style={styles.resultsContainer}>
-            {options.map((option, index) => {
+            {sortedOptions.map((option, index) => {
               const isRecommended = index === 0;
               const isSelected = selectedId === option.id;
 

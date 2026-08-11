@@ -594,7 +594,6 @@ export default function SearchResultsScreen() {
         <BaseBottomSheetModal
           ref={layerSheetRef}
           snapPoints={['30%']}
-          showHeader={true}
           title="Type de carte"
           showCloseButton={true}>
           <View style={styles.layerOptionsList}>

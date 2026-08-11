@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
 import { Search, Heart, Compass, UserRound } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
@@ -87,18 +87,15 @@ export default function TabBar({ state, descriptors, navigation }: any) {
   const insets = useSafeAreaInsets();
   const { searchQuery } = useAdventure();
 
+  const rawBottom = insets.bottom || initialWindowMetrics?.insets.bottom || 0;
+  const effectiveBottomInset =
+    rawBottom > 0 ? rawBottom : Platform.OS === 'android' ? 48 : 24;
+
   const bottomPadding =
-    Platform.select({
-      ios: insets.bottom > 0 ? insets.bottom - 12 : 8,
-      android: 30,
-      default: 0,
-    }) ?? 0;
-  const baseHeight =
-    Platform.select({
-      ios: 56,
-      android: 56,
-      default: 56,
-    }) ?? 56;
+    Platform.OS === 'ios'
+      ? (insets.bottom > 0 ? Math.max(insets.bottom - 12, 8) : 8)
+      : effectiveBottomInset;
+  const baseHeight = 56;
 
   return (
     <View

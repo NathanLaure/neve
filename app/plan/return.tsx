@@ -14,6 +14,7 @@ import { useAdventure } from '@/context/AdventureContext';
 import {
   fetchTransitOptionsWithFallback,
   parseCoordinates,
+  getRecommendedOptionIndex,
   Disruption,
   TransitOption,
 } from '@/services/transitService';
@@ -41,8 +42,12 @@ export default function ReturnPlanScreen() {
     returnLat?: string;
     returnLng?: string;
     returnDate?: string;
+    returnTime?: string;
     passengersCount?: string;
+    isReversed?: string;
   }>();
+
+  const isReversed = params.isReversed === 'true';
 
   const { hikes, userLocationName, userLocation } = useAdventure();
 
@@ -51,13 +56,14 @@ export default function ReturnPlanScreen() {
     [hikes, params.randoId]
   );
 
-  // `endStation` : la gare de fin de rando. Les champs visés jusqu'ici
-  // (`endStationName`, `stationName`) n'existent pas sur RandoData, le libellé
-  // valait donc toujours « Départ Rando ».
-  const departureName = rando?.endStation || rando?.title || 'Départ Rando';
-  // Où l'on rentre le soir. Un lieu de retour explicite l'emporte sur le point
-  // de départ, qui l'emporte lui-même sur le GPS : sans ça, choisir de rentrer
-  // ailleurs n'avait aucun effet sur les trajets proposés.
+  const departureName = isReversed
+    ? rando?.startStation || rando?.title || 'Départ Rando'
+    : rando?.endStation || rando?.title || 'Départ Rando';
+
+  const returnStationCoords = isReversed
+    ? rando?.startStationCoords
+    : rando?.endStationCoords;
+
   const destinationName =
     params.returnName || params.departureName || userLocationName || 'Paris';
   const destinationCoords =
@@ -65,6 +71,7 @@ export default function ReturnPlanScreen() {
     parseCoordinates(params.departureLat, params.departureLng) ??
     userLocation;
   const returnDate = params.returnDate || new Date().toISOString().split('T')[0];
+  const returnTime = params.returnTime || '16:00';
   const passengersCountText = params.passengersCount || '1 pers.';
 
   // State transit
@@ -90,29 +97,29 @@ export default function ReturnPlanScreen() {
     setIsLoading(true);
     try {
       if (rando) {
-        // Une boucle ou un aller-retour se termine là où il a commencé : on peut
-        // donc partir du sentier lui-même. Un point à point finit ailleurs, et
-        // ce point d'arrivée n'existe pas dans le modèle — on reste sur la gare.
         const endsWhereItStarted =
           rando.routeType === 'boucle' || rando.routeType === 'aller_retour';
-        const trailhead =
-          endsWhereItStarted && rando.start_lat != null && rando.start_lng != null
+        const trailhead = isReversed
+          ? rando.start_lat != null && rando.start_lng != null
             ? { latitude: rando.start_lat, longitude: rando.start_lng }
-            : rando.endStationCoords;
+            : returnStationCoords
+          : endsWhereItStarted && rando.start_lat != null && rando.start_lng != null
+            ? { latitude: rando.start_lat, longitude: rando.start_lng }
+            : returnStationCoords;
 
         const baseQuery = {
           to: destinationCoords,
           fromName: departureName,
           toName: destinationName,
           date: returnDate,
-          time: '16:00',
+          time: returnTime,
           direction: 'back' as const,
         };
 
         const result = await fetchTransitOptionsWithFallback(
           { ...baseQuery, from: trailhead },
           // Repli : depuis un sentier isolé, le calculateur peut ne rien trouver.
-          { ...baseQuery, from: rando.endStationCoords }
+          { ...baseQuery, from: returnStationCoords }
         );
         setOptions(result.options);
       }
@@ -130,9 +137,11 @@ export default function ReturnPlanScreen() {
   }, [
     rando?.id,
     returnDate,
+    returnTime,
     departureName,
     destinationCoords.latitude,
     destinationCoords.longitude,
+    isReversed,
   ]);
 
   const handleSelectOption = (option: TransitOption) => {
@@ -147,6 +156,15 @@ export default function ReturnPlanScreen() {
       },
     });
   };
+
+  const sortedOptions = useMemo(() => {
+    if (options.length <= 1) return options;
+    const recIndex = getRecommendedOptionIndex(options);
+    if (recIndex <= 0) return options;
+    const recommended = options[recIndex];
+    const rest = options.filter((_, idx) => idx !== recIndex);
+    return [recommended, ...rest];
+  }, [options]);
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background, paddingTop: insets.top }]}>
@@ -192,7 +210,7 @@ export default function ReturnPlanScreen() {
           </View>
         ) : (
           <View style={styles.resultsContainer}>
-            {options.map((option, index) => {
+            {sortedOptions.map((option, index) => {
               const isRecommended = index === 0;
               const isSelected = selectedId === option.id;
 

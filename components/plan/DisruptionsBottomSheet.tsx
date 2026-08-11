@@ -8,7 +8,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import BaseBottomSheetModal, {
   BaseBottomSheetModalRef,
 } from '@/components/BaseBottomSheetModal';
-import { Button } from '@/components/Button';
+import { useScrollFade } from '@/components/ScrollFade';
 import type { Disruption } from '@/services/transitService';
 import { TransportLineBadge } from './TransportLineBadge';
 
@@ -29,10 +29,12 @@ export const DisruptionsBottomSheet = forwardRef<
 
   const items = disruptions ?? [];
 
+  // Le pied de page ne porte son ombre que tant qu'il reste du contenu dessous.
+  const { hasMore, scrollProps } = useScrollFade();
+
   return (
     <BaseBottomSheetModal
       ref={ref}
-      showHeader
       title="Info trafic & Perturbations"
       subtitle={
         items.length > 0
@@ -40,11 +42,15 @@ export const DisruptionsBottomSheet = forwardRef<
           : 'Aucune perturbation signalée sur votre trajet'
       }
       snapPoints={['65%']}
-      stackBehavior="push">
-      <View style={styles.container}>
-        <BottomSheetScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={styles.scrollList}>
+      stackBehavior="push"
+      scrollableBody
+      footerShadow={hasMore}
+      primaryButtonTitle="J'ai compris"
+      onPrimaryPress={onDismiss}>
+      <BottomSheetScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollList}
+        {...scrollProps}>
           {items.length === 0 && (
             <Text style={[styles.emptyText, { color: theme.textMuted }]}>
               Île-de-France Mobilités ne signale aucune perturbation sur les lignes de
@@ -145,15 +151,6 @@ export const DisruptionsBottomSheet = forwardRef<
             );
           })}
         </BottomSheetScrollView>
-
-        {/* Action Button */}
-        <Button
-          title="J'ai compris"
-          variant="primary"
-          onPress={onDismiss}
-          style={styles.ctaButton}
-        />
-      </View>
     </BaseBottomSheetModal>
   );
 });
@@ -163,14 +160,9 @@ DisruptionsBottomSheet.displayName = 'DisruptionsBottomSheet';
 export default DisruptionsBottomSheet;
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    paddingTop: 8,
-    paddingBottom: 12,
-    gap: 12,
-  },
   scrollList: {
     gap: 12,
+    paddingTop: 8,
     paddingBottom: 16,
   },
   emptyText: {
@@ -228,8 +220,5 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi_Variable',
     fontWeight: '500',
     fontSize: 12,
-  },
-  ctaButton: {
-    marginTop: 8,
   },
 });

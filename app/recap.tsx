@@ -18,10 +18,10 @@ import {
   ChevronDown,
   ExternalLink,
 } from 'lucide-react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
 import { useAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS } from '@/constants/RandosData';
 
@@ -57,7 +57,9 @@ export default function RecapScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const insets = useSafeAreaInsets();
+  // Le footer est en `position: absolute` : il ne prend aucune place dans le flux.
+  // Ce cale-pied suit son padding bas, plus la hauteur de ses boutons.
+  const scrollBottomClearance = useScreenFooterPadding() + 112;
 
   const { plannedAdventures, updateAdventure } = useAdventure();
   const [isRedirecting, setIsRedirecting] = useState(false);
@@ -543,19 +545,11 @@ export default function RecapScreen() {
               </View>
             </View>
 
-            <View style={{ height: 160 }} />
+            <View style={{ height: scrollBottomClearance }} />
           </ScrollView>
 
           {/* Booking Action Buttons */}
-          <View
-            style={[
-              styles.floatingBottom,
-              {
-                backgroundColor: theme.card,
-                borderTopColor: theme.border,
-                paddingBottom: Math.max(insets.bottom, 34),
-              },
-            ]}>
+          <ScreenFooter surface="card">
             {isIDF ? (
               <View style={styles.idfButtonsContainer}>
                 <View style={styles.btnRow}>
@@ -611,7 +605,7 @@ export default function RecapScreen() {
                 </Pressable>
               </View>
             )}
-          </View>
+          </ScreenFooter>
         </View>
       )}
     </>
@@ -835,15 +829,6 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '850',
-  },
-  floatingBottom: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingTop: 14,
-    borderTopWidth: 1,
   },
   btnRow: {
     flexDirection: 'row',
