@@ -208,7 +208,14 @@ export default function DateRangeCalendar({
                     key={iso}
                     disabled={isDisabled}
                     onPress={() => onSelectDate(iso)}
-                    android_ripple={{ color: 'transparent' }}
+                    android_ripple={
+                      isDisabled
+                        ? undefined
+                        : {
+                            color: theme.ripple,
+                            borderless: true,
+                          }
+                    }
                     style={styles.cell}>
                     {({ pressed }) => (
                       <>

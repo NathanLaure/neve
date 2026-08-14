@@ -192,6 +192,14 @@ function RandoCard({
       ? new Date(savedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
       : null;
 
+    const compactItemStyle = [
+      styles.compactPressable,
+      {
+        borderRadius: 16,
+        overflow: 'hidden' as const,
+      },
+    ];
+
     return (
       <Pressable
         onPress={() => onPress?.(id)}
@@ -206,10 +214,12 @@ function RandoCard({
             : undefined
         }
         delayLongPress={350}
-        style={({ pressed }) => [
-          styles.compactPressable,
-          pressed ? { backgroundColor: theme.card } : null,
-        ]}>
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
+        style={compactItemStyle}>
         {/* flexDirection lives on this inner View, not on the Pressable: the same
             pattern the horizontal variant uses — driving it from the Pressable's
             style callback ends up laying the row out as a column. */}
@@ -245,10 +255,7 @@ function RandoCard({
                 </>
               ) : null}
             </View>
-            <Text style={[styles.compactSubtext, { color: theme.textMuted }]} numberOfLines={1}>
-              {savedAtText ? `${savedAtText} · ` : ''}
-              {getHikeLocation()}
-            </Text>
+            <Text style={[styles.compactSubtext, { color: theme.textMuted }]}>{savedAtText ? `${savedAtText} · ` : ''}{getHikeLocation()}</Text>
           </View>
         </View>
       </Pressable>
@@ -259,14 +266,24 @@ function RandoCard({
     const cardWidth =
       widthProp !== undefined ? widthProp : screenWidth > 0 ? screenWidth - 48 : 320;
 
+    const horizontalItemStyle = [
+      styles.horizontalPressable,
+      {
+        width: cardWidth,
+        borderRadius: 20,
+        overflow: 'hidden' as const,
+      },
+    ];
+
     return (
       <Pressable
         onPress={() => onPress?.(id)}
-        style={({ pressed }) => [
-          styles.horizontalPressable,
-          { width: cardWidth },
-          pressed ? styles.cardPressed : null,
-        ]}>
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
+        style={horizontalItemStyle}>
         <View
           style={[
             styles.horizontalCard,
@@ -333,10 +350,23 @@ function RandoCard({
   }
 
   // Vertical card design from Figma Node ID 49:3492
+  const verticalItemStyle = [
+    styles.pressableWrapper,
+    {
+      borderRadius: 16,
+      overflow: 'hidden' as const,
+    },
+  ];
+
   return (
     <Pressable
       onPress={() => onPress?.(id)}
-      style={({ pressed }) => [styles.pressableWrapper, pressed ? styles.cardPressed : null]}>
+      android_ripple={{
+        color: theme.ripple,
+        borderless: false,
+        foreground: true,
+      }}
+      style={verticalItemStyle}>
       <View style={styles.verticalCard}>
         {/* Image Section */}
         <View style={styles.imageContainer} onLayout={handleImageContainerLayout}>

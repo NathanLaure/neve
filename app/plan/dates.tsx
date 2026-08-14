@@ -1,5 +1,14 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  interpolateColor,
+  useAnimatedStyle,
+  useDerivedValue,
+  withTiming,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
@@ -24,6 +33,66 @@ import DateRangeCalendar, {
 
 /** Doit rester aligné sur la valeur utilisée par l'écran de planification. */
 const HIKING_HOURS_PER_DAY = 8;
+
+// Durée fixe, pas de ressort : un fondu net plutôt qu'un rebond sur le bandeau
+// qui apparaît ou disparaît selon la date de retour posée.
+const ENTER = FadeIn.duration(180);
+const EXIT = FadeOut.duration(140);
+const REFLOW = LinearTransition.duration(200);
+/** Un contrôle qu'on tape doit répondre vite : plus court que les fondus d'apparition. */
+const SEGMENTED_DURATION = 120;
+
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+
+/**
+ * Item du contrôle segmenté « Aller/Retour » / « Aller simple ».
+ *
+ * Extrait pour animer sa propre transition de couleur : `useAnimatedStyle` ne
+ * peut pas s'appeler à l'intérieur d'un `.map()`, le nombre d'appels de Hooks
+ * doit rester fixe d'un rendu à l'autre.
+ */
+function SegmentedItem({
+  label,
+  isSelected,
+  onPress,
+  theme,
+}: {
+  label: string;
+  isSelected: boolean;
+  onPress: () => void;
+  theme: (typeof Colors)['light'];
+}) {
+  const progress = useDerivedValue(() =>
+    withTiming(isSelected ? 1 : 0, { duration: SEGMENTED_DURATION })
+  );
+
+  const containerStyle = useAnimatedStyle(() => ({
+    backgroundColor: interpolateColor(progress.value, [0, 1], [theme.card, theme.tint]),
+  }));
+  const textStyle = useAnimatedStyle(() => ({
+    color: interpolateColor(progress.value, [0, 1], [theme.text, theme.buttonTextOnBrand]),
+  }));
+  // La coche reste montée en permanence, seule son opacité varie : la monter/
+  // démonter ajoutait un enfant au `row` et poussait le texte au moment même où
+  // le fondu commençait, avant que l'œil n'ait rien à suivre.
+  const checkStyle = useAnimatedStyle(() => ({
+    opacity: progress.value,
+  }));
+
+  return (
+    <AnimatedPressable onPress={onPress} style={[styles.segmentedItem, containerStyle]}>
+      <Animated.View style={[styles.segmentedCheckSlot, checkStyle]}>
+        <Check size={16} color={theme.buttonTextOnBrand} />
+      </Animated.View>
+      <Animated.Text style={[styles.segmentedText, textStyle]}>{label}</Animated.Text>
+      {/* Espaceur invisible, de la même largeur que le logement de la coche : sans
+          lui le texte se centre avec elle dans un même bloc et se retrouve décalé
+          d'une demi-icône. Symétrique, il ramène le texte au vrai centre du
+          segment, coche visible ou non. */}
+      <View style={styles.segmentedCheckSlot} />
+    </AnimatedPressable>
+  );
+}
 
 /**
  * Choix des dates, présenté en modale plein écran.
@@ -153,32 +222,20 @@ export default function PlanDatesScreen() {
                 { value: 'round', label: 'Aller / Retour' },
                 { value: 'oneway', label: 'Aller simple' },
               ] as { value: TripType; label: string }[]
-            ).map((item) => {
-              const isSel = tripType === item.value;
-              return (
-                <Pressable
-                  key={item.value}
-                  onPress={() => {
-                    setTripType(item.value);
-                    setEndDate(null);
-                    setHasCustomReturn(false);
-                    setIsPickingReturn(false);
-                  }}
-                  style={[
-                    styles.segmentedItem,
-                    { backgroundColor: isSel ? theme.tint : theme.card },
-                  ]}>
-                  {isSel && <Check size={16} color={theme.buttonTextOnBrand} />}
-                  <Text
-                    style={[
-                      styles.segmentedText,
-                      { color: isSel ? theme.buttonTextOnBrand : theme.text },
-                    ]}>
-                    {item.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            ).map((item) => (
+              <SegmentedItem
+                key={item.value}
+                label={item.label}
+                isSelected={tripType === item.value}
+                theme={theme}
+                onPress={() => {
+                  setTripType(item.value);
+                  setEndDate(null);
+                  setHasCustomReturn(false);
+                  setIsPickingReturn(false);
+                }}
+              />
+            ))}
           </View>
 
           {/* Épinglée : dans l'ancienne version elle défilait avec la grille et on
@@ -206,29 +263,32 @@ export default function PlanDatesScreen() {
               sortie à la journée, un retour le soir même est évident et le
               bandeau n'apprendrait rien. */}
           {showAutoReturnBanner && (
-            <Pressable onPress={() => autoReturnSheetRef.current?.present()}>
-              <View
-                style={[
-                  styles.autoReturnBanner,
-                  { borderColor: theme.statusBgInfo, backgroundColor: theme.blueBadge },
-                ]}>
-                <View style={styles.autoReturnHeader}>
-                  <Info size={18} color={theme.statusBgInfo} />
-                  <Text style={[styles.autoReturnTitle, { color: theme.text }]}>
-                    Retour calculé automatiquement !
+            <Animated.View layout={REFLOW} entering={ENTER} exiting={EXIT}>
+              <Pressable onPress={() => autoReturnSheetRef.current?.present()}>
+                <View
+                  style={[
+                    styles.autoReturnBanner,
+                    { borderColor: theme.statusBgInfo, backgroundColor: theme.blueBadge },
+                  ]}>
+                  <View style={styles.autoReturnHeader}>
+                    <Info size={18} color={theme.statusBgInfo} />
+                    <Text style={[styles.autoReturnTitle, { color: theme.text }]}>
+                      Retour calculé automatiquement !
+                    </Text>
+                  </View>
+                  <Text style={[styles.autoReturnBody, { color: theme.textMuted }]}>
+                    Nous avons calé le retour sur les {hikeDays} jours de marche de la rando. Tu peux le
+                    modifier si tu le souhaites.
+                  </Text>
+                  <Text style={[styles.autoReturnLink, { color: theme.text }]}>
+                    Comment ça marche ?
                   </Text>
                 </View>
-                <Text style={[styles.autoReturnBody, { color: theme.textMuted }]}>
-                  Nous avons calé le retour sur les {hikeDays} jours de marche de la rando. Tu peux le
-                  modifier si tu le souhaites.
-                </Text>
-                <Text style={[styles.autoReturnLink, { color: theme.text }]}>
-                  Comment ça marche ?
-                </Text>
-              </View>
-            </Pressable>
+              </Pressable>
+            </Animated.View>
           )}
 
+          <Animated.View layout={REFLOW}>
           <Pressable
             onPress={() => timeSheetRef.current?.present()}
             style={[styles.timeRow, { borderColor: theme.border, backgroundColor: theme.card }]}>
@@ -242,6 +302,7 @@ export default function PlanDatesScreen() {
             </View>
             <ChevronRight size={20} color={theme.text} />
           </Pressable>
+          </Animated.View>
 
           <View style={styles.footerRow}>
             <Button
@@ -322,6 +383,14 @@ const styles = StyleSheet.create({
   segmentedText: {
     fontFamily: 'Satoshi-Bold',
     fontSize: 14,
+  },
+  /* Toujours montée, opacité seule animée : occuper cette place en permanence
+     évite que le texte se décale au moment où la coche apparaît. */
+  segmentedCheckSlot: {
+    width: 16,
+    height: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   body: {
     flex: 1,

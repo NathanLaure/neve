@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import {
   StyleSheet,
   Text,
@@ -9,6 +9,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   StatusBar,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Heart, Search, ArrowRight, FolderInput, Trash2 } from 'lucide-react-native';
@@ -19,10 +20,18 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import RandoCard from '@/components/RandoCard';
+import Chip from '@/components/Chip';
 import { Input } from '@/components/Input';
 import ItemButton from '@/components/ItemButton';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import { useTabBarHeight } from '@/components/TabBar';
 import { type RandoData } from '@/constants/RandosData';
+import {
+  FavoritesFilterSheets,
+  FavoritesFilterSheetsRef,
+  SortCriteria,
+  SORT_OPTIONS,
+} from '@/components/FavoritesFilterSheets';
 
 const formatHikeDuration = (hours: number) => {
   const h = Math.floor(hours);
@@ -33,6 +42,7 @@ const formatHikeDuration = (hours: number) => {
 export default function FavoritesScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const tabBarHeight = useTabBarHeight();
   const router = useRouter();
   const pathname = usePathname();
   const isFocused = pathname === '/favorites';
@@ -94,9 +104,16 @@ export default function FavoritesScreen() {
     getTransitInfo,
   } = useAdventure();
 
+  // Search & Filter States
   const [searchText, setSearchText] = useState('');
+  const [onlyOffline, setOnlyOffline] = useState(false);
+  const [sortCriteria, setSortCriteria] = useState<SortCriteria>('recent');
+  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
+  const [maxDistance, setMaxDistance] = useState<number | null>(null);
+
   const [refreshing, setRefreshing] = useState(false);
   const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const filterSheetsRef = useRef<FavoritesFilterSheetsRef>(null);
   const [actionHike, setActionHike] = useState<RandoData | null>(null);
 
   const handleRefresh = async () => {
@@ -113,18 +130,135 @@ export default function FavoritesScreen() {
     [hikes, favoriteHikeIds]
   );
 
-  // La recherche filtre l'affichage seulement : `favoriteHikes` reste la référence
-  // pour le compteur et pour distinguer "aucun favori" de "aucun résultat".
+  // Number of favorite hikes stored offline (having GPX trace / details loaded)
+  const offlineCount = useMemo(() => {
+    return favoriteHikes.filter((h) => Boolean(h.hasFullDetail || (h.gpxTrace && h.gpxTrace.length > 0))).length;
+  }, [favoriteHikes]);
+
+  // Helper filter function for custom criteria overrides (used for sheet counts)
+  const filterAndSortHikes = useCallback(
+    (
+      sourceList: RandoData[],
+      override?: {
+        sort?: SortCriteria;
+        difficulties?: string[];
+        maxDistance?: number | null;
+        offline?: boolean;
+        query?: string;
+      }
+    ) => {
+      const activeOffline = override?.offline ?? onlyOffline;
+      const activeSort = override?.sort ?? sortCriteria;
+      const activeDiffs = override?.difficulties ?? selectedDifficulties;
+      const activeMaxDist = override?.maxDistance !== undefined ? override.maxDistance : maxDistance;
+      const activeQuery = (override?.query ?? searchText).trim().toLowerCase();
+
+      let result = sourceList.filter((h) => {
+        // Text search
+        if (activeQuery) {
+          const matches =
+            h.title?.toLowerCase().includes(activeQuery) ||
+            h.location?.toLowerCase().includes(activeQuery) ||
+            h.startStation?.toLowerCase().includes(activeQuery);
+          if (!matches) return false;
+        }
+
+        // Offline filter
+        if (activeOffline) {
+          const isOffline = Boolean(h.hasFullDetail || (h.gpxTrace && h.gpxTrace.length > 0));
+          if (!isOffline) return false;
+        }
+
+        // Difficulty filter
+        if (activeDiffs.length > 0) {
+          const hDiff = (h.difficulty || '').toLowerCase();
+          const hasDiff = activeDiffs.some((d) => hDiff.includes(d.toLowerCase()));
+          if (!hasDiff) return false;
+        }
+
+        // Max distance filter
+        if (activeMaxDist !== null) {
+          const distNum = (h as any).distance_km ?? parseFloat(h.distance) ?? 0;
+          if (distNum > activeMaxDist) return false;
+        }
+
+        return true;
+      });
+
+      // Sorting
+      result = [...result].sort((a, b) => {
+        if (activeSort === 'recent') {
+          const timeA = favoriteSavedAt.get(a.id) ?? '';
+          const timeB = favoriteSavedAt.get(b.id) ?? '';
+          return timeB.localeCompare(timeA);
+        }
+        if (activeSort === 'distance_asc') {
+          const distA = (a as any).distance_km ?? parseFloat(a.distance) ?? 0;
+          const distB = (b as any).distance_km ?? parseFloat(b.distance) ?? 0;
+          return distA - distB;
+        }
+        if (activeSort === 'distance_desc') {
+          const distA = (a as any).distance_km ?? parseFloat(a.distance) ?? 0;
+          const distB = (b as any).distance_km ?? parseFloat(b.distance) ?? 0;
+          return distB - distA;
+        }
+        if (activeSort === 'elevation_asc') {
+          const elevA = (a as any).elevation_gain_m ?? (a.elevation ? parseInt(a.elevation.replace(/\D/g, ''), 10) : 0);
+          const elevB = (b as any).elevation_gain_m ?? (b.elevation ? parseInt(b.elevation.replace(/\D/g, ''), 10) : 0);
+          return elevA - elevB;
+        }
+        if (activeSort === 'duration_asc') {
+          return (a.durationHours ?? 0) - (b.durationHours ?? 0);
+        }
+        if (activeSort === 'train_asc') {
+          const infoA = getTransitInfo(a);
+          const infoB = getTransitInfo(b);
+          return infoA.durationMinutes - infoB.durationMinutes;
+        }
+        return 0;
+      });
+
+      return result;
+    },
+    [onlyOffline, sortCriteria, selectedDifficulties, maxDistance, searchText, favoriteSavedAt, getTransitInfo]
+  );
+
+  // Filtered and sorted visible favorites list
   const visibleHikes = useMemo(() => {
-    const query = searchText.trim().toLowerCase();
-    if (!query) return favoriteHikes;
-    return favoriteHikes.filter(
-      (h) =>
-        h.title?.toLowerCase().includes(query) ||
-        h.location?.toLowerCase().includes(query) ||
-        h.startStation?.toLowerCase().includes(query)
+    return filterAndSortHikes(favoriteHikes);
+  }, [filterAndSortHikes, favoriteHikes]);
+
+  // Preview counter for filter bottom sheets
+  const getFilteredCountForOverride = useCallback(
+    (override: { sort?: SortCriteria; difficulties?: string[]; maxDistance?: number | null }) => {
+      return filterAndSortHikes(favoriteHikes, override).length;
+    },
+    [filterAndSortHikes, favoriteHikes]
+  );
+
+  // Check if any filter is active to show "Réinitialiser"
+  const hasActiveFilters = useMemo(() => {
+    return (
+      onlyOffline ||
+      sortCriteria !== 'recent' ||
+      selectedDifficulties.length > 0 ||
+      maxDistance !== null ||
+      searchText.trim().length > 0
     );
-  }, [favoriteHikes, searchText]);
+  }, [onlyOffline, sortCriteria, selectedDifficulties, maxDistance, searchText]);
+
+  const handleResetFilters = () => {
+    setOnlyOffline(false);
+    setSortCriteria('recent');
+    setSelectedDifficulties([]);
+    setMaxDistance(null);
+    setSearchText('');
+  };
+
+  const activeSortLabel = useMemo(() => {
+    const found = SORT_OPTIONS.find((s) => s.key === sortCriteria);
+    return found ? found.label.split('(')[0].trim() : 'Trier par';
+  }, [sortCriteria]);
 
   useEffect(() => {
     if (isFocused) {
@@ -264,7 +398,12 @@ export default function FavoritesScreen() {
             data={visibleHikes}
             keyExtractor={(item) => `favorite-${item.id}`}
             renderItem={renderItem}
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={[
+              styles.listContent,
+              // La TabBar flotte au-dessus de l'écran : sans cette réserve, la
+              // dernière carte finit sous les onglets.
+              { paddingBottom: 40 + tabBarHeight },
+            ]}
             ItemSeparatorComponent={() => <View style={{ height: 20 }} />}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
@@ -273,10 +412,9 @@ export default function FavoritesScreen() {
               { useNativeDriver: false }
             )}
             scrollEventThrottle={16}
-            // Passé comme élément (et non comme composant) : une fonction inline serait
-            // remontée à chaque frappe et l'input perdrait le focus.
             ListHeaderComponent={
-              <View style={styles.searchContainer}>
+              <View style={styles.searchHeaderBlock}>
+                {/* 1. Search Bar (Figma 670:40829) */}
                 <Input
                   placeholder="Rechercher par nom"
                   value={searchText}
@@ -287,6 +425,61 @@ export default function FavoritesScreen() {
                   returnKeyType="search"
                   autoCorrect={false}
                 />
+
+                {/* 2. Horizontal Filter Chips Bar (Figma 670:41084) */}
+                <ScrollView
+                  horizontal
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.chipsScrollContent}
+                  style={styles.chipsScrollView}>
+                  {/* Chip: Stocké hors-ligne */}
+                  <Chip
+                    label="Stocké hors-ligne"
+                    selected={onlyOffline}
+                    badgeCount={offlineCount > 0 ? offlineCount : undefined}
+                    badgePosition="inline"
+                    onPress={() => setOnlyOffline((prev) => !prev)}
+                  />
+
+                  {/* Chip: Trier par */}
+                  <Chip
+                    label={sortCriteria !== 'recent' ? activeSortLabel : 'Trier par'}
+                    selected={sortCriteria !== 'recent'}
+                    onPress={() => filterSheetsRef.current?.openSort()}
+                  />
+
+                  {/* Chip: Difficulté */}
+                  <Chip
+                    label="Difficulté"
+                    selected={selectedDifficulties.length > 0}
+                    badgeCount={
+                      selectedDifficulties.length > 0 ? selectedDifficulties.length : undefined
+                    }
+                    badgePosition="inline"
+                    onPress={() => filterSheetsRef.current?.openDifficulty()}
+                  />
+
+                  {/* Chip: Distance */}
+                  <Chip
+                    label={maxDistance !== null ? `< ${maxDistance} km` : 'Distance'}
+                    selected={maxDistance !== null}
+                    onPress={() => filterSheetsRef.current?.openDistance()}
+                  />
+
+                  {/* Button: Réinitialiser (Figma 670:41089) */}
+                  {hasActiveFilters && (
+                    <Pressable
+                      onPress={handleResetFilters}
+                      style={({ pressed }) => [
+                        styles.resetButton,
+                        { opacity: pressed ? 0.7 : 1 },
+                      ]}>
+                      <Text style={[styles.resetButtonText, { color: theme.tint }]}>
+                        Réinitialiser
+                      </Text>
+                    </Pressable>
+                  )}
+                </ScrollView>
               </View>
             }
             refreshControl={
@@ -300,12 +493,33 @@ export default function FavoritesScreen() {
             ListEmptyComponent={
               <View style={styles.noResultsContainer}>
                 <Text style={[styles.noResultsText, { color: theme.textMuted }]}>
-                  Aucun favori ne correspond à « {searchText.trim()} »
+                  {searchText.trim()
+                    ? `Aucun favori ne correspond à « ${searchText.trim()} »`
+                    : 'Aucun favori ne correspond aux filtres sélectionnés.'}
                 </Text>
+                {hasActiveFilters && (
+                  <Pressable onPress={handleResetFilters} style={styles.emptyResetBtn}>
+                    <Text style={[styles.emptyResetText, { color: theme.tint }]}>
+                      Réinitialiser les filtres
+                    </Text>
+                  </Pressable>
+                )}
               </View>
             }
           />
         )}
+
+        {/* Filter Bottom Sheets (Trier par, Difficulté, Distance) */}
+        <FavoritesFilterSheets
+          ref={filterSheetsRef}
+          currentSort={sortCriteria}
+          onApplySort={setSortCriteria}
+          selectedDifficulties={selectedDifficulties}
+          onApplyDifficulties={setSelectedDifficulties}
+          maxDistance={maxDistance}
+          onApplyDistance={setMaxDistance}
+          getFilteredCount={getFilteredCountForOverride}
+        />
 
         {/* Actions contextuelles — ouvertes par appui long sur une card */}
         <BaseBottomSheetModal
@@ -366,10 +580,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     lineHeight: 20,
   },
-  // Pas de padding horizontal : la barre vit dans le contentContainer de la liste,
-  // qui applique déjà la gouttière de 20.
-  searchContainer: {
+  searchHeaderBlock: {
     paddingBottom: 16,
+    gap: 8,
+  },
+  chipsScrollView: {
+    marginHorizontal: -20,
+  },
+  chipsScrollContent: {
+    paddingHorizontal: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  resetButton: {
+    paddingHorizontal: 8,
+    paddingVertical: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  resetButtonText: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 12,
   },
   listContent: {
     paddingHorizontal: 20,
@@ -383,11 +615,20 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingTop: 48,
     paddingHorizontal: 24,
+    gap: 12,
   },
   noResultsText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 15,
     textAlign: 'center',
+  },
+  emptyResetBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+  },
+  emptyResetText: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
   },
   emptyContainer: {
     flex: 1,

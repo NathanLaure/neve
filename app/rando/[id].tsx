@@ -55,9 +55,11 @@ import Reanimated, { FadeInDown, FadeIn } from 'react-native-reanimated';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import ItemButton from '@/components/ItemButton';
+import ToggleRow from '@/components/ToggleRow';
 import WeatherIcon, { WeatherIconType } from '@/components/WeatherIcon';
 import ExplorerMap, { MapStyleType, ExplorerMapRef } from '@/components/ExplorerMap';
 import RandoDetailSkeleton from '@/components/RandoDetailSkeleton';
+import Toast from 'react-native-toast-message';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
 const iosTint = Platform.OS === 'ios' ? require('@expo/ui/swift-ui/modifiers').tint : null;
@@ -454,8 +456,9 @@ export default function RandoDetailScreen() {
         </Animated.Text>
 
         <View style={styles.headerRight}>
-          {/* All buttons: fade OUT on scroll */}
-          <Animated.View style={[styles.headerRight, { opacity: extraButtonsOpacity, position: 'absolute', right: 0 }]}
+          {/* Extra buttons: fade OUT on scroll */}
+          <Animated.View
+            style={[styles.headerRight, { opacity: extraButtonsOpacity }]}
             pointerEvents="box-none">
             <IconButton
               variant="circle"
@@ -473,22 +476,14 @@ export default function RandoDetailScreen() {
               }
               onPress={() => id && toggleFavorite(String(id))}
             />
-            <IconButton
-              variant="circle"
-              icon={<MoreVertical size={20} color={theme.text} />}
-              onPress={() => actionsSheetRef.current?.present()}
-            />
           </Animated.View>
 
-          {/* Single options button: fades IN on scroll */}
-          <Animated.View style={{ opacity: optionsOnlyOpacity }}
-            pointerEvents="box-none">
-            <IconButton
-              variant="circle"
-              icon={<MoreVertical size={20} color={theme.text} />}
-              onPress={() => actionsSheetRef.current?.present()}
-            />
-          </Animated.View>
+          {/* Options button: stays present */}
+          <IconButton
+            variant="circle"
+            icon={<MoreVertical size={20} color={theme.text} />}
+            onPress={() => actionsSheetRef.current?.present()}
+          />
         </View>
       </Animated.View>
 
@@ -649,46 +644,30 @@ export default function RandoDetailScreen() {
             </View>
           </View>
 
-          {/* Offline Toggle row - Directly on background as in Figma */}
-          <View style={styles.offlineRow}>
-            <View style={styles.offlineLeft}>
-              <Download size={24} color={theme.text} />
-              <Text style={[styles.offlineText, { color: theme.text }]}>Conserver hors ligne</Text>
-            </View>
-            <Host matchContents>
-              {Platform.OS === 'android' && AndroidSwitch ? (
-                <AndroidSwitch
-                  value={isOffline}
-                  onCheckedChange={(val: boolean) => {
-                    setIsOffline(val);
-                    if (val) {
-                      Alert.alert('Mode Hors Ligne', 'Cette randonnée et son tracé GPX ont été enregistrés localement.');
-                    }
-                  }}
-                  enabled={true}
-                  colors={{
-                    checkedThumbColor: '#ffffff',
-                    checkedTrackColor: theme.primary,
-                    checkedBorderColor: 'transparent',
-                    uncheckedThumbColor: theme.tabIconDefault,
-                    uncheckedTrackColor: theme.background,
-                    uncheckedBorderColor: theme.border,
-                  }}
-                />
-              ) : (
-                <Switch
-                  value={isOffline}
-                  onValueChange={(val: boolean) => {
-                    setIsOffline(val);
-                    if (val) {
-                      Alert.alert('Mode Hors Ligne', 'Cette randonnée et son tracé GPX ont été enregistrés localement.');
-                    }
-                  }}
-                  modifiers={iosTint ? [iosTint(theme.primary)] : undefined}
-                />
-              )}
-            </Host>
-          </View>
+          {/* Offline Toggle row */}
+          <ToggleRow
+            title="Conserver hors ligne"
+            icon={<Download size={24} color={theme.text} />}
+            value={isOffline}
+            onValueChange={(val: boolean) => {
+              setIsOffline(val);
+              if (val) {
+                Toast.show({
+                  type: 'success',
+                  text1: 'Enregistrée hors ligne',
+                  text2: 'Randonnée et tracé GPX disponibles sans connexion.',
+                });
+              } else {
+                Toast.show({
+                  type: 'info',
+                  text1: 'Sauvegarde supprimée',
+                  text2: 'La randonnée a été retirée de votre stockage local.',
+                });
+              }
+            }}
+            backgroundColor={theme.background}
+            style={{ marginBottom: 40, paddingVertical: 8, paddingHorizontal: 4 }}
+          />
 
           {/* GPX Map Section */}
           <View style={styles.sectionHeader}>
@@ -927,15 +906,17 @@ export default function RandoDetailScreen() {
               const nextState = !isOffline;
               setIsOffline(nextState);
               if (nextState) {
-                Alert.alert(
-                  'Mode Hors Ligne',
-                  'Cette randonnée et son tracé GPX ont été enregistrés localement.'
-                );
+                Toast.show({
+                  type: 'success',
+                  text1: 'Enregistrée hors ligne',
+                  text2: 'Randonnée et tracé GPX disponibles sans connexion.',
+                });
               } else {
-                Alert.alert(
-                  'Sauvegarde supprimée',
-                  'La randonnée a été retirée de votre stockage local.'
-                );
+                Toast.show({
+                  type: 'info',
+                  text1: 'Sauvegarde supprimée',
+                  text2: 'La randonnée a été retirée de votre stockage local.',
+                });
               }
             }}
           />

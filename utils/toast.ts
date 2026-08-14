@@ -7,7 +7,7 @@ export const showToast = {
       text1: title,
       text2: message,
       position: 'top',
-      topOffset: 54,
+      topOffset: 60,
     });
   },
   error: (title: string, message?: string) => {
@@ -16,7 +16,7 @@ export const showToast = {
       text1: title,
       text2: message,
       position: 'top',
-      topOffset: 54,
+      topOffset: 60,
     });
   },
   info: (title: string, message?: string) => {
@@ -25,7 +25,7 @@ export const showToast = {
       text1: title,
       text2: message,
       position: 'top',
-      topOffset: 54,
+      topOffset: 60,
     });
   },
 };

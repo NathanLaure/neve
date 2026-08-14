@@ -313,9 +313,14 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
             accessibilityLabel="Changer le point de départ"
             hitSlop={{ top: 10, bottom: 10 }}
             onPress={onPressDeparture}
-            style={({ pressed }) => [
+            android_ripple={{
+              color: theme.ripple,
+              borderless: false,
+              foreground: true,
+            }}
+            style={[
               styles.journeyLabelPress,
-              { opacity: pressed ? 0.6 : 1 },
+              { borderRadius: 8, overflow: 'hidden' as const },
             ]}>
             <Text style={styles.journeyPointText} numberOfLines={1} ellipsizeMode="tail">
               <Text style={{ color: theme.textMuted }}>Départ : </Text>
@@ -329,10 +334,11 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
             accessibilityLabel="Plus d’options d’itinéraire"
             hitSlop={8}
             onPress={onPressOptions}
-            style={({ pressed }) => [
-              styles.journeyInlineButton,
-              { opacity: pressed ? 0.6 : 1 },
-            ]}>
+            android_ripple={{
+              color: theme.ripple,
+              borderless: true,
+            }}
+            style={styles.journeyInlineButton}>
             <EllipsisVertical size={16} color={theme.text} />
           </Pressable>
         </View>
@@ -407,9 +413,14 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
               accessibilityLabel="Changer le lieu de retour"
               hitSlop={{ top: 10, bottom: 10 }}
               onPress={onPressReturnPoint}
-              style={({ pressed }) => [
+              android_ripple={{
+                color: theme.ripple,
+                borderless: false,
+                foreground: true,
+              }}
+              style={[
                 styles.journeyLabelPress,
-                { opacity: pressed ? 0.6 : 1 },
+                { borderRadius: 8, overflow: 'hidden' as const },
               ]}>
               <Text style={styles.journeyPointText} numberOfLines={1} ellipsizeMode="tail">
                 <Text style={{ color: theme.textMuted }}>Retour : </Text>
@@ -421,10 +432,11 @@ export const ItineraryCard: React.FC<ItineraryCardProps> = ({
               accessibilityLabel="Revenir au point de départ"
               hitSlop={8}
               onPress={onClearReturnPoint}
-              style={({ pressed }) => [
-                styles.journeyInlineButton,
-                { opacity: pressed ? 0.6 : 1 },
-              ]}>
+              android_ripple={{
+                color: theme.ripple,
+                borderless: true,
+              }}
+              style={styles.journeyInlineButton}>
               <X size={16} color={theme.text} />
             </Pressable>
           </View>
@@ -441,6 +453,11 @@ const styles = StyleSheet.create({
     gap: 8,
     flexDirection: 'row',
     alignItems: 'stretch',
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.06,
+    shadowRadius: 15,
+    elevation: 3,
   },
   leftTimelineCol: {
     width: 32,
@@ -512,7 +529,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   journeyPointText: {
-    fontFamily: 'Satoshi-Medium',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 16,
     lineHeight: 24,
   },
@@ -541,7 +558,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   pointToPointLabel: {
-    fontFamily: 'Satoshi-Medium',
+    fontFamily: 'Satoshi-Bold',
     fontSize: 12,
     lineHeight: 14,
   },

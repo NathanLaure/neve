@@ -17,7 +17,7 @@ import {
   BottomSheetFooter,
   type BottomSheetFooterProps,
 } from '@gorhom/bottom-sheet';
-import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
+import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { X } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
@@ -61,6 +61,14 @@ export interface BaseBottomSheetModalProps {
   titleAccessory?: ReactNode;
   /** Remplace entièrement la zone titre, en gardant la croix standardisée. */
   headerContent?: ReactNode;
+  /**
+   * Range la croix sur la même ligne que `headerContent` au lieu de la poser
+   * seule au-dessus. Pour un en-tête dont la première ligne est courte (séquence
+   * d'icônes, badge) : elle y gagne la largeur laissée libre par la croix.
+   */
+  inlineCloseButton?: boolean;
+  /** Trait de séparation sous l'en-tête, quand le corps défile en dessous. */
+  headerDivider?: boolean;
   showCloseButton?: boolean;
   onClose?: () => void;
   enablePanDownToClose?: boolean;
@@ -137,6 +145,8 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
     subtitle,
     titleAccessory,
     headerContent,
+    inlineCloseButton = false,
+    headerDivider = false,
     showCloseButton = true,
     onClose,
     enablePanDownToClose = true,
@@ -253,6 +263,10 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
    */
   const hasCloseButton = shouldShowHeader && showCloseButton;
 
+  // La mise en ligne n'a de sens qu'avec un en-tête sur mesure : la variante
+  // titre/sous-titre a déjà sa propre colonne.
+  const isInlineHeader = inlineCloseButton && !!headerContent;
+
   const hasFooter = !!(footer || primaryButtonTitle || secondaryButtonTitle);
 
   const isZeroPaddingHoriz =
@@ -310,6 +324,25 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
     };
   }, [footerHeight]);
 
+  /*
+   * L'ombre du pied de page s'annonce en fondu plutôt qu'en tout ou rien.
+   * `footerShadow` bascule sur un seuil de défilement : monté et démonté sec, le
+   * dégradé clignotait à chaque passage près de la fin de liste.
+   *
+   * Le dégradé est donc toujours rendu, et c'est son opacité qui bouge — sur le
+   * fil UI, sans re-rendu.
+   */
+  const footerShadowOpacity = useSharedValue(footerShadow ? 1 : 0);
+
+  useEffect(() => {
+    footerShadowOpacity.value = withTiming(footerShadow ? 1 : 0, { duration: 180 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- shared value stable
+  }, [footerShadow]);
+
+  const footerShadowStyle = useAnimatedStyle(() => ({
+    opacity: footerShadowOpacity.value,
+  }));
+
   const renderFooter = useCallback(
     (props: BottomSheetFooterProps) => (
       <BottomSheetFooter {...props}>
@@ -326,14 +359,16 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
           ]}>
           {/* Dégradé posé au-dessus de l'arête haute, et non `elevation` : sur
               Android la source lumineuse est virtuellement au-dessus de la vue,
-              l'ombre part donc vers le BAS — sous la barre système, invisible. */}
-          {footerShadow && (
+              l'ombre part donc vers le BAS — sous la barre système, invisible.
+              Toujours monté, il n'est que masqué : voir `footerShadowOpacity`. */}
+          <Animated.View
+            pointerEvents="none"
+            style={[styles.footerShadow, footerShadowStyle]}>
             <LinearGradient
-              pointerEvents="none"
               colors={['transparent', 'rgba(0, 0, 0, 0.10)']}
-              style={styles.footerShadow}
+              style={styles.fill}
             />
-          )}
+          </Animated.View>
           {footer ? (
             footer
           ) : (
@@ -363,6 +398,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
     ),
     [
       footerAnimatedStyle,
+      footerShadowStyle,
       theme.background,
       theme.border,
       sheetBottomPadding,
@@ -425,11 +461,20 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
                 // Sans poignée, plus rien ne dégage le haut de la feuille : la croix
                 // se collerait à l'angle arrondi. L'en-tête reprend cet espace.
                 hasCloseButton && styles.headingBlockWithoutHandle,
+                headerDivider && [
+                  styles.headingBlockDivider,
+                  { borderBottomColor: theme.borderLight || theme.border },
+                  // Inutile quand l'appelant a lui-même mis la marge du conteneur
+                  // à zéro : le bloc porte déjà la sienne et occupe toute la
+                  // largeur — la déborder le ferait sortir de la feuille.
+                  !isZeroPaddingHoriz && styles.headingBlockDividerBleed,
+                ],
                 isZeroPaddingHoriz && { paddingHorizontal: 24 },
               ]}>
               {/* La croix occupe sa propre ligne, dans l'angle, et le titre prend
-                  toute la largeur en dessous — au lieu de se partager la ligne. */}
-              {showCloseButton && (
+                  toute la largeur en dessous — au lieu de se partager la ligne.
+                  `inlineCloseButton` les remet sur la même ligne. */}
+              {showCloseButton && !isInlineHeader && (
                 <IconButton
                   variant="circle"
                   icon={<X size={24} color={theme.text} />}
@@ -439,7 +484,20 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
                 />
               )}
 
-              {headerContent ? (
+              {isInlineHeader ? (
+                <View style={styles.headingRow}>
+                  <View style={styles.headingRowContent}>{headerContent}</View>
+                  {showCloseButton && (
+                    <IconButton
+                      variant="circle"
+                      icon={<X size={24} color={theme.text} />}
+                      style={[styles.closeButtonInline, { backgroundColor: theme.card }]}
+                      onPress={() => modalRef.current?.dismiss()}
+                      accessibilityLabel="Fermer le menu"
+                    />
+                  )}
+                </View>
+              ) : headerContent ? (
                 <View style={styles.titleColumn}>{headerContent}</View>
               ) : (
                 <View style={styles.titleColumn}>
@@ -511,6 +569,20 @@ const styles = StyleSheet.create({
   headingBlockWithoutHandle: {
     paddingTop: 16,
   },
+  /* Le trait remplace l'essentiel de la marge basse : posé 24px sous l'en-tête,
+     il flotterait entre les deux blocs au lieu de fermer celui du haut. */
+  headingBlockDivider: {
+    paddingBottom: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  /* Le trait court d'un bord à l'autre de la feuille : arrêté sur les marges du
+     contenu, il se lirait comme un soulignement de l'en-tête. La marge négative
+     annule celle du conteneur, le `paddingHorizontal` rend au contenu de
+     l'en-tête son alignement sur le reste de la feuille. */
+  headingBlockDividerBleed: {
+    marginHorizontal: -24,
+    paddingHorizontal: 24,
+  },
   /* Pas de `flex: 1` : dans ce bloc en colonne à hauteur automatique, il vaudrait
      `flexBasis: 0` et ferait s'effondrer la colonne de titre. */
   titleColumn: {
@@ -534,6 +606,28 @@ const styles = StyleSheet.create({
   },
   closeButtonCircle: {
     alignSelf: 'flex-end',
+    width: 32,
+    height: 32,
+    borderRadius: 100,
+  },
+  /* Centré et non aligné en haut : le contenu d'en-tête est plus haut que la
+     croix dès qu'un badge dépasse 32px, et celle-ci décrochait vers le haut. */
+  headingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  /* `flex: 1` et non `flexShrink` : l'en-tête doit prendre toute la largeur
+     restante, sans quoi une séquence d'icônes courte laisserait la croix
+     flotter au milieu de la ligne. */
+  headingRowContent: {
+    flex: 1,
+    gap: 2,
+  },
+  /* Même bouton que `closeButtonCircle`, sans l'`alignSelf` : dans une rangée
+     il commanderait l'alignement vertical et collerait la croix au bas de
+     l'en-tête. */
+  closeButtonInline: {
     width: 32,
     height: 32,
     borderRadius: 100,

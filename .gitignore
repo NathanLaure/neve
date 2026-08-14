@@ -59,6 +59,9 @@ GoogleService-Info.plist
 !.vscode/settings.json
 !.vscode/extensions.json
 
+# Supabase CLI
+supabase/
+
 # =============================================================
 #  Logs, caches & temporaires
 # =============================================================

@@ -61,7 +61,7 @@ export default function RecapScreen() {
   // Ce cale-pied suit son padding bas, plus la hauteur de ses boutons.
   const scrollBottomClearance = useScreenFooterPadding() + 112;
 
-  const { plannedAdventures, updateAdventure } = useAdventure();
+  const { plannedAdventures, updateAdventure, hikes, loadHikeDetail } = useAdventure();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [redirectProvider, setRedirectProvider] = useState<'trainline' | 'sncf' | 'idf'>(
     'trainline'
@@ -72,7 +72,42 @@ export default function RecapScreen() {
 
   // Find the adventure
   const adventure = plannedAdventures.find((adv) => adv.id === adventureId);
-  const rando = adventure ? MOCK_RANDOS.find((r) => r.id === adventure.randoId) : null;
+  const rando = React.useMemo(() => {
+    if (!adventure) return null;
+    const found = hikes.find((r) => r.id === adventure.randoId) || MOCK_RANDOS.find((r) => r.id === adventure.randoId);
+    if (found) return found;
+    if (adventure.hikeSnapshot) {
+      return {
+        id: adventure.randoId,
+        title: adventure.hikeSnapshot.title,
+        imageUrl: adventure.hikeSnapshot.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+        startStation: adventure.hikeSnapshot.startStation,
+        startStationCoords: { latitude: 0, longitude: 0 },
+        endStation: adventure.hikeSnapshot.endStation || adventure.hikeSnapshot.startStation,
+        endStationCoords: { latitude: 0, longitude: 0 },
+        distance: adventure.hikeSnapshot.distance,
+        durationHours: adventure.hikeSnapshot.durationHours,
+        difficulty: adventure.hikeSnapshot.difficulty,
+        elevation: adventure.hikeSnapshot.elevation || 'Plat',
+        weatherTemp: adventure.hikeSnapshot.weatherTemp || '18°C',
+        weatherIcon: adventure.hikeSnapshot.weatherIcon || '☀️',
+        trainDurationMinutes: 45,
+        trainType: 'Transilien / RER',
+        priceEst: 0,
+        gpxTrace: [],
+        trainOptionsGo: [],
+        trainOptionsBack: [],
+        description: '',
+      } as any;
+    }
+    return null;
+  }, [adventure, hikes]);
+
+  React.useEffect(() => {
+    if (adventure && !hikes.some((h) => h.id === adventure.randoId)) {
+      loadHikeDetail(adventure.randoId);
+    }
+  }, [adventure, hikes, loadHikeDetail]);
 
   if (!adventure || !rando) {
     return (
@@ -707,7 +742,7 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   topoGrid: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     opacity: 0.25,
   },
   topoLine: {
@@ -828,7 +863,7 @@ const styles = StyleSheet.create({
   editInlineText: {
     fontFamily: 'Satoshi',
     fontSize: 12,
-    fontWeight: '850',
+    fontWeight: '800',
   },
   btnRow: {
     flexDirection: 'row',
@@ -873,10 +908,10 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi',
     color: '#FFFFFF',
     fontSize: 15,
-    fontWeight: '850',
+    fontWeight: '800',
   },
   loadingOverlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 30,

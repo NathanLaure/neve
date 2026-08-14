@@ -12,6 +12,7 @@ import { AppState } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 import { RandoData, TrainOption, MOCK_RANDOS } from '@/constants/RandosData';
+export type { RandoData };
 import { supabase } from '@/utils/supabase';
 import { findNearestStation } from '@/services/transitService';
 import { formatStationLabel } from '@/utils/stationLabel';
@@ -33,6 +34,21 @@ export interface PlannedAdventure {
   returnStationName?: string;
   isReversed?: boolean;
   isBooked: boolean;
+  passengersCount?: string;
+  passengers?: any[];
+  createdAt?: string;
+  hikeSnapshot?: {
+    title: string;
+    imageUrl?: string;
+    startStation: string;
+    endStation?: string;
+    distance: string;
+    durationHours: number;
+    difficulty: 'Facile' | 'Modéré' | 'Difficile';
+    elevation?: string;
+    weatherTemp?: string;
+    weatherIcon?: string;
+  };
 }
 
 interface Coordinates {
@@ -45,13 +61,16 @@ interface AdventureContextType {
   userLocationName: string;
   isLocating: boolean;
   plannedAdventures: PlannedAdventure[];
+  isLoadingAdventures: boolean;
   hikes: RandoData[];
   isLoadingHikes: boolean;
   loadHikes: () => Promise<void>;
   loadHikeDetail: (id: string) => Promise<void>;
-  addAdventure: (adventure: Omit<PlannedAdventure, 'id'>) => string;
+  addAdventure: (adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>) => string;
   updateAdventure: (id: string, updates: Partial<PlannedAdventure>) => void;
   deleteAdventure: (id: string) => void;
+  toggleAdventureBooked: (id: string) => void;
+  refreshAdventures: () => Promise<void>;
   setUserLocationManually: (coords: Coordinates, name: string) => void;
   refreshUserLocation: () => Promise<void>;
   /** `fromLocation` overrides the user's tracked position — used to preview a place before committing to it. */
@@ -177,9 +196,14 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [userLocationName, setUserLocationName] = useState<string>(DEFAULT_LOCATION_NAME);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
+  const [isLoadingAdventures, setIsLoadingAdventures] = useState<boolean>(true);
   const [hikes, setHikes] = useState<RandoData[]>([]);
   const [favoriteHikeIds, setFavoriteHikeIds] = useState<Set<string>>(new Set());
   const favoriteHikeIdsRef = useRef<Set<string>>(favoriteHikeIds);
+
+  const adventuresCacheKey = useMemo(() => {
+    return `@neve_planned_adventures_${user ? user.id : 'guest'}`;
+  }, [user]);
 
   const updateFavoriteHikeIds = useCallback((next: Set<string>) => {
     favoriteHikeIdsRef.current = next;
@@ -375,10 +399,10 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         throw error;
       }
       if (data) {
-        const mapped = data.map((row) => ({ ...mapSupabaseHikeToRandoData(row), hasFullDetail: false }));
+        const mapped: RandoData[] = data.map((row) => ({ ...mapSupabaseHikeToRandoData(row), hasFullDetail: false }));
         setHikes((prev) => {
-          const byId = new Map(mapped.map((h) => [h.id, h]));
-          const preserved = prev.filter((h) => favoriteHikeIdsRef.current.has(h.id) || h.hasFullDetail);
+           const byId = new Map<string, RandoData>(mapped.map((h) => [h.id, h]));
+          const preserved = prev.filter((h) => favoriteHikeIdsRef.current.has(h.id) || Boolean(h.hasFullDetail));
 
           for (const h of preserved) {
             if (!byId.has(h.id)) {
@@ -388,7 +412,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
               byId.set(h.id, {
                 ...fresh,
                 gpxTrace: (h.gpxTrace && h.gpxTrace.length > 0) ? h.gpxTrace : fresh.gpxTrace,
-                hasFullDetail: fresh.hasFullDetail || h.hasFullDetail,
+                hasFullDetail: Boolean(fresh.hasFullDetail || h.hasFullDetail),
               });
             }
           }
@@ -745,25 +769,280 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     setUserLocationName(name);
   };
 
-  const addAdventure = (adventure: Omit<PlannedAdventure, 'id'>) => {
-    const id = Date.now().toString();
-    const newAdventure: PlannedAdventure = {
-      ...adventure,
-      id,
+  // Helper mappings for Supabase user_adventures table
+  const mapRowToPlannedAdventure = useCallback((row: any): PlannedAdventure => {
+    return {
+      id: String(row.id),
+      randoId: String(row.rando_id),
+      outwardDate: String(row.outward_date),
+      returnDate: String(row.return_date),
+      outwardTrain: row.outward_train,
+      returnTrain: row.return_train,
+      departureStationName: row.departure_station_name,
+      returnStationName: row.return_station_name ?? undefined,
+      isReversed: Boolean(row.is_reversed),
+      isBooked: Boolean(row.is_booked),
+      passengersCount: row.passengers_count ?? undefined,
+      passengers: row.passengers ?? undefined,
+      createdAt: row.created_at,
+      hikeSnapshot: row.hike_snapshot ?? undefined,
     };
-    setPlannedAdventures((prev) => [newAdventure, ...prev]);
-    return id;
-  };
+  }, []);
 
-  const updateAdventure = (id: string, updates: Partial<PlannedAdventure>) => {
-    setPlannedAdventures((prev) =>
-      prev.map((adv) => (adv.id === id ? { ...adv, ...updates } : adv))
-    );
-  };
+  const mapPlannedAdventureToRow = useCallback((adv: PlannedAdventure, userId: string) => {
+    return {
+      id: adv.id,
+      user_id: userId,
+      rando_id: adv.randoId,
+      outward_date: adv.outwardDate,
+      return_date: adv.returnDate,
+      outward_train: adv.outwardTrain,
+      return_train: adv.returnTrain,
+      departure_station_name: adv.departureStationName,
+      return_station_name: adv.returnStationName ?? null,
+      is_reversed: adv.isReversed ?? false,
+      is_booked: adv.isBooked ?? false,
+      passengers_count: adv.passengersCount ?? null,
+      passengers: adv.passengers ?? null,
+      hike_snapshot: adv.hikeSnapshot ?? null,
+      created_at: adv.createdAt ?? new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+  }, []);
 
-  const deleteAdventure = (id: string) => {
-    setPlannedAdventures((prev) => prev.filter((adv) => adv.id !== id));
-  };
+  // Load planned adventures from AsyncStorage cache (instant offline render)
+  const loadAdventuresFromCache = useCallback(async () => {
+    try {
+      const cached = await AsyncStorage.getItem(adventuresCacheKey);
+      if (cached) {
+        const parsed = JSON.parse(cached);
+        if (Array.isArray(parsed)) {
+          setPlannedAdventures(parsed);
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('Error loading planned adventures from cache:', err);
+    } finally {
+      setIsLoadingAdventures(false);
+    }
+    return false;
+  }, [adventuresCacheKey]);
+
+  const saveAdventuresToCache = useCallback(
+    async (adventures: PlannedAdventure[]) => {
+      try {
+        await AsyncStorage.setItem(adventuresCacheKey, JSON.stringify(adventures));
+      } catch (err) {
+        console.warn('Error saving planned adventures to cache:', err);
+      }
+    },
+    [adventuresCacheKey]
+  );
+
+  // Load planned adventures from Supabase cloud database
+  const loadAdventures = useCallback(async () => {
+    if (!user) {
+      return;
+    }
+    try {
+      const { data, error } = await supabase
+        .from('user_adventures')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('outward_date', { ascending: false });
+
+      if (error) throw error;
+
+      if (data) {
+        const mapped = data.map(mapRowToPlannedAdventure);
+        setPlannedAdventures(mapped);
+        saveAdventuresToCache(mapped);
+      }
+    } catch (err) {
+      console.warn('Error loading adventures from Supabase:', err);
+    } finally {
+      setIsLoadingAdventures(false);
+    }
+  }, [user, mapRowToPlannedAdventure, saveAdventuresToCache]);
+
+  // Initial load, Supabase Realtime sync, and foreground re-sync
+  useEffect(() => {
+    let isMounted = true;
+
+    const initAdventures = async () => {
+      const hasCache = await loadAdventuresFromCache();
+      if (isMounted && !hasCache && user) {
+        setIsLoadingAdventures(true);
+      }
+      if (isMounted && user) {
+        await loadAdventures();
+      }
+    };
+
+    initAdventures();
+
+    if (!user) return;
+
+    // Realtime postgres changes subscription for user_adventures
+    const channel = supabase
+      .channel(`user_adventures_sync:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'user_adventures',
+          filter: `user_id=eq.${user.id}`,
+        },
+        () => {
+          loadAdventures();
+        }
+      )
+      .subscribe();
+
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        loadAdventures();
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      supabase.removeChannel(channel);
+      subscription.remove();
+    };
+  }, [user, loadAdventuresFromCache, loadAdventures]);
+
+  const addAdventure = useCallback(
+    (adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>) => {
+      const id = Date.now().toString();
+      const matchedHike = hikes.find((h) => h.id === adventure.randoId);
+      const snapshot = matchedHike
+        ? {
+            title: matchedHike.title,
+            imageUrl: matchedHike.imageUrl,
+            startStation: matchedHike.startStation,
+            endStation: matchedHike.endStation,
+            distance: matchedHike.distance,
+            durationHours: matchedHike.durationHours,
+            difficulty: matchedHike.difficulty,
+            elevation: matchedHike.elevation,
+            weatherTemp: matchedHike.weatherTemp,
+            weatherIcon: matchedHike.weatherIcon,
+          }
+        : undefined;
+
+      const newAdventure: PlannedAdventure = {
+        ...adventure,
+        id,
+        createdAt: new Date().toISOString(),
+        hikeSnapshot: snapshot ?? adventure.hikeSnapshot,
+      };
+
+      setPlannedAdventures((prev) => {
+        const next = [newAdventure, ...prev.filter((adv) => adv.id !== id)];
+        saveAdventuresToCache(next);
+        return next;
+      });
+
+      if (user) {
+        supabase
+          .from('user_adventures')
+          .insert(mapPlannedAdventureToRow(newAdventure, user.id))
+          .then(({ error }) => {
+            if (error) console.warn('Error inserting adventure to Supabase:', error);
+          });
+      }
+
+      return id;
+    },
+    [hikes, saveAdventuresToCache, user, mapPlannedAdventureToRow]
+  );
+
+  const updateAdventure = useCallback(
+    (id: string, updates: Partial<PlannedAdventure>) => {
+      setPlannedAdventures((prev) => {
+        const next = prev.map((adv) => (adv.id === id ? { ...adv, ...updates } : adv));
+        saveAdventuresToCache(next);
+        return next;
+      });
+
+      if (user) {
+        const rowUpdates: any = { updated_at: new Date().toISOString() };
+        if (updates.isBooked !== undefined) rowUpdates.is_booked = updates.isBooked;
+        if (updates.outwardDate !== undefined) rowUpdates.outward_date = updates.outwardDate;
+        if (updates.returnDate !== undefined) rowUpdates.return_date = updates.returnDate;
+        if (updates.outwardTrain !== undefined) rowUpdates.outward_train = updates.outwardTrain;
+        if (updates.returnTrain !== undefined) rowUpdates.return_train = updates.returnTrain;
+        if (updates.departureStationName !== undefined)
+          rowUpdates.departure_station_name = updates.departureStationName;
+        if (updates.returnStationName !== undefined)
+          rowUpdates.return_station_name = updates.returnStationName;
+
+        supabase
+          .from('user_adventures')
+          .update(rowUpdates)
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .then(({ error }) => {
+            if (error) console.warn('Error updating adventure in Supabase:', error);
+          });
+      }
+    },
+    [saveAdventuresToCache, user]
+  );
+
+  const deleteAdventure = useCallback(
+    (id: string) => {
+      setPlannedAdventures((prev) => {
+        const next = prev.filter((adv) => adv.id !== id);
+        saveAdventuresToCache(next);
+        return next;
+      });
+
+      if (user) {
+        supabase
+          .from('user_adventures')
+          .delete()
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .then(({ error }) => {
+            if (error) console.warn('Error deleting adventure from Supabase:', error);
+          });
+      }
+    },
+    [saveAdventuresToCache, user]
+  );
+
+  const toggleAdventureBooked = useCallback(
+    (id: string) => {
+      let nextStatus = false;
+      setPlannedAdventures((prev) => {
+        const next = prev.map((adv) => {
+          if (adv.id === id) {
+            nextStatus = !adv.isBooked;
+            return { ...adv, isBooked: !adv.isBooked };
+          }
+          return adv;
+        });
+        saveAdventuresToCache(next);
+        return next;
+      });
+
+      if (user) {
+        supabase
+          .from('user_adventures')
+          .update({ is_booked: nextStatus, updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('user_id', user.id)
+          .then(({ error }) => {
+            if (error) console.warn('Error toggling adventure status in Supabase:', error);
+          });
+      }
+    },
+    [saveAdventuresToCache, user]
+  );
 
   // Helper to calculate transit time dynamically based on distance
   const getTransitInfo = useCallback(
@@ -988,6 +1267,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         userLocationName,
         isLocating,
         plannedAdventures,
+        isLoadingAdventures,
         hikes,
         isLoadingHikes,
         loadHikes,
@@ -995,6 +1275,8 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         addAdventure,
         updateAdventure,
         deleteAdventure,
+        toggleAdventureBooked,
+        refreshAdventures: loadAdventures,
         setUserLocationManually,
         refreshUserLocation,
         getTransitInfo,

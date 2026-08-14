@@ -11,6 +11,9 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   Extrapolation,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
   interpolate,
   useAnimatedScrollHandler,
   useAnimatedStyle,
@@ -38,6 +41,7 @@ import {
 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
+import { DASHED_BOX, DASHED_BOX_ROW_HEIGHT } from '@/constants/DashedBox';
 import Skeleton from '@/components/Skeleton';
 import { Button } from '@/components/Button';
 import ScreenFooter from '@/components/ScreenFooter';
@@ -86,6 +90,13 @@ const LATEST_RETURN_TIME_MINUTES = 21 * 60;
  * sous ce seuil et repartent donc le jour même.
  */
 const HIKING_HOURS_PER_DAY = 8;
+
+// Durées fixes, pas de ressort : un fondu net plutôt qu'un rebond sur des
+// sections qui apparaissent, disparaissent ou poussent leurs voisines au fil du
+// scroll (bascule de phase, aller/retour, cartes de résultats).
+const ENTER = FadeIn.duration(180);
+const EXIT = FadeOut.duration(140);
+const REFLOW = LinearTransition.duration(200);
 
 type LoadState = 'loading' | 'ready' | 'error';
 type Phase = 'config' | 'results';
@@ -360,6 +371,25 @@ export default function PlanScreen() {
       resetDraft();
     }
   }, [rando?.id, resetDraft]);
+
+  /*
+   * Quitter le parcours de planification vide le brouillon : y revenir repart d'un
+   * champ de dates vierge, y compris sur la même rando — ce que le reset au
+   * changement de rando ci-dessus ne couvrait pas.
+   *
+   * Le nettoyage est branché sur le DÉMONTAGE et non sur la perte de focus.
+   * Pousser `/plan/dates`, `/plan/outward` ou `/plan/return` empile par-dessus cet
+   * écran sans le démonter : un reset au blur effacerait les dates en plein milieu
+   * du parcours, au moment précis où la suite en dépend.
+   *
+   * Les deux sorties passent bien par là — le retour vers la rando, qui dépile, et
+   * la validation vers `/recap`, qui remplace. Aucun écran en aval ne lit le
+   * brouillon, ils reçoivent tout par paramètres d'URL : le vider ne leur retire
+   * rien.
+   */
+  useEffect(() => {
+    return () => resetDraft();
+  }, [resetDraft]);
 
   // Le sens de lecture de l'heure (« partir après » / « arriver avant ») ne se
   // règle qu'ici, en phase résultats : la modale des dates ne pose que la
@@ -679,7 +709,7 @@ export default function PlanScreen() {
                 à l'aventure ? » : la puce ferait doublon. Elle reste en phase
                 résultats, où cette carte n'est plus à l'écran. */}
             {phase === 'results' && (
-              <Animated.View style={headerChipStyle}>
+              <Animated.View style={headerChipStyle} entering={ENTER} exiting={EXIT}>
                 <Pressable
                   onPress={() => passengersSheetRef.current?.present()}
                   style={[styles.passengerChip, { backgroundColor: theme.card }]}>
@@ -743,20 +773,20 @@ export default function PlanScreen() {
               <View style={styles.dashedBoxContent}>
                 <CalendarDays
                   size={20}
-                  color={datesValidated && startDate ? theme.tint : theme.text}
+                  color={datesValidated && startDate ? theme.tint : theme.textMuted}
                 />
                 <Text
                   style={[
                     styles.dashedBoxLabel,
                     datesValidated && startDate
                       ? {
-                          fontFamily: 'BricolageGrotesque-SemiBold',
+                          fontFamily: 'Satoshi-Bold',
                           fontSize: 16,
                           color: theme.text,
                         }
                       : {
                           fontFamily: 'Satoshi-Medium',
-                          fontSize: 14,
+                          fontSize: 16,
                           color: theme.textMuted,
                         },
                   ]}
@@ -768,28 +798,40 @@ export default function PlanScreen() {
               </View>
 
               {datesValidated && startDate ? (
-                <ChevronRight size={20} color={theme.text} />
+                <Animated.View key="chevron" entering={ENTER} exiting={EXIT}>
+                  <ChevronRight size={20} color={theme.text} />
+                </Animated.View>
               ) : (
-                <View style={[styles.plusButton, { backgroundColor: theme.tint }]}>
-                  <Plus size={16} color={theme.buttonTextOnBrand} />
-                </View>
+                <Animated.View key="plus" entering={ENTER} exiting={EXIT}>
+                  <View style={[styles.plusButton, { backgroundColor: theme.tint }]}>
+                    <Plus size={16} color={theme.buttonTextOnBrand} />
+                  </View>
+                </Animated.View>
               )}
             </Pressable>
           </View>
 
           {/* Qui part ? (Figma 650:33691) */}
           {phase === 'config' && (
-            <View style={[styles.card, { backgroundColor: theme.card }]}>
+            <Animated.View
+              layout={REFLOW}
+              entering={ENTER}
+              exiting={EXIT}
+              style={[styles.card, { backgroundColor: theme.card }]}>
               <Text style={[styles.sectionTitle, { color: theme.text }]}>
                 Qui part ?
               </Text>
-              <PassengersEditor passengers={passengers} onChange={setPassengers} />
-            </View>
+              <PassengersEditor
+                passengers={passengers}
+                onChange={setPassengers}
+                surfaceColor={theme.card}
+              />
+            </Animated.View>
           )}
 
           {/* Phase résultats : choix des trains, réutilise le mécanisme existant */}
           {phase === 'results' && (
-            <View style={styles.resultsContent}>
+            <Animated.View layout={REFLOW} entering={ENTER} exiting={EXIT} style={styles.resultsContent}>
               {(() => {
                 const travelDistanceKm =
                   startStationLat != null && startStationLng != null
@@ -882,7 +924,11 @@ export default function PlanScreen() {
               })()}
 
               {tripType === 'round' && (
-                <View style={[styles.card, { backgroundColor: theme.card }]}>
+                <Animated.View
+                  layout={REFLOW}
+                  entering={ENTER}
+                  exiting={EXIT}
+                  style={[styles.card, { backgroundColor: theme.card }]}>
                   <Text style={[styles.sectionTitle, { color: theme.text }]}>Train retour</Text>
                   <Text style={[styles.helperText, { color: theme.textMuted }]}>
                     {rando.endStation} → {arrivalPoint.name}, à partir de {returnStartTime}.
@@ -902,16 +948,18 @@ export default function PlanScreen() {
                     onRetry={handleRetry}
                     theme={theme}
                   />
-                </View>
+                </Animated.View>
               )}
-            </View>
+            </Animated.View>
           )}
         </Animated.ScrollView>
 
-        {/* Barre d'action collante en bas d'écran. */}
+        {/* Barre d'action collante en bas d'écran. `ScreenFooter` est une simple
+            `View` : c'est ce wrapper qui porte l'animation d'apparition. */}
         {phase === 'config' && (
-          // Aligné sur les cartes : mêmes 24px de marge latérale que le corps de page,
-          // au lieu des 20px partagés par les autres footers.
+          <Animated.View entering={ENTER} exiting={EXIT}>
+          {/* Aligné sur les cartes : mêmes 24px de marge latérale que le corps de page,
+              au lieu des 20px partagés par les autres footers. */}
           <ScreenFooter variant="inline" style={styles.footer}>
             <Button
               title="Voir les trajets disponibles"
@@ -938,12 +986,14 @@ export default function PlanScreen() {
                     returnDate: effectiveEndDate ?? undefined,
                     returnTime: returnStartTime,
                     passengersCount: formatPassengerCount(passengers),
+                    passengers: JSON.stringify(passengers),
                     isReversed: String(isReversed),
                   },
                 })
               }
             />
           </ScreenFooter>
+          </Animated.View>
         )}
       </View>
 
@@ -1098,7 +1148,7 @@ const styles = StyleSheet.create({
   // Figma : radius 20, 20px horizontaux, 16px verticaux, ombre portée douce.
   card: {
     borderRadius: 20,
-    paddingHorizontal: 20,
+    paddingHorizontal: 16,
     paddingVertical: 16,
     gap: 12,
     shadowColor: '#000000',
@@ -1257,16 +1307,11 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   dashedBox: {
+    ...DASHED_BOX,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    borderWidth: 1,
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    height: 48,
-    gap: 8,
+    height: DASHED_BOX_ROW_HEIGHT,
   },
   dashedBoxContent: {
     flex: 1,

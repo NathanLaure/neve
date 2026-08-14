@@ -510,3 +510,64 @@ export function getRecommendedOptionIndex(options: TransitOption[]): number {
 
   return bestIndex;
 }
+
+/** Mode de transport filtrable — la marche n'est jamais un critère de filtre. */
+export type TransitTransportMode = Exclude<TransitLeg['mode'], 'walk'>;
+
+/** Ordre d'affichage canonique du chip et de la feuille de filtre. */
+export const TRANSIT_TRANSPORT_MODES: TransitTransportMode[] = [
+  'train',
+  'rer',
+  'metro',
+  'tram',
+  'bus',
+];
+
+export const TRANSIT_MODE_LABELS: Record<TransitTransportMode, string> = {
+  train: 'Train',
+  rer: 'RER',
+  metro: 'Métro',
+  tram: 'Tram',
+  bus: 'Bus',
+};
+
+/** Modes de transport (hors marche) réellement présents dans une liste d'options. */
+export function getAvailableTransportModes(options: TransitOption[]): TransitTransportMode[] {
+  const present = new Set<TransitTransportMode>();
+  options.forEach((option) => {
+    option.legs.forEach((leg) => {
+      if (leg.mode !== 'walk') present.add(leg.mode);
+    });
+  });
+  return TRANSIT_TRANSPORT_MODES.filter((mode) => present.has(mode));
+}
+
+/**
+ * Ne garde que les options dont TOUTES les étapes en transport figurent parmi
+ * les modes sélectionnés — un trajet qui inclut un bus non coché est exclu,
+ * même s'il comporte aussi un métro coché.
+ */
+export function filterOptionsByTransportModes(
+  options: TransitOption[],
+  selectedModes: Set<TransitTransportMode>
+): TransitOption[] {
+  return options.filter((option) =>
+    option.legs.every((leg) => leg.mode === 'walk' || selectedModes.has(leg.mode))
+  );
+}
+
+/** « Métro, Bus + 3 » ou « Tous les modes » quand rien n'est exclu. */
+export function formatTransportModesSummary(
+  selectedModes: TransitTransportMode[],
+  availableModes: TransitTransportMode[]
+): string {
+  if (availableModes.length === 0) return 'Tous les modes';
+  if (selectedModes.length === 0) return 'Aucun mode';
+  if (selectedModes.length === availableModes.length) return 'Tous les modes';
+
+  const ordered = TRANSIT_TRANSPORT_MODES.filter((mode) => selectedModes.includes(mode));
+  if (ordered.length <= 2) return ordered.map((mode) => TRANSIT_MODE_LABELS[mode]).join(', ');
+
+  const [first, second] = ordered;
+  return `${TRANSIT_MODE_LABELS[first]}, ${TRANSIT_MODE_LABELS[second]} + ${ordered.length - 2}`;
+}

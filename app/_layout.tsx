@@ -169,6 +169,11 @@ export default function RootLayout() {
                       options={{
                         headerShown: false,
                         presentation: 'fullScreenModal',
+                        // Sans ceci, `fullScreenModal` retombe sur l'animation par
+                        // défaut de la plateforme (glissement latéral façon push,
+                        // pas franchement « modale »). `slide_from_bottom` est
+                        // réversible automatiquement : même trajet à la fermeture.
+                        animation: 'slide_from_bottom',
                       }}
                     />
                     <Stack.Screen
@@ -180,7 +185,10 @@ export default function RootLayout() {
                       }}
                     />
                   </Stack>
-                  <Toast config={toastConfig} />
+                  <Toast
+                    config={toastConfig}
+                    topOffset={Platform.OS === 'ios' ? 68 : 60}
+                  />
                 </View>
               </ThemeProvider>
             </SafeAreaProvider>
