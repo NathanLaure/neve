@@ -23,6 +23,11 @@ interface ExplorerMapProps {
   hikes: RandoData[];
   selectedHikeId: string | null;
   onSelectHike?: (id: string) => void;
+  /**
+   * Tap sur une zone vide de la carte. Les marqueurs et les clusters sont servis
+   * avant par la `ShapeSource` : ce rappel ne se déclenche donc que « dans le vide ».
+   */
+  onMapPress?: () => void;
   onBearingChange?: (bearing: number) => void;
   onCameraChangeComplete?: (
     center: { latitude: number; longitude: number },
@@ -60,6 +65,7 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     hikes = [],
     selectedHikeId,
     onSelectHike,
+    onMapPress,
     onBearingChange,
     onCameraChangeComplete,
     mapStyle = 'default',
@@ -298,6 +304,7 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
         logoEnabled={false}
         compassEnabled={false}
         scaleBarEnabled={false}
+        onPress={() => onMapPress?.()}
         onCameraChanged={(state) => {
           if (state.properties?.heading !== undefined) {
             onBearingChange?.(state.properties.heading);

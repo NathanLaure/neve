@@ -70,14 +70,30 @@ export function Fab({
           height,
           borderRadius,
           backgroundColor,
-          paddingHorizontal,
+          overflow: 'hidden' as const,
         },
         style,
       ]}>
       <Pressable
         disabled={disabled}
         onPress={onPress}
-        style={styles.pressable}
+        android_ripple={
+          disabled
+            ? undefined
+            : {
+                color: variant === 'card' ? theme.ripple : theme.rippleOnBrand,
+                borderless: false,
+                foreground: true,
+              }
+        }
+        style={[
+          styles.pressable,
+          {
+            paddingHorizontal,
+            borderRadius,
+            overflow: 'hidden' as const,
+          },
+        ]}
         {...pressableProps}>
         {icon}
         {text ? (

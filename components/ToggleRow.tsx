@@ -13,18 +13,46 @@ export interface ToggleRowProps {
   title: string;
   value: boolean;
   onValueChange: (val: boolean) => void;
+  icon?: React.ReactNode;
+  /** Couleur de fond du conteneur hôte pour fondre le ripple sans démarcation */
+  backgroundColor?: string;
   style?: any;
 }
 
-export default function ToggleRow({ title, value, onValueChange, style }: ToggleRowProps) {
+export default function ToggleRow({
+  title,
+  value,
+  onValueChange,
+  icon,
+  backgroundColor,
+  style,
+}: ToggleRowProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+
+  const resolvedBg = backgroundColor ?? style?.backgroundColor ?? 'transparent';
+
+  const rowStyle = [
+    styles.toggleRow,
+    {
+      borderRadius: 12,
+      overflow: 'hidden' as const,
+      backgroundColor: resolvedBg,
+    },
+    style,
+  ];
 
   return (
     <Pressable
       onPress={() => onValueChange(!value)}
-      style={[styles.toggleRow, style]}>
+      android_ripple={{
+        color: theme.ripple,
+        borderless: false,
+        foreground: true,
+      }}
+      style={rowStyle}>
       <View style={styles.toggleLeft}>
+        {icon ? <View style={styles.iconWrapper}>{icon}</View> : null}
         <Text style={[styles.toggleTitle, { color: theme.text }]}>
           {title}
         </Text>
@@ -61,11 +89,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingRight: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   toggleLeft: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingRight: 8,
+  },
+  iconWrapper: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   toggleTitle: {
     fontFamily: 'Satoshi-Medium',

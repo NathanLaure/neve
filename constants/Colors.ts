@@ -29,6 +29,11 @@ export default {
     brandFocus: '#EB490B', // border/focus (selected brand focus)
     brand: '#C3350B', // Couleur de marque / Trajet recommandé
 
+    // Interactive Ripple Tokens
+    ripple: 'rgba(0, 0, 0, 0.08)',
+    rippleSubtle: 'rgba(0, 0, 0, 0.05)',
+    rippleOnBrand: 'rgba(255, 255, 255, 0.25)',
+
     // Figma Button Color Tokens (Node 42:303)
     buttonPrimary: '#EB490B',
     buttonSecondary: '#111111',
@@ -80,6 +85,11 @@ export default {
     brandSubtle: '#241800', // bg/brand-subtle dark
     brandFocus: '#FA6415', // border/focus dark
     brand: '#EB490B', // Couleur de marque / Trajet recommandé
+
+    // Interactive Ripple Tokens
+    ripple: 'rgba(255, 255, 255, 0.12)',
+    rippleSubtle: 'rgba(255, 255, 255, 0.08)',
+    rippleOnBrand: 'rgba(255, 255, 255, 0.25)',
 
     // Figma Button Color Tokens (Node 42:303)
     buttonPrimary: '#FA6415',

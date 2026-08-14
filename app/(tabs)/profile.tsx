@@ -8,11 +8,13 @@ import Colors from '@/constants/Colors';
 import { useColorScheme, setThemeOverride, getThemeOverride } from '@/components/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
 import { Button } from '@/components/Button';
+import { useTabBarHeight } from '@/components/TabBar';
 
 export default function ProfileScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+  const tabBarHeight = useTabBarHeight();
   const pathname = usePathname();
   const isFocused = pathname === '/profile';
   const [fadeAnim] = useState(() => new Animated.Value(0));
@@ -59,7 +61,12 @@ export default function ProfileScreen() {
       <SafeAreaView
         edges={['top', 'left', 'right']}
         style={[styles.safeArea, { backgroundColor: theme.background }]}>
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+        <ScrollView
+          style={styles.container}
+          // La TabBar flotte au-dessus de l'écran : sans cette réserve, le bouton
+          // de déconnexion finit sous les onglets.
+          contentContainerStyle={{ paddingBottom: tabBarHeight }}
+          showsVerticalScrollIndicator={false}>
           {/* Header */}
           <View style={styles.header}>
             <Text style={[styles.headerTitle, { color: theme.text }]}>Mon Profil</Text>
@@ -133,7 +140,12 @@ export default function ProfileScreen() {
               {/* Light Option */}
               <Pressable
                 onPress={() => handleThemeChange('light')}
-                style={styles.segmentBtnWrapper}>
+                android_ripple={{
+                  color: theme.ripple,
+                  borderless: false,
+                  foreground: true,
+                }}
+                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
                 <View
                   style={[
                     styles.segmentBtn,
@@ -153,7 +165,14 @@ export default function ProfileScreen() {
               </Pressable>
 
               {/* Dark Option */}
-              <Pressable onPress={() => handleThemeChange('dark')} style={styles.segmentBtnWrapper}>
+              <Pressable
+                onPress={() => handleThemeChange('dark')}
+                android_ripple={{
+                  color: theme.ripple,
+                  borderless: false,
+                  foreground: true,
+                }}
+                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
                 <View
                   style={[
                     styles.segmentBtn,
@@ -173,7 +192,14 @@ export default function ProfileScreen() {
               </Pressable>
 
               {/* System Option */}
-              <Pressable onPress={() => handleThemeChange(null)} style={styles.segmentBtnWrapper}>
+              <Pressable
+                onPress={() => handleThemeChange(null)}
+                android_ripple={{
+                  color: theme.ripple,
+                  borderless: false,
+                  foreground: true,
+                }}
+                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
                 <View
                   style={[
                     styles.segmentBtn,

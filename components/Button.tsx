@@ -2,16 +2,17 @@ import React, { forwardRef } from 'react';
 import {
   StyleSheet,
   Text,
-  TouchableOpacity,
-  TouchableOpacityProps,
+  Pressable,
+  PressableProps,
   View,
   TextStyle,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 
-export interface ButtonProps extends TouchableOpacityProps {
+export interface ButtonProps extends Omit<PressableProps, 'style'> {
   title?: string;
   variant?: 'primary' | 'secondary' | 'tertiary' | 'social' | 'text' | 'transparent' | 'icon' | 'outlined';
   shape?: 'default' | 'round';
@@ -21,6 +22,7 @@ export interface ButtonProps extends TouchableOpacityProps {
   loading?: boolean;
   textStyle?: TextStyle;
   colorScheme?: 'light' | 'dark';
+  style?: any;
 }
 
 export const Button = forwardRef<View, ButtonProps>(
@@ -55,6 +57,16 @@ export const Button = forwardRef<View, ButtonProps>(
       return theme.text;
     };
 
+    const getRippleColor = () => {
+      if (variant === 'primary' || variant === 'tertiary') {
+        return theme.rippleOnBrand;
+      }
+      if (variant === 'secondary') {
+        return activeColorScheme === 'dark' ? 'rgba(0, 0, 0, 0.15)' : theme.rippleOnBrand;
+      }
+      return theme.ripple;
+    };
+
     const renderIcon = () => {
       if (!icon) return null;
       if (React.isValidElement(icon)) {
@@ -65,23 +77,29 @@ export const Button = forwardRef<View, ButtonProps>(
       return icon;
     };
 
+    const buttonStyle = [
+      defaultStyles.button,
+      isIconOnlyMode && defaultStyles.iconOnlyContainer,
+      variantStyles.button,
+      { overflow: 'hidden' as const },
+      style,
+    ];
+
     return (
-      <TouchableOpacity
+      <Pressable
         ref={ref}
         disabled={disabled || loading}
-        activeOpacity={0.8}
-        delayPressIn={0}
+        android_ripple={
+          disabled || loading
+            ? undefined
+            : {
+                color: getRippleColor(),
+                borderless: false,
+                foreground: true,
+              }
+        }
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-        style={[
-          defaultStyles.button,
-          // Avant `variantStyles` : `iconOnlyContainer` pose `width: undefined`
-          // pour empêcher un bouton icône de s'étirer, mais placé APRÈS il
-          // écrasait aussi la largeur explicite du variant `icon` (32 ou 48),
-          // qui s'écrasait alors sur son contenu — un ovale au lieu d'un rond.
-          isIconOnlyMode && defaultStyles.iconOnlyContainer,
-          variantStyles.button,
-          style,
-        ]}
+        style={buttonStyle}
         {...touchableProps}>
         {loading ? (
           <ActivityIndicator color={getIconColor()} size="small" />
@@ -93,7 +111,7 @@ export const Button = forwardRef<View, ButtonProps>(
             {title ? <Text style={[variantStyles.text, textStyle]}>{title}</Text> : null}
           </>
         )}
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 );

@@ -19,7 +19,13 @@ import {
   BackHandler,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSharedValue, useAnimatedStyle, withTiming } from 'react-native-reanimated';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  FadeIn,
+  FadeOut,
+} from 'react-native-reanimated';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter, useFocusEffect } from 'expo-router';
 import * as Location from 'expo-location';
@@ -28,6 +34,11 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
 import { useAdventure } from '@/context/AdventureContext';
+import {
+  IMMERSIVE_ANIMATION,
+  useImmersiveProgress,
+  useMapImmersiveMode,
+} from '@/context/MapImmersiveContext';
 import { type RandoData } from '@/constants/RandosData';
 import ExplorerMap, { type ExplorerMapRef, type BoundingBox } from '@/components/ExplorerMap';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
@@ -36,6 +47,7 @@ import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBo
 import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
 import PoiChipsBar from '@/components/PoiChipsBar';
 import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
+import { useBottomChromeHideDistance, useTabBarHeight } from '@/components/TabBar';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import Fab from '@/components/Fab';
 
@@ -105,6 +117,7 @@ export default function SearchResultsScreen() {
   } = useAdventure();
 
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
+  const { isImmersive, toggleImmersive } = useMapImmersiveMode();
   const [sheetIndex, setSheetIndex] = useState<number>(2); // Start at 2 since the sheet is open at max
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
@@ -154,6 +167,63 @@ export default function SearchResultsScreen() {
   const lastSearchedZoomRef = useRef<number>(10);
   const isInitialAreaSetRef = useRef(false);
   const hasLeftFirstCarouselCardRef = useRef(false);
+
+  const geoScopedHikes = React.useMemo(() => {
+    if (!isMapAreaActive) {
+      const activeRadius = searchRadiusKm ?? 5;
+      return hikes.filter((rando) => {
+        const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+        const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+        const dist = calculateDistanceKm(
+          userLocation?.latitude ?? 48.8566,
+          userLocation?.longitude ?? 2.3522,
+          randoLat,
+          randoLng
+        );
+        return dist <= activeRadius;
+      });
+    }
+
+    if (!mapAreaCenter && !mapAreaBounds) return hikes;
+
+    if (mapAreaBounds) {
+      return hikes.filter((rando) => {
+        const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+        const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+        return (
+          randoLat >= mapAreaBounds.swLat &&
+          randoLat <= mapAreaBounds.neLat &&
+          randoLng >= mapAreaBounds.swLng &&
+          randoLng <= mapAreaBounds.neLng
+        );
+      });
+    }
+
+    let radius = 60;
+    if (mapAreaZoom != null) {
+      if (mapAreaZoom >= 15) radius = 3;
+      else if (mapAreaZoom >= 14) radius = 6;
+      else if (mapAreaZoom >= 13) radius = 12;
+      else if (mapAreaZoom >= 12) radius = 22;
+      else if (mapAreaZoom >= 11) radius = 40;
+      else if (mapAreaZoom >= 10) radius = 70;
+      else radius = 120;
+    } else if (searchRadiusKm !== null) {
+      radius = searchRadiusKm;
+    }
+
+    return hikes.filter((rando) => {
+      const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+      const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+      const dist = calculateDistanceKm(
+        mapAreaCenter!.latitude,
+        mapAreaCenter!.longitude,
+        randoLat,
+        randoLng
+      );
+      return dist <= radius;
+    });
+  }, [hikes, mapAreaCenter, mapAreaBounds, mapAreaZoom, searchRadiusKm, isMapAreaActive, userLocation]);
 
   const filteredRandos = React.useMemo(() => {
     if (!isMapAreaActive) {
@@ -309,13 +379,60 @@ export default function SearchResultsScreen() {
     }
   }, [searchRadiusKm, isMapAreaActive, userLocation]);
 
-  const showCarousel = !isSearchingArea && filteredRandos.length > 0;
+  const hasCards = filteredRandos.length > 0;
+  const showCarousel = !isSearchingArea && hasCards && !isImmersive;
+
+  // La TabBar flotte au-dessus de l'écran : tout ce qui se cale en bas doit lui
+  // réserver sa place. En immersif elle est escamotée, on ne garde que la barre
+  // système.
+  const tabBarHeight = useTabBarHeight();
+
+  const animatedMapControlsStyle = useAnimatedStyle(() => ({
+    bottom: withTiming((showCarousel ? 240 : 96) + tabBarHeight, IMMERSIVE_ANIMATION),
+    opacity: withTiming(isImmersive ? 0 : 1, IMMERSIVE_ANIMATION),
+    transform: [{ translateX: withTiming(isImmersive ? 88 : 0, IMMERSIVE_ANIMATION) }],
+  }));
 
   const animatedFabStyle = useAnimatedStyle(() => ({
-    bottom: withTiming(showCarousel ? 217 : 100, {
-      duration: showCarousel ? 150 : 250,
-    }),
+    bottom: withTiming(
+      isImmersive ? insets.bottom + 24 : (showCarousel ? 217 : 100) + tabBarHeight,
+      IMMERSIVE_ANIMATION
+    ),
   }));
+
+  // Le carrousel reste monté tant qu'il y a des cartes, et se cache en glissant :
+  // le démonter faisait repartir la FlatList de zéro au retour, le temps que les
+  // images se rechargent on voyait les cartes vides. La translation l'emmène juste
+  // au-delà du bord bas de l'écran, où la scène le rogne.
+  const carouselHideDistance = 85 + tabBarHeight + 120;
+
+  const animatedCarouselStyle = useAnimatedStyle(() => ({
+    opacity: withTiming(showCarousel ? 1 : 0, IMMERSIVE_ANIMATION),
+    transform: [
+      { translateY: withTiming(showCarousel ? 0 : carouselHideDistance, IMMERSIVE_ANIMATION) },
+    ],
+  }));
+
+  // La feuille sort par translation, exactement comme la barre d'onglets et sur la
+  // même valeur partagée : les deux sont jointives, elles glissent d'un bloc. Passer
+  // par la fermeture de gorhom rouvrait la porte aux désynchronisations — son
+  // animation a sa propre courbe, et fermer/rouvrir faisait perdre l'accroche.
+  const immersiveProgress = useImmersiveProgress();
+  const bottomChromeHideDistance = useBottomChromeHideDistance();
+
+  const animatedSheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: immersiveProgress.value * bottomChromeHideDistance }],
+  }));
+
+  // Un tap dans le vide de la carte bascule le mode immersif. Feuille dépliée, on la
+  // replie d'abord : la translation ne suffirait pas à sortir une feuille qui occupe
+  // la moitié de l'écran.
+  const handleMapPress = useCallback(() => {
+    if (!isImmersive && sheetIndex > 0) {
+      bottomSheetRef.current?.snapToIndex(0, IMMERSIVE_ANIMATION);
+    }
+    toggleImmersive();
+  }, [isImmersive, sheetIndex, toggleImmersive]);
 
   // Leaving this screen — whether via the searchbar's back arrow or the
   // hardware/gesture back action — drops the location search and every filter,
@@ -434,6 +551,7 @@ export default function SearchResultsScreen() {
           hikes={filteredRandos}
           selectedHikeId={selectedHikeId}
           onSelectHike={handleSelectHike}
+          onMapPress={handleMapPress}
           onBearingChange={(bearing) => {
             compassBearing.value = bearing;
           }}
@@ -444,11 +562,17 @@ export default function SearchResultsScreen() {
 
         {/* Subtle dark gradient overlay at the bottom of the map */}
         {showCarousel && (
-          <LinearGradient
-            colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.28)']}
+          <Reanimated.View
+            entering={FadeIn.duration(IMMERSIVE_ANIMATION.duration)}
+            exiting={FadeOut.duration(IMMERSIVE_ANIMATION.duration)}
             style={styles.mapBottomOverlay}
-            pointerEvents="none"
-          />
+            pointerEvents="none">
+            <LinearGradient
+              colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.12)', 'rgba(0,0,0,0.28)']}
+              style={StyleSheet.absoluteFill}
+              pointerEvents="none"
+            />
+          </Reanimated.View>
         )}
 
         {/* Floating Pill Search Bar */}
@@ -545,9 +669,8 @@ export default function SearchResultsScreen() {
           onPressLayers={() => layerSheetRef.current?.present()}
           onPressLocate={() => mapRef.current?.centerOnUser()}
           isLocating={isLocating}
-          style={{
-            bottom: showCarousel ? 240 : 96,
-          }}
+          style={animatedMapControlsStyle}
+          pointerEvents={isImmersive ? 'none' : 'auto'}
         />
 
         {/* Floating "Rechercher ici" FAB — visible after the user pans/zooms the map */}
@@ -560,8 +683,14 @@ export default function SearchResultsScreen() {
         />
 
         {/* Horizontal Hikes Carousel "A proximité" */}
-        {showCarousel && (
-          <View style={styles.carouselContainer}>
+        {hasCards && (
+          <Reanimated.View
+            pointerEvents={showCarousel ? 'auto' : 'none'}
+            style={[
+              styles.carouselContainer,
+              { bottom: 85 + tabBarHeight },
+              animatedCarouselStyle,
+            ]}>
             <FlatList
               data={filteredRandos}
               horizontal
@@ -575,20 +704,25 @@ export default function SearchResultsScreen() {
               ItemSeparatorComponent={() => <View style={{ width: 12 }} />}
               renderItem={renderCarouselItem}
             />
-          </View>
+          </Reanimated.View>
         )}
 
         {/* Bottom Sheet Slider */}
-        <HikesBottomSheet
-          ref={bottomSheetRef}
-          hikes={filteredRandos}
-          isLoadingHikes={isLoadingHikes || isSearchingArea}
-          getTransitInfo={getTransitInfo}
-          onSelectHike={handleSelectHike}
-          onChange={setSheetIndex}
-          initialIndex={2}
-          expandedTopOffset={MAP_CHIPS_BAR_HEIGHT + MAP_CHIPS_BAR_GAP}
-        />
+        <Reanimated.View
+          pointerEvents="box-none"
+          style={[StyleSheet.absoluteFill, styles.sheetLayer, animatedSheetStyle]}>
+          <HikesBottomSheet
+            ref={bottomSheetRef}
+            hikes={filteredRandos}
+            isLoadingHikes={isLoadingHikes || isSearchingArea}
+            getTransitInfo={getTransitInfo}
+            onSelectHike={handleSelectHike}
+            onChange={setSheetIndex}
+            initialIndex={2}
+            expandedTopOffset={MAP_CHIPS_BAR_HEIGHT + MAP_CHIPS_BAR_GAP}
+            bottomInset={tabBarHeight}
+          />
+        </Reanimated.View>
 
         {/* Map Layer Sheet Modal */}
         <BaseBottomSheetModal
@@ -639,7 +773,7 @@ export default function SearchResultsScreen() {
         </BaseBottomSheetModal>
 
         {/* Filters Bottom Sheet Modal */}
-        <FiltersBottomSheet ref={filtersSheetRef} />
+        <FiltersBottomSheet ref={filtersSheetRef} baseHikes={geoScopedHikes} />
       </View>
     </Animated.View>
   );
@@ -700,6 +834,12 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     zIndex: 8,
+  },
+  // Calque qui porte la feuille pour la faire glisser hors écran. Il couvre tout
+  // l'écran — c'est le conteneur que gorhom mesure — d'où le `box-none` au rendu,
+  // sans quoi il avalerait les taps destinés à la carte.
+  sheetLayer: {
+    zIndex: 20,
   },
   carouselScroll: {
     paddingHorizontal: 24,

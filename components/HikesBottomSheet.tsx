@@ -35,8 +35,14 @@ const COLLAPSED_SNAP_POINT = 72;
 // la feuille. Comme le point d'accroche, elle ne dépend pas de la barre système.
 const FLOATING_BUTTON_BOTTOM = 88;
 
+/**
+ * Courbe imposée à une transition programmée. Sans elle, gorhom anime au ressort
+ * sur iOS et en 250 ms sur Android : impossible de se caler sur autre chose.
+ */
+type SheetAnimationConfig = Parameters<BottomSheet['close']>[0];
+
 export interface HikesBottomSheetRef {
-  snapToIndex: (index: number) => void;
+  snapToIndex: (index: number, animationConfigs?: SheetAnimationConfig) => void;
   sheetIndex: number;
 }
 
@@ -53,6 +59,11 @@ interface HikesBottomSheetProps {
   initialIndex?: number;
   /** Extra top space reserved at full expansion for floating overlays below the searchbar. */
   expandedTopOffset?: number;
+  /**
+   * Place réservée en bas, sous la feuille — la barre d'onglets, qui flotte
+   * au-dessus de l'écran. Les points d'accroche se mesurent depuis ce bord.
+   */
+  bottomInset?: number;
 }
 
 const AnimatedFlatList = Animated.createAnimatedComponent(BottomSheetFlatList);
@@ -75,6 +86,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     onChange,
     initialIndex = 0,
     expandedTopOffset = 0,
+    bottomInset = 0,
   },
   ref
 ) => {
@@ -201,9 +213,9 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     [theme.tabIconDefault, animatedHandleStyle]
   );
 
-  // Aucun inset bas ici : la feuille vit dans la scène des onglets, qui s'arrête au
-  // bord supérieur de la TabBar — laquelle absorbe déjà la barre système. Le
-  // réappliquer faisait remonter la feuille de tout l'inset, soit 24px de plus en
+  // Aucun inset système ici : les points d'accroche se mesurent depuis `bottomInset`,
+  // c'est-à-dire depuis le haut de la TabBar — laquelle absorbe déjà la barre système.
+  // Le réappliquer ferait remonter la feuille de tout l'inset, soit 24px de plus en
   // navigation à boutons (48) qu'en navigation gestuelle (24).
   const snapPoints = useMemo(() => [COLLAPSED_SNAP_POINT, '50%', '100%'], []);
 
@@ -229,8 +241,8 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
 
   // Expose snapToIndex and sheetIndex to parent via ref
   useImperativeHandle(ref, () => ({
-    snapToIndex: (index: number) => {
-      bottomSheetRef.current?.snapToIndex(index);
+    snapToIndex: (index: number, animationConfigs?: SheetAnimationConfig) => {
+      bottomSheetRef.current?.snapToIndex(index, animationConfigs);
     },
     sheetIndex,
   }));
@@ -276,6 +288,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
       animatedIndex={animatedIndex}
       index={sheetIndex}
       snapPoints={snapPoints}
+      bottomInset={bottomInset}
       enableDynamicSizing={false}
       enablePanDownToClose={false}
       onChange={handleSheetChange}

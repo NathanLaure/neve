@@ -27,13 +27,29 @@ export default function ItemButton({
 
   const textColor = color ?? theme.text;
 
+  const itemStyle = [
+    styles.container,
+    {
+      borderRadius: 12,
+      overflow: 'hidden' as const,
+      backgroundColor: theme.card,
+    },
+    disabled && styles.disabled,
+    style,
+  ];
+
   return (
     <Pressable
-      style={({ pressed }) => [
-        pressed && styles.pressed,
-        disabled && styles.disabled,
-        style,
-      ]}
+      android_ripple={
+        disabled
+          ? undefined
+          : {
+              color: theme.ripple,
+              borderless: false,
+              foreground: true,
+            }
+      }
+      style={itemStyle}
       onPress={onPress}
       disabled={disabled}>
       <View style={styles.rowContainer}>
@@ -45,16 +61,20 @@ export default function ItemButton({
 }
 
 const styles = StyleSheet.create({
+  container: {
+    width: '100%',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
   rowContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-start',
     paddingVertical: 12,
+    paddingHorizontal: 12,
+    borderRadius: 12,
     gap: 12,
     width: '100%',
-  },
-  pressed: {
-    opacity: 0.7,
   },
   disabled: {
     opacity: 0.4,

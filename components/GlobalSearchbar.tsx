@@ -32,17 +32,27 @@ export default function GlobalSearchbar({
     <View style={[styles.floatingSearchContainer, style]}>
       <Pressable
         onPress={onPress}
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
         style={[
           styles.floatingSearchButton,
           {
             backgroundColor: theme.card,
             shadowColor: '#000',
+            overflow: 'hidden' as const,
           },
         ]}>
         {onBack ? (
           <Pressable
             onPress={onBack}
-            style={{ padding: 4, marginLeft: -4, marginRight: 4 }}
+            android_ripple={{
+              color: theme.ripple,
+              borderless: true,
+            }}
+            style={{ padding: 4, marginLeft: -4, marginRight: 4, borderRadius: 100 }}
             hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
             <ArrowLeft size={24} color={theme.text} />
           </Pressable>
@@ -57,7 +67,13 @@ export default function GlobalSearchbar({
         </View>
 
         {onPressFilter && (
-          <Pressable onPress={onPressFilter} style={styles.floatingSearchFilterBtn}>
+          <Pressable
+            onPress={onPressFilter}
+            android_ripple={{
+              color: theme.ripple,
+              borderless: true,
+            }}
+            style={[styles.floatingSearchFilterBtn, { borderRadius: 100 }]}>
             <View>
               <SlidersHorizontal size={24} color={theme.text} />
               {activeFiltersCount > 0 && (

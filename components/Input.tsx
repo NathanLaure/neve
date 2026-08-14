@@ -186,7 +186,14 @@ export const Input = forwardRef<TextInput, InputProps>(
           />
 
           {onClear && hasValue ? (
-            <Pressable onPress={onClear} hitSlop={10} style={styles.actionIconBtn}>
+            <Pressable
+              onPress={onClear}
+              hitSlop={10}
+              android_ripple={{
+                color: theme.ripple,
+                borderless: true,
+              }}
+              style={styles.actionIconBtn}>
               <X size={16} color={theme.textMuted} />
             </Pressable>
           ) : null}
@@ -195,6 +202,10 @@ export const Input = forwardRef<TextInput, InputProps>(
             <Pressable
               onPress={() => setSecureText(!secureText)}
               hitSlop={10}
+              android_ripple={{
+                color: theme.ripple,
+                borderless: true,
+              }}
               style={styles.actionIconBtn}>
               {secureText ? (
                 <Eye size={18} color={theme.textMuted} />

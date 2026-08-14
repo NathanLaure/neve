@@ -84,7 +84,14 @@ const SearchInput = forwardRef<TextInput, SearchInputProps>(
           {...props}
         />
         {hasValue && (
-          <Pressable onPress={handleClear} hitSlop={8} style={styles.clearBtn}>
+          <Pressable
+            onPress={handleClear}
+            hitSlop={8}
+            android_ripple={{
+              color: theme.ripple,
+              borderless: true,
+            }}
+            style={styles.clearBtn}>
             <X size={16} color={theme.text} />
           </Pressable>
         )}

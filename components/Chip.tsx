@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, Pressable, View, ViewStyle, TextStyle } from 'react-native';
+import { StyleSheet, Text, Pressable, View, ViewStyle, TextStyle, Platform } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 
@@ -36,46 +36,55 @@ export default function Chip({
   const theme = Colors[colorScheme];
 
   const chipLabel = label ?? text ?? '';
-  const minHeight = size === 'small' ? 32 : 40;
-  const borderRadius = size === 'small' ? 8 : 12;
+  const minHeight = size === 'small' ? 33 : 40;
+  const borderRadius = 12;
+  const paddingHorizontal = size === 'small' ? 12 : 16;
 
   const defaultBgColor = disabled
     ? theme.buttonDisabled || '#222222'
-    : theme.card || '#222222';
+    : theme.card || '#FFFFFF';
 
   const defaultBorderColor = disabled
-    ? theme.borderDisabled || '#3D3D3D'
+    ? theme.borderDisabled || '#BDBDBD'
     : selected
-    ? theme.primary || '#FA6415'
-    : theme.border || '#3D3D3D';
+    ? theme.primary || '#EB490B'
+    : theme.borderStrong || '#989898';
 
   const defaultBorderWidth = selected ? 1.5 : 1;
 
   const defaultTextColor = disabled
     ? theme.buttonTextDisabled || '#525252'
     : selected
-    ? colorScheme === 'dark'
-      ? '#FFFFFF'
-      : '#111111'
+    ? theme.primary
     : theme.text;
 
   const hasBadge = badgeCount != null && badgeCount > 0;
+  const overflow = badgePosition === 'chip-corner' ? 'visible' : 'hidden';
+
+  const chipStyle = [
+    styles.container,
+    {
+      minHeight,
+      borderRadius,
+      paddingHorizontal,
+      backgroundColor: defaultBgColor,
+      borderColor: defaultBorderColor,
+      borderWidth: defaultBorderWidth,
+      opacity: disabled ? 0.4 : 1,
+      overflow,
+    },
+    style,
+  ];
 
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      style={[
-        styles.container,
-        {
-          minHeight,
-          borderRadius,
-          backgroundColor: defaultBgColor,
-          borderColor: defaultBorderColor,
-          borderWidth: defaultBorderWidth,
-        },
-        style,
-      ]}>
+      android_ripple={{
+        color: theme.ripple,
+        borderless: false,
+      }}
+      style={chipStyle}>
       {icon && (
         <View style={styles.iconWrapper}>
           {icon}
@@ -92,8 +101,8 @@ export default function Chip({
             styles.text,
             {
               color: defaultTextColor,
-              fontSize: size === 'small' ? 12 : 14,
-              fontWeight: selected ? '600' : '500',
+              fontSize: size === 'small' ? 11 : 14,
+              fontFamily: 'Satoshi-Medium',
             },
             textStyle,
           ]}>
@@ -118,11 +127,14 @@ export default function Chip({
 const styles = StyleSheet.create({
   container: {
     paddingHorizontal: 16,
-    paddingVertical: 6,
+    paddingVertical: 8,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
+    borderWidth: 1,
+    borderStyle: 'solid',
+    gap: 6,
   },
   iconWrapper: {
     marginRight: 6,
@@ -174,23 +186,23 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   badgePill: {
-    minWidth: 18,
-    height: 18,
-    borderRadius: 9,
+    minWidth: 15,
+    height: 15,
+    borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
-    marginLeft: 6,
+    marginLeft: 2,
   },
   badgeText: {
     color: '#FFFFFF',
     fontFamily: 'Satoshi-Bold',
-    fontSize: 10,
-    lineHeight: 12,
+    fontSize: 9,
+    lineHeight: 11,
     textAlign: 'center',
   },
   text: {
-    fontFamily: 'BricolageGrotesque-Medium',
+    fontFamily: 'Satoshi-Medium',
   },
 });
 

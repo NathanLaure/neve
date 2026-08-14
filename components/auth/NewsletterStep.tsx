@@ -37,7 +37,11 @@ export function NewsletterStep({ onChoice }: NewsletterStepProps) {
 
         <Pressable
           onPress={() => onChoice(false)}
-          style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center' }}>
+          android_ripple={{
+            color: theme.ripple,
+            borderless: true,
+          }}
+          style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }}>
           <Text style={[styles.legalLink, { color: theme.textMuted, fontSize: 14 }]}>
             Non merci, pas maintenant
           </Text>

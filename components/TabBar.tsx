@@ -1,10 +1,15 @@
 import React, { useEffect, useState } from 'react';
 import { View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
+import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Search, Heart, Compass, UserRound } from 'lucide-react-native';
 import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
+import { useImmersiveProgress } from '@/context/MapImmersiveContext';
+
+/** Hauteur de la rangée d'onglets, hors barre système. */
+const TAB_BAR_BASE_HEIGHT = 56;
 
 const TAB_ICONS = {
   index: Search,
@@ -51,12 +56,18 @@ function TabItem({
     outputRange: [inactiveColor, activeColor],
   });
 
+  const theme = Colors[useColorScheme() ?? 'light'];
+
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityState={isFocused ? { selected: true } : {}}
       onPress={onPress}
       onLongPress={onLongPress}
+      android_ripple={{
+        color: theme.ripple,
+        borderless: true,
+      }}
       style={styles.tabItem}>
       <View style={styles.iconContainer}>
         {/* Inactive Icon */}
@@ -81,32 +92,70 @@ function TabItem({
   );
 }
 
+/** Rembourrage bas de la barre, aligné sur la barre système du téléphone. */
+function useTabBarBottomPadding() {
+  const insets = useSafeAreaInsets();
+  const rawBottom = insets.bottom || initialWindowMetrics?.insets.bottom || 0;
+  const effectiveBottomInset = rawBottom > 0 ? rawBottom : Platform.OS === 'android' ? 48 : 24;
+
+  return Platform.OS === 'ios'
+    ? insets.bottom > 0
+      ? Math.max(insets.bottom - 12, 8)
+      : 8
+    : effectiveBottomInset;
+}
+
+/**
+ * Hauteur totale occupée par la barre d'onglets, barre système comprise.
+ *
+ * La barre flotte au-dessus des écrans (`position: 'absolute'`) : chaque écran
+ * occupe donc toute la hauteur, et c'est à lui de réserver cette place en bas —
+ * rembourrage de liste, décalage des boutons flottants, `bottomInset` de feuille.
+ * En échange, escamoter la barre n'est plus qu'une translation : rien ne se
+ * redimensionne, ni la carte ni les feuilles.
+ */
+export function useTabBarHeight() {
+  return TAB_BAR_BASE_HEIGHT + useTabBarBottomPadding();
+}
+
+/**
+ * Course du mobilier bas quand la carte passe en immersif.
+ *
+ * La barre d'onglets et la feuille repliée sont jointives : elles doivent glisser
+ * de la même distance pour rester collées pendant tout le mouvement. C'est donc la
+ * plus exigeante des deux qui commande — la feuille, dont la poignée dépasse de
+ * 72 px au-dessus de la barre — avec une marge pour sortir aussi son ombre portée.
+ */
+export function useBottomChromeHideDistance() {
+  return useTabBarHeight() + 72 + 24;
+}
+
 export default function TabBar({ state, descriptors, navigation }: any) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const insets = useSafeAreaInsets();
   const { searchQuery } = useAdventure();
 
-  const rawBottom = insets.bottom || initialWindowMetrics?.insets.bottom || 0;
-  const effectiveBottomInset =
-    rawBottom > 0 ? rawBottom : Platform.OS === 'android' ? 48 : 24;
+  const bottomPadding = useTabBarBottomPadding();
+  const barHeight = TAB_BAR_BASE_HEIGHT + bottomPadding;
 
-  const bottomPadding =
-    Platform.OS === 'ios'
-      ? (insets.bottom > 0 ? Math.max(insets.bottom - 12, 8) : 8)
-      : effectiveBottomInset;
-  const baseHeight = 56;
+  const immersiveProgress = useImmersiveProgress();
+  const hideDistance = useBottomChromeHideDistance();
+
+  const animatedContentStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: immersiveProgress.value * hideDistance }],
+  }));
 
   return (
-    <View
+    <Reanimated.View
       style={[
         styles.tabBarContainer,
         {
           backgroundColor: theme.background,
           borderTopColor: theme.borderLight,
           paddingBottom: bottomPadding,
-          height: baseHeight + bottomPadding,
+          height: barHeight,
         },
+        animatedContentStyle,
       ]}>
       {state.routes.map((route: any, index: number) => {
         if (route.name === 'results') {
@@ -122,8 +171,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
 
         const currentRouteName = state.routes[state.index].name;
         const isFocused =
-          state.index === index ||
-          (currentRouteName === 'results' && route.name === 'index');
+          state.index === index || (currentRouteName === 'results' && route.name === 'index');
         const IconComponent = TAB_ICONS[route.name as keyof typeof TAB_ICONS] || Compass;
 
         const onPress = () => {
@@ -168,12 +216,17 @@ export default function TabBar({ state, descriptors, navigation }: any) {
           />
         );
       })}
-    </View>
+    </Reanimated.View>
   );
 }
 
 const styles = StyleSheet.create({
   tabBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 1,
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingHorizontal: 8,

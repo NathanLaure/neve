@@ -113,12 +113,22 @@ export const IconButton = forwardRef<View, IconButtonProps>(
         ref={ref as any}
         disabled={disabled}
         onPress={onPress}
+        android_ripple={
+          disabled
+            ? undefined
+            : {
+                color: theme.ripple,
+                borderless: false,
+                foreground: true,
+              }
+        }
         onPressIn={() => setIsPressed(true)}
         onPressOut={() => setIsPressed(false)}
         style={[
           getVariantStyle(),
           style,
-          isPressed && !animated && styles.pressed,
+          { overflow: 'hidden' as const },
+          isPressed && !animated && Platform.OS === 'ios' && styles.pressed,
         ]}
         {...pressableProps}>
         <View style={styles.contentWrapper}>
@@ -141,6 +151,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     padding: 4,
+    borderRadius: 100,
+    overflow: 'hidden',
   },
   circleButton: {
     width: 40,
@@ -148,6 +160,7 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   squareButton: {
     width: 48,
@@ -156,6 +169,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
   contentWrapper: {
     position: 'relative',

@@ -14,7 +14,7 @@ import { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
+import { useAdventure, calculateDistanceKm, type RandoData } from '@/context/AdventureContext';
 import FiltersForm from '@/components/FiltersForm';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { useScrollFade } from '@/components/ScrollFade';
@@ -24,10 +24,14 @@ export interface FiltersBottomSheetRef {
   dismiss: () => void;
 }
 
+export interface FiltersBottomSheetProps {
+  baseHikes?: RandoData[];
+}
+
 const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   FiltersBottomSheetRef,
-  any
-> = (_, ref) => {
+  FiltersBottomSheetProps
+> = ({ baseHikes }, ref) => {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const bottomSheetModalRef = useRef<BaseBottomSheetModalRef>(null);
@@ -56,6 +60,8 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
     setSelectedActivityTypes,
     selectedPointsOfInterest,
     setSelectedPointsOfInterest,
+    searchRadiusKm,
+    isMapAreaActive,
     clearAllFilters,
   } = useAdventure();
 
@@ -127,9 +133,27 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
 
   // Real-time results count calculation
   const localFilteredHikesCount = useMemo(() => {
-    let filtered = hikes.filter((rando) => {
+    const sourceHikes = baseHikes ?? hikes;
+
+    let filtered = sourceHikes.filter((rando) => {
+      // 0. Base geographic / radius filtering if baseHikes wasn't explicitly provided
+      if (!baseHikes) {
+        if (!isMapAreaActive) {
+          const activeRadius = searchRadiusKm ?? 5;
+          const randoLat = (rando as any)?.start_lat ?? rando?.startStationCoords?.latitude ?? 48.8566;
+          const randoLng = (rando as any)?.start_lng ?? rando?.startStationCoords?.longitude ?? 2.3522;
+          const dist = calculateDistanceKm(
+            userLocation?.latitude ?? 48.8566,
+            userLocation?.longitude ?? 2.3522,
+            randoLat,
+            randoLng
+          );
+          if (dist > activeRadius) return false;
+        }
+      }
+
       // 1. Text Search query
-      if (searchQuery) {
+      if (searchQuery && !isMapAreaActive) {
         const query = searchQuery.toLowerCase().trim();
         const locName = userLocationName.toLowerCase().trim();
         const isUserLocationSearch =
@@ -204,7 +228,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
       // 9. Points of Interest
       if (localPointsOfInterest.length > 0) {
         if (!rando.pointsOfInterest) return false;
-        const hasMatch = rando.pointsOfInterest.some((poi) => localPointsOfInterest.includes(poi));
+        const hasMatch = rando.pointsOfInterest.some((poi: string) => localPointsOfInterest.includes(poi));
         if (!hasMatch) return false;
       }
 
@@ -213,7 +237,10 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
 
     return filtered.length;
   }, [
+    baseHikes,
     hikes,
+    searchRadiusKm,
+    isMapAreaActive,
     searchQuery,
     userLocationName,
     localDifficulties,

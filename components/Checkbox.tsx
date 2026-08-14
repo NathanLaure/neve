@@ -25,6 +25,10 @@ export function Checkbox({
   return (
     <Pressable
       onPress={() => onToggle(!checked)}
+      android_ripple={{
+        color: theme.ripple,
+        borderless: true,
+      }}
       style={[styles.container, containerStyle]}
       hitSlop={6}>
       <View

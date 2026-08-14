@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Pressable, Platform, ActivityIndicator, ViewStyle, StyleProp } from 'react-native';
+import { StyleSheet, View, Pressable, Platform, ActivityIndicator, ViewProps } from 'react-native';
 import { Layers, LocateFixed } from 'lucide-react-native';
 import Svg, { Path } from 'react-native-svg';
 import Animated, { useAnimatedStyle, type SharedValue } from 'react-native-reanimated';
@@ -17,7 +17,13 @@ interface MapControlsProps {
   onPressLayers: () => void;
   onPressLocate: () => void;
   isLocating: boolean;
-  style?: StyleProp<ViewStyle>;
+  /** Accepte aussi les styles animés : les écrans carte déplacent ces contrôles. */
+  style?: React.ComponentProps<typeof Animated.View>['style'];
+  /**
+   * Le mode immersif efface les contrôles en opacité : sans ça ils continueraient
+   * d'intercepter les taps destinés à la carte, invisibles mais bien là.
+   */
+  pointerEvents?: ViewProps['pointerEvents'];
 }
 
 /**
@@ -41,6 +47,7 @@ export default function MapControls({
   onPressLocate,
   isLocating,
   style,
+  pointerEvents,
 }: MapControlsProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -51,15 +58,21 @@ export default function MapControls({
   }));
 
   return (
-    <Animated.View style={[styles.container, style]}>
+    <Animated.View style={[styles.container, style]} pointerEvents={pointerEvents}>
       {/* Compass — separate circle */}
       <Pressable
         onPress={onPressCompass}
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
         style={[
           styles.compassButton,
           {
             backgroundColor: theme.card,
             shadowColor: '#000',
+            overflow: 'hidden' as const,
           },
         ]}>
         <Animated.View style={compassStyle}>
@@ -77,7 +90,14 @@ export default function MapControls({
           },
         ]}>
         {/* Layers (top) */}
-        <Pressable onPress={onPressLayers} style={styles.pillButton}>
+        <Pressable
+          onPress={onPressLayers}
+          android_ripple={{
+            color: theme.ripple,
+            borderless: false,
+            foreground: true,
+          }}
+          style={styles.pillButton}>
           <Layers size={24} color={theme.text} />
         </Pressable>
 
@@ -85,7 +105,14 @@ export default function MapControls({
         <View style={[styles.pillSeparator, { backgroundColor: theme.borderStrong }]} />
 
         {/* Locate (bottom) */}
-        <Pressable onPress={onPressLocate} style={styles.pillButton}>
+        <Pressable
+          onPress={onPressLocate}
+          android_ripple={{
+            color: theme.ripple,
+            borderless: false,
+            foreground: true,
+          }}
+          style={styles.pillButton}>
           {isLocating ? (
             <ActivityIndicator size="small" color={theme.text} />
           ) : (

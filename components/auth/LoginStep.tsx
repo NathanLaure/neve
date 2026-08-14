@@ -52,7 +52,13 @@ export function LoginStep({
           onSubmitEditing={onLoginSubmit}
         />
 
-        <Pressable onPress={onForgotPassword}>
+        <Pressable
+          onPress={onForgotPassword}
+          android_ripple={{
+            color: theme.ripple,
+            borderless: true,
+          }}
+          style={{ alignSelf: 'flex-end', borderRadius: 4, paddingHorizontal: 4, paddingVertical: 2 }}>
           <Text style={[styles.forgotPassLink, { color: theme.primary }]}>
             Mot de passe oublié ?
           </Text>

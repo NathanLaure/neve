@@ -16,17 +16,42 @@ export interface CheckboxRowProps {
   title: string;
   value: boolean;
   onValueChange: (val: boolean) => void;
+  /** Couleur de fond du conteneur hôte pour fondre le ripple sans démarcation */
+  backgroundColor?: string;
   style?: any;
 }
 
-export default function CheckboxRow({ title, value, onValueChange, style }: CheckboxRowProps) {
+export default function CheckboxRow({
+  title,
+  value,
+  onValueChange,
+  backgroundColor,
+  style,
+}: CheckboxRowProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+
+  const resolvedBg = backgroundColor ?? style?.backgroundColor ?? 'transparent';
+
+  const rowStyle = [
+    styles.row,
+    {
+      borderRadius: 12,
+      overflow: 'hidden' as const,
+      backgroundColor: resolvedBg,
+    },
+    style,
+  ];
 
   return (
     <Pressable
       onPress={() => onValueChange(!value)}
-      style={[styles.row, style]}>
+      android_ripple={{
+        color: theme.ripple,
+        borderless: false,
+        foreground: true,
+      }}
+      style={rowStyle}>
       <View style={styles.left}>
         <Text style={[styles.title, { color: theme.text }]}>
           {title}
@@ -70,7 +95,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingRight: 6,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
   },
   left: {
     flex: 1,

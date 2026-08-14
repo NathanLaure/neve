@@ -73,12 +73,18 @@ export function Select({
           Keyboard.dismiss();
           bottomSheetRef.current?.present();
         }}
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
         style={[
           styles.inputContainer,
           {
             backgroundColor: 'transparent',
             borderColor,
             borderWidth: 1.5,
+            overflow: 'hidden' as const,
           },
         ]}>
         {label ? (

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { Building2, Home, MapPin, MountainSnow, RotateCcw, TreePine, Waves } from 'lucide-react-native';
+import Colors from '@/constants/Colors';
 
 /**
  * Ligne de suggestion de lieu, partagée par l'écran de recherche et la feuille de
@@ -149,9 +150,25 @@ export default function PlaceSuggestionRow({
 }: PlaceSuggestionRowProps) {
   const palette = PLACE_KINDS[kind][scheme];
   const Icon = PLACE_KINDS[kind].icon;
+  const theme = Colors[scheme];
+  const rowStyle = [
+    styles.suggestionRow,
+    {
+      borderRadius: 12,
+      overflow: 'hidden' as const,
+      paddingHorizontal: 8,
+    },
+  ];
 
   return (
-    <Pressable onPress={onPress} style={styles.suggestionRow}>
+    <Pressable
+      onPress={onPress}
+      android_ripple={{
+        color: theme.ripple,
+        borderless: false,
+        foreground: true,
+      }}
+      style={rowStyle}>
       <View style={[styles.suggestionIconWrapper, { backgroundColor: palette.bg }]}>
         <Icon size={18} color={palette.fg} />
       </View>
@@ -172,7 +189,7 @@ const styles = StyleSheet.create({
   suggestionRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 8,
     gap: 12,
   },
   suggestionIconWrapper: {

@@ -70,7 +70,11 @@ export function ForgotPassStep({
 
         <Pressable
           onPress={onBackToLogin}
-          style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center' }}>
+          android_ripple={{
+            color: theme.ripple,
+            borderless: true,
+          }}
+          style={{ marginTop: 8, paddingVertical: 10, alignItems: 'center', borderRadius: 8 }}>
           <Text style={[styles.legalLink, { color: theme.textMuted, fontSize: 14 }]}>
             Retour à la connexion
           </Text>

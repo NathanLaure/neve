@@ -32,6 +32,7 @@ export default function FilterChipsBar({
         icon={<CircleDotDashed size={18} color={theme.text} />}
         onPress={onPressRadius}
         style={mapChipStyle}
+        textStyle={{ color: theme.text }}
       />
       <Chip
         text="Filtres"
@@ -40,6 +41,7 @@ export default function FilterChipsBar({
         icon={<SlidersHorizontal size={18} color={theme.text} />}
         onPress={onPressFilters}
         style={mapChipStyle}
+        textStyle={{ color: theme.text }}
       />
     </MapChipsBar>
   );
