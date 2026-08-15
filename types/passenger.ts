@@ -28,9 +28,32 @@ export const AGE_BRACKETS: AgeBracket[] = [
 
 export const DEFAULT_AGE_BRACKET: AgeBracketId = 'young';
 
+export type TransportPassId = 'none' | 'navigo' | 'sncf_avantage' | 'sncf_liberte' | 'ter';
+
+export interface TransportPass {
+  id: TransportPassId;
+  label: string;
+}
+
+export const TRANSPORT_PASSES: TransportPass[] = [
+  { id: 'none', label: 'Aucun abonnement' },
+  { id: 'navigo', label: 'Pass Navigo (IDF)' },
+  { id: 'sncf_avantage', label: 'Carte Avantage SNCF' },
+  { id: 'sncf_liberte', label: 'Carte Liberté SNCF' },
+  { id: 'ter', label: 'Abonnement TER Régional' },
+];
+
+export const DEFAULT_TRANSPORT_PASS: TransportPassId = 'none';
+
+export function getTransportPassLabel(id?: TransportPassId): string {
+  if (!id || id === 'none') return 'Aucun abonnement';
+  return TRANSPORT_PASSES.find((p) => p.id === id)?.label ?? id;
+}
+
 export interface Passenger {
   id: string;
   bracket: AgeBracketId;
+  discountPass?: TransportPassId;
 }
 
 export function getAgeBracketLabel(id: AgeBracketId): string {
@@ -39,7 +62,7 @@ export function getAgeBracketLabel(id: AgeBracketId): string {
 
 /** Un voyageur par défaut : on ne planifie jamais une aventure pour zéro personne. */
 export function createDefaultPassengers(): Passenger[] {
-  return [{ id: 'passenger-0', bracket: DEFAULT_AGE_BRACKET }];
+  return [{ id: 'passenger-0', bracket: DEFAULT_AGE_BRACKET, discountPass: 'none' }];
 }
 
 /**

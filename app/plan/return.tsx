@@ -20,8 +20,10 @@ import {
   getAvailableTransportModes,
   filterOptionsByTransportModes,
   formatTransportModesSummary,
+  isRealSource,
   Disruption,
   TransitOption,
+  TransitSource,
   TransitTransportMode,
 } from '@/services/transitService';
 import { OutwardHeader } from '@/components/plan/OutwardHeader';
@@ -89,7 +91,7 @@ export default function ReturnPlanScreen() {
   }>();
 
   const { hikes, userLocationName, userLocation } = useAdventure();
-  const { draft } = usePlanDraft();
+  const { draft, selectReturnJourney } = usePlanDraft();
 
   const rando = useMemo(
     () => hikes.find((r) => r.id === params.randoId) ?? hikes[0],
@@ -172,6 +174,9 @@ export default function ReturnPlanScreen() {
 
   // State transit
   const [options, setOptions] = useState<TransitOption[]>([]);
+  // Provenance des horaires, transmise à l'aventure enregistrée — même raison
+  // que sur l'écran de l'aller.
+  const [source, setSource] = useState<TransitSource>('fallback');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -230,6 +235,7 @@ export default function ReturnPlanScreen() {
           { ...baseQuery, from: stationCoords }
         );
         setOptions(result.options);
+        setSource(result.source);
         // Le filtre repart de « tout coché » à chaque nouvelle liste : une
         // exclusion posée pour une recherche n'a pas de sens pour la suivante.
         setSelectedModes(new Set(getAvailableTransportModes(result.options)));
@@ -264,13 +270,21 @@ export default function ReturnPlanScreen() {
   const handleConfirmOption = (option: TransitOption) => {
     setSelectedId(option.id);
     journeyDetailSheetRef.current?.dismiss();
-    // Rediriger vers l'écran récapitulatif
+    // Comme pour l'aller, l'itinéraire lui-même passe par le brouillon partagé.
+    selectReturnJourney(option, isRealSource(source));
+    // Le résumé relit tout le voyage avant enregistrement : le contexte qui a
+    // servi à composer cette recherche doit l'accompagner, il est le seul à
+    // savoir d'où l'on part et où l'on rentre.
     router.push({
-      pathname: '/recap',
+      pathname: '/plan/summary',
       params: {
         randoId: rando?.id,
-        outwardId: params.outwardId,
-        returnId: option.id,
+        departureName: departurePoint.name,
+        returnName: arrivalPoint.name,
+        outwardDate: outwardDateValue ?? undefined,
+        returnDate: returnDate ?? undefined,
+        passengers: JSON.stringify(passengers),
+        isReversed: String(isReversed),
       },
     });
   };

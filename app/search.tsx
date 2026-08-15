@@ -1543,8 +1543,8 @@ const styles = StyleSheet.create({
   textInputWrapper: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 56,
-    borderRadius: 12,
+    height: 54,
+    borderRadius: 24,
     borderWidth: 1,
     paddingHorizontal: 12,
     marginBottom: 16,

@@ -270,6 +270,7 @@ export type Database = {
           return_date: string
           return_station_name: string | null
           return_train: Json
+          share_token: string | null
           updated_at: string
           user_id: string
         }
@@ -288,6 +289,7 @@ export type Database = {
           return_date: string
           return_station_name?: string | null
           return_train: Json
+          share_token?: string | null
           updated_at?: string
           user_id: string
         }
@@ -306,6 +308,7 @@ export type Database = {
           return_date?: string
           return_station_name?: string | null
           return_train?: Json
+          share_token?: string | null
           updated_at?: string
           user_id?: string
         }

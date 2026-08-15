@@ -17,6 +17,7 @@ export const mapChipStyle: ViewStyle = {
   minHeight: MAP_CHIPS_BAR_HEIGHT,
   borderRadius: 16,
   borderWidth: 0,
+  overflow: 'hidden',
 };
 
 interface MapChipsBarProps {

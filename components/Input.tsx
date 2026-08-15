@@ -246,8 +246,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    height: 54,
+    borderRadius: 24,
+    height: 56,
     paddingHorizontal: 16,
   },
   floatingLabelBadge: {

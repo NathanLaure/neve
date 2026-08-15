@@ -1,30 +1,16 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import {
-  FlatList,
   StyleSheet,
   Text,
   View,
   Pressable,
-  Platform,
   Animated,
   RefreshControl,
-  Alert,
-  Share,
-  Image,
+  StatusBar,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import {
-  Trash2,
-  ChevronRight,
-  Calendar,
-  Share2,
-  CheckCircle2,
-  Clock,
-  MapPin,
-  Train,
-  Footprints,
-  Compass,
-} from 'lucide-react-native';
+import { Clock, Compass } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
@@ -34,8 +20,14 @@ import { MOCK_RANDOS, RandoData } from '@/constants/RandosData';
 import { toISODate } from '@/components/plan/DateRangeCalendar';
 import Skeleton from '@/components/Skeleton';
 import { useTabBarHeight } from '@/components/TabBar';
+import Chip from '@/components/Chip';
+import RandoCard from '@/components/RandoCard';
+import { formatHikeDuration } from '@/components/plan/AdventureHikeCard';
+// PROVISOIRE — voir `handleCardPress` : raccourci de test vers le résumé.
+import { usePlanDraft } from '@/context/PlanDraftContext';
+import { fromTrainOption } from '@/services/transitService';
 
-type FilterTab = 'upcoming' | 'past' | 'all';
+type FilterTab = 'all' | 'upcoming' | 'past';
 
 export default function MyAdventuresScreen() {
   const colorScheme = useColorScheme() ?? 'light';
@@ -44,13 +36,58 @@ export default function MyAdventuresScreen() {
   const router = useRouter();
   const pathname = usePathname();
   const isFocused = pathname === '/adventures';
+
   const [fadeAnim] = useState(() => new Animated.Value(0));
+  const scrollY = useRef(new Animated.Value(0)).current;
+
+  // Title font size & line height interpolation driven by scroll (identique à la page favoris)
+  const titleFontSize = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [32, 22],
+    extrapolate: 'clamp',
+  });
+
+  const titleLineHeight = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [38, 26],
+    extrapolate: 'clamp',
+  });
+
+  // Subtitle opacity and height collapse
+  const subOpacity = scrollY.interpolate({
+    inputRange: [0, 40],
+    outputRange: [1, 0],
+    extrapolate: 'clamp',
+  });
+
+  const subHeight = scrollY.interpolate({
+    inputRange: [0, 40],
+    outputRange: [22, 0],
+    extrapolate: 'clamp',
+  });
+
+  const subMarginTop = scrollY.interpolate({
+    inputRange: [0, 40],
+    outputRange: [4, 0],
+    extrapolate: 'clamp',
+  });
+
+  // Header container padding
+  const headerPaddingTop = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [16, 8],
+    extrapolate: 'clamp',
+  });
+
+  const headerPaddingBottom = scrollY.interpolate({
+    inputRange: [0, 60],
+    outputRange: [8, 4],
+    extrapolate: 'clamp',
+  });
 
   const {
     plannedAdventures,
     isLoadingAdventures,
-    deleteAdventure,
-    toggleAdventureBooked,
     refreshAdventures,
     hikes,
     loadHikes,
@@ -58,7 +95,12 @@ export default function MyAdventuresScreen() {
     refreshFavorites,
   } = useAdventure();
 
-  const [activeTab, setActiveTab] = useState<FilterTab>('upcoming');
+  // PROVISOIRE — voir `handleCardPress`.
+  const { commitDates, selectOutwardJourney, selectReturnJourney, setSavedAdventureId } =
+    usePlanDraft();
+
+  const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [sortByDistance, setSortByDistance] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   useEffect(() => {
@@ -98,7 +140,7 @@ export default function MyAdventuresScreen() {
   );
 
   // Grouped & sorted lists
-  const { upcomingAdventures, pastAdventures, displayedAdventures } = useMemo(() => {
+  const { upcomingAdventures, pastAdventures } = useMemo(() => {
     const upcoming: PlannedAdventure[] = [];
     const past: PlannedAdventure[] = [];
 
@@ -110,28 +152,28 @@ export default function MyAdventuresScreen() {
       }
     }
 
-    // Upcoming: nearest first (ASC)
-    upcoming.sort((a, b) => (a.outwardDate < b.outwardDate ? -1 : 1));
-    // Past: most recent first (DESC)
-    past.sort((a, b) => (a.outwardDate > b.outwardDate ? -1 : 1));
+    const parseDistanceNum = (item: PlannedAdventure) => {
+      const found = hikes.find((h) => h.id === item.randoId);
+      const distStr = item.hikeSnapshot?.distance || found?.distance || '';
+      const match = distStr.match(/([\d.,]+)/);
+      return match ? parseFloat(match[1].replace(',', '.')) : 0;
+    };
 
-    let displayed = plannedAdventures;
-    if (activeTab === 'upcoming') {
-      displayed = upcoming;
-    } else if (activeTab === 'past') {
-      displayed = past;
+    if (sortByDistance) {
+      upcoming.sort((a, b) => parseDistanceNum(a) - parseDistanceNum(b));
+      past.sort((a, b) => parseDistanceNum(a) - parseDistanceNum(b));
     } else {
-      displayed = [...plannedAdventures].sort((a, b) =>
-        a.outwardDate > b.outwardDate ? -1 : 1
-      );
+      // Upcoming: nearest date first (ASC)
+      upcoming.sort((a, b) => (a.outwardDate < b.outwardDate ? -1 : 1));
+      // Past: most recent first (DESC)
+      past.sort((a, b) => (a.outwardDate > b.outwardDate ? -1 : 1));
     }
 
     return {
       upcomingAdventures: upcoming,
       pastAdventures: past,
-      displayedAdventures: displayed,
     };
-  }, [plannedAdventures, isAdventurePast, activeTab]);
+  }, [plannedAdventures, isAdventurePast, sortByDistance, hikes]);
 
   // Resolve hike data from store, snapshot or fallback
   const getHikeData = useCallback(
@@ -143,7 +185,9 @@ export default function MyAdventuresScreen() {
         return {
           id: item.randoId,
           title: item.hikeSnapshot.title,
-          imageUrl: item.hikeSnapshot.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+          imageUrl:
+            item.hikeSnapshot.imageUrl ||
+            'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
           startStation: item.hikeSnapshot.startStation,
           endStation: item.hikeSnapshot.endStation || item.hikeSnapshot.startStation,
           distance: item.hikeSnapshot.distance,
@@ -174,163 +218,151 @@ export default function MyAdventuresScreen() {
     [hikes, loadHikeDetail]
   );
 
-  // Helper date formatter
-  const formatDateRange = (outward: string, returnStr: string) => {
+  // Helper date formatter matching Figma (e.g. "16 août 2026")
+  const formatDateString = (outward: string, returnStr: string) => {
     if (!outward) return 'Date non définie';
     const d1 = new Date(outward);
     const d2 = returnStr ? new Date(returnStr) : d1;
 
-    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
-
     if (outward === returnStr || !returnStr) {
-      return d1.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'long' });
-    }
-
-    return `Du ${d1.toLocaleDateString('fr-FR', options)} au ${d2.toLocaleDateString('fr-FR', options)}`;
-  };
-
-  // Actions
-  const handleCardPress = (id: string) => {
-    router.push(`/recap?adventureId=${id}`);
-  };
-
-  const handleToggleBooked = (id: string, event?: any) => {
-    event?.stopPropagation?.();
-    toggleAdventureBooked(id);
-  };
-
-  const handleDeletePress = (id: string, title: string, event?: any) => {
-    event?.stopPropagation?.();
-    Alert.alert(
-      'Supprimer le voyage',
-      `Voulez-vous vraiment supprimer "${title}" de vos aventures planifiées ?`,
-      [
-        { text: 'Annuler', style: 'cancel' },
-        {
-          text: 'Supprimer',
-          style: 'destructive',
-          onPress: () => deleteAdventure(id),
-        },
-      ]
-    );
-  };
-
-  const handleSharePress = async (item: PlannedAdventure, rando: Partial<RandoData>, event?: any) => {
-    event?.stopPropagation?.();
-    try {
-      const dates = formatDateRange(item.outwardDate, item.returnDate);
-      const trainGo = item.outwardTrain?.time ? `🚆 Aller : ${item.outwardTrain.time} (${item.departureStationName} → ${rando.startStation})` : '';
-      const trainBack = item.returnTrain?.time ? `🚆 Retour : ${item.returnTrain.time} (${rando.endStation ?? rando.startStation} → ${item.returnStationName ?? item.departureStationName})` : '';
-      const randoInfo = `🥾 Marche : ${rando.distance ?? ''} • ${rando.difficulty ?? ''}`;
-
-      const message = [
-        `🏔️ Mon aventure Névé : ${rando.title || 'Randonnée en train'}`,
-        `📅 ${dates}`,
-        trainGo,
-        randoInfo,
-        trainBack,
-        `\nPlanifié avec Névé 🚆🌿`,
-      ]
-        .filter(Boolean)
-        .join('\n');
-
-      await Share.share({
-        title: `Aventure Névé : ${rando.title}`,
-        message,
+      return d1.toLocaleDateString('fr-FR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
       });
-    } catch (error) {
-      console.warn('Error sharing adventure:', error);
     }
+
+    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short' };
+    return `Du ${d1.toLocaleDateString('fr-FR', options)} au ${d2.toLocaleDateString('fr-FR', { ...options, year: 'numeric' })}`;
   };
+
+  /*
+   * PROVISOIRE — raccourci de test vers `/plan/summary`.
+   *
+   * Le résumé lit les itinéraires dans le brouillon de planification : on l'y
+   * réinjecte depuis l'aventure enregistrée, ce qui évite de refaire tout le
+   * parcours à chaque essai. L'ordre compte, `commitDates` efface les
+   * itinéraires et `selectOutwardJourney` efface le retour.
+   *
+   * Limite assumée le temps des essais : les boutons « Modifier » du résumé
+   * dépilent une pile qui n'est pas celle du parcours et ne mènent donc nulle
+   * part de sensé.
+   *
+   * À rétablir : `router.push(`/recap?adventureId=${id}`)`.
+   */
+  const handleCardPress = (id: string) => {
+    const adventure = plannedAdventures.find((item) => item.id === id);
+    if (!adventure) return;
+
+    commitDates({
+      startDate: adventure.outwardDate,
+      endDate: adventure.returnDate,
+      // Un aller simple s'enregistre en recopiant l'aller dans le retour : c'est
+      // à cela qu'on le reconnaît, et non aux dates — une sortie à la journée a
+      // elle aussi ses deux dates identiques.
+      tripType: adventure.returnTrain.id === adventure.outwardTrain.id ? 'oneway' : 'round',
+      hasCustomReturn: true,
+      outwardTime: adventure.outwardTrain.time,
+    });
+    selectOutwardJourney(
+      fromTrainOption(adventure.outwardTrain),
+      adventure.outwardTrain.isRealtime ?? false
+    );
+    selectReturnJourney(
+      fromTrainOption(adventure.returnTrain),
+      adventure.returnTrain.isRealtime ?? false
+    );
+    // Le résumé corrige cette aventure au lieu d'en déposer une seconde à chaque
+    // essai d'enregistrement.
+    setSavedAdventureId(adventure.id);
+
+    router.push({
+      pathname: '/plan/summary',
+      params: {
+        randoId: adventure.randoId,
+        departureName: adventure.departureStationName,
+        returnName: adventure.returnStationName ?? adventure.departureStationName,
+        outwardDate: adventure.outwardDate,
+        returnDate: adventure.returnDate,
+        passengers: JSON.stringify(adventure.passengers ?? []),
+        isReversed: String(adventure.isReversed ?? false),
+      },
+    });
+  };
+
+  const handleResetFilters = () => {
+    setActiveTab('all');
+    setSortByDistance(false);
+  };
+
+  const hasActiveFilters = activeTab !== 'all' || sortByDistance;
+
+  const showUpcoming = activeTab === 'all' || activeTab === 'upcoming';
+  const showPast = activeTab === 'all' || activeTab === 'past';
+
+  const visibleUpcoming = showUpcoming ? upcomingAdventures : [];
+  const visiblePast = showPast ? pastAdventures : [];
+  const totalVisible = visibleUpcoming.length + visiblePast.length;
 
   return (
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <SafeAreaView
         edges={['top', 'left', 'right']}
         style={[styles.container, { backgroundColor: theme.background }]}>
-        {/* Header Title */}
-        <View style={styles.header}>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>Mes Aventures</Text>
-          <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-            Retrouvez vos randonnées planifiées, vos horaires et vos billets de train.
-          </Text>
-        </View>
+        <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-        {/* Tab Filters (À venir / Passées / Toutes) */}
-        <View style={[styles.tabsContainer, { backgroundColor: theme.background }]}>
-          <Pressable
-            onPress={() => setActiveTab('upcoming')}
+        {/* Collapsible Animated Header (identique à la page Favoris) */}
+        <Animated.View
+          style={[
+            styles.header,
+            {
+              paddingTop: headerPaddingTop,
+              paddingBottom: headerPaddingBottom,
+            },
+          ]}>
+          <Animated.Text
             style={[
-              styles.tabPill,
+              styles.headerTitle,
               {
-                backgroundColor: activeTab === 'upcoming' ? theme.tint : theme.card,
-                borderColor: activeTab === 'upcoming' ? theme.tint : theme.border,
+                color: theme.text,
+                fontSize: titleFontSize,
+                lineHeight: titleLineHeight,
               },
             ]}>
-            <Text
-              style={[
-                styles.tabPillText,
-                { color: activeTab === 'upcoming' ? theme.buttonTextOnBrand : theme.text },
-              ]}>
-              À venir ({upcomingAdventures.length})
+            Mes aventures
+          </Animated.Text>
+          <Animated.View
+            style={{
+              opacity: subOpacity,
+              height: subHeight,
+              marginTop: subMarginTop,
+              overflow: 'hidden',
+            }}>
+            <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+              {plannedAdventures.length} aventure{plannedAdventures.length > 1 ? 's' : ''} planifiée{plannedAdventures.length > 1 ? 's' : ''}
             </Text>
-          </Pressable>
+          </Animated.View>
+        </Animated.View>
 
-          <Pressable
-            onPress={() => setActiveTab('past')}
-            style={[
-              styles.tabPill,
-              {
-                backgroundColor: activeTab === 'past' ? theme.tint : theme.card,
-                borderColor: activeTab === 'past' ? theme.tint : theme.border,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.tabPillText,
-                { color: activeTab === 'past' ? theme.buttonTextOnBrand : theme.text },
-              ]}>
-              Passées ({pastAdventures.length})
-            </Text>
-          </Pressable>
-
-          <Pressable
-            onPress={() => setActiveTab('all')}
-            style={[
-              styles.tabPill,
-              {
-                backgroundColor: activeTab === 'all' ? theme.tint : theme.card,
-                borderColor: activeTab === 'all' ? theme.tint : theme.border,
-              },
-            ]}>
-            <Text
-              style={[
-                styles.tabPillText,
-                { color: activeTab === 'all' ? theme.buttonTextOnBrand : theme.text },
-              ]}>
-              Toutes ({plannedAdventures.length})
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Adventures List */}
-        {isLoadingAdventures && displayedAdventures.length === 0 ? (
+        {/* Adventures Content List */}
+        {isLoadingAdventures && plannedAdventures.length === 0 ? (
           <View style={styles.loadingContainer}>
             {[1, 2, 3].map((k) => (
-              <Skeleton key={k} width="100%" height={160} style={styles.skeletonCard} />
+              <Skeleton key={k} width="100%" height={120} style={styles.skeletonCard} />
             ))}
           </View>
         ) : (
-          <FlatList
-            data={displayedAdventures}
-            keyExtractor={(item) => item.id}
+          <Animated.ScrollView
+            onScroll={Animated.event(
+              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
+              { useNativeDriver: false }
+            )}
+            scrollEventThrottle={16}
+            showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.listContent,
-              // La TabBar flotte au-dessus de l'écran : sans cette réserve, la
-              // dernière carte finit sous les onglets.
               { paddingBottom: 40 + tabBarHeight },
             ]}
-            showsVerticalScrollIndicator={false}
             refreshControl={
               <RefreshControl
                 refreshing={isRefreshing}
@@ -338,138 +370,55 @@ export default function MyAdventuresScreen() {
                 tintColor={theme.tint}
                 colors={[theme.tint]}
               />
-            }
-            renderItem={({ item }) => {
-              const rando = getHikeData(item);
-              const isPast = isAdventurePast(item);
-
-              return (
-                <Pressable
-                  onPress={() => handleCardPress(item.id)}
-                  style={({ pressed }) => [
-                    styles.card,
-                    {
-                      backgroundColor: theme.card,
-                      borderColor: theme.border,
-                      shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
-                    },
-                    pressed ? styles.cardPressed : null,
-                  ]}>
-                  {/* Card Top: Date & Action buttons */}
-                  <View style={styles.cardHeader}>
-                    <View style={styles.dateBadgeWrapper}>
-                      <Calendar size={13} color={isPast ? theme.textMuted : theme.tint} />
-                      <Text
-                        style={[
-                          styles.cardDate,
-                          { color: isPast ? theme.textMuted : theme.tint },
-                        ]}>
-                        {formatDateRange(item.outwardDate, item.returnDate)}
-                      </Text>
-                    </View>
-
-                    <View style={styles.headerActions}>
-                      {/* Share Button */}
-                      <Pressable
-                        onPress={(e) => handleSharePress(item, rando, e)}
-                        hitSlop={8}
-                        style={({ pressed }) => [
-                          styles.actionIconBtn,
-                          { backgroundColor: theme.surfaceSecondary, opacity: pressed ? 0.7 : 1 },
-                        ]}>
-                        <Share2 size={14} color={theme.text} />
-                      </Pressable>
-
-                      {/* Delete Button */}
-                      <Pressable
-                        onPress={(e) => handleDeletePress(item.id, rando.title || 'cette rando', e)}
-                        hitSlop={8}
-                        style={({ pressed }) => [
-                          styles.actionIconBtn,
-                          { backgroundColor: theme.orangeBadge, opacity: pressed ? 0.7 : 1 },
-                        ]}>
-                        <Trash2 size={14} color="#C62828" />
-                      </Pressable>
-                    </View>
-                  </View>
-
-                  {/* Card Title & Location */}
-                  <View style={styles.titleBlock}>
-                    <Text style={[styles.cardTitle, { color: theme.text }]} numberOfLines={1}>
-                      {rando.title}
-                    </Text>
-                    {rando.startStation ? (
-                      <View style={styles.locationRow}>
-                        <MapPin size={12} color={theme.textMuted} />
-                        <Text style={[styles.locationText, { color: theme.textMuted }]} numberOfLines={1}>
-                          {item.departureStationName} → {rando.startStation}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {/* Transit & Hike Details Inset */}
-                  <View
-                    style={[
-                      styles.transitBlock,
-                      { backgroundColor: theme.background, borderColor: theme.border },
+            }>
+            {/* Horizontal Filter Chips Bar (exactement comme sur la page Favoris) */}
+            <View style={styles.chipsBlock}>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsScrollContent}
+                style={styles.chipsScrollView}>
+                <Chip
+                  label="Toutes"
+                  selected={activeTab === 'all'}
+                  badgeCount={plannedAdventures.length > 0 ? plannedAdventures.length : undefined}
+                  badgePosition="inline"
+                  onPress={() => setActiveTab('all')}
+                />
+                <Chip
+                  label="A venir"
+                  selected={activeTab === 'upcoming'}
+                  badgeCount={upcomingAdventures.length > 0 ? upcomingAdventures.length : undefined}
+                  badgePosition="inline"
+                  onPress={() => setActiveTab('upcoming')}
+                />
+                <Chip
+                  label="Passées"
+                  selected={activeTab === 'past'}
+                  badgeCount={pastAdventures.length > 0 ? pastAdventures.length : undefined}
+                  badgePosition="inline"
+                  onPress={() => setActiveTab('past')}
+                />
+                <Chip
+                  label="Distance"
+                  selected={sortByDistance}
+                  onPress={() => setSortByDistance((prev) => !prev)}
+                />
+                {hasActiveFilters && (
+                  <Pressable
+                    onPress={handleResetFilters}
+                    style={({ pressed }) => [
+                      styles.resetButton,
+                      { opacity: pressed ? 0.7 : 1 },
                     ]}>
-                    {item.outwardTrain?.time ? (
-                      <View style={styles.transitRow}>
-                        <Train size={14} color={theme.tint} />
-                        <Text style={[styles.transitText, { color: theme.text }]} numberOfLines={1}>
-                          Aller : {item.outwardTrain.time} (
-                          {item.departureStationName.replace('Paris ', '')} →{' '}
-                          {rando.startStation?.replace('Gare de ', '') || 'Destination'})
-                        </Text>
-                      </View>
-                    ) : null}
-
-                    {rando.distance ? (
-                      <View style={[styles.transitRow, { marginTop: item.outwardTrain?.time ? 6 : 0 }]}>
-                        <Footprints size={14} color={theme.textMuted} />
-                        <Text style={[styles.transitText, { color: theme.text }]} numberOfLines={1}>
-                          Marche : {rando.distance} ({rando.durationHours}h) • {rando.difficulty}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </View>
-
-                  {/* Footer Row: Status Toggle Badge & Link */}
-                  <View style={styles.cardFooter}>
-                    <Pressable
-                      onPress={(e) => handleToggleBooked(item.id, e)}
-                      style={({ pressed }) => [
-                        styles.statusBadge,
-                        {
-                          backgroundColor: item.isBooked ? theme.greenBadge : theme.orangeBadge,
-                          opacity: pressed ? 0.8 : 1,
-                        },
-                      ]}>
-                      <View
-                        style={[
-                          styles.statusDot,
-                          { backgroundColor: item.isBooked ? '#2E7D32' : '#EF6C00' },
-                        ]}
-                      />
-                      <Text
-                        style={[
-                          styles.statusText,
-                          { color: item.isBooked ? '#2E7D32' : '#EF6C00' },
-                        ]}>
-                        {item.isBooked ? 'Train réservé' : 'Train à réserver'}
-                      </Text>
-                    </Pressable>
-
-                    <View style={styles.actionLinkRow}>
-                      <Text style={[styles.actionLink, { color: theme.tint }]}>Détails voyage</Text>
-                      <ChevronRight size={14} color={theme.tint} />
-                    </View>
-                  </View>
-                </Pressable>
-              );
-            }}
-            ListEmptyComponent={
+                    <Text style={[styles.resetButtonText, { color: theme.tint }]}>
+                      Réinitialiser
+                    </Text>
+                  </Pressable>
+                )}
+              </ScrollView>
+            </View>
+            {totalVisible === 0 ? (
               <View style={styles.emptyContainer}>
                 <View style={[styles.emptyIconWrapper, { backgroundColor: theme.greenBadge }]}>
                   {activeTab === 'past' ? (
@@ -493,15 +442,104 @@ export default function MyAdventuresScreen() {
                 {activeTab !== 'past' && (
                   <Pressable
                     onPress={() => router.push('/')}
-                    style={({ pressed }) => ({ opacity: pressed ? 0.85 : 1 })}>
-                    <View style={[styles.exploreBtn, { backgroundColor: theme.tint }]}>
-                      <Text style={styles.exploreBtnText}>Explorer les randos</Text>
-                    </View>
+                    android_ripple={{ color: theme.rippleOnBrand, foreground: true }}
+                    style={[
+                      styles.exploreBtn,
+                      {
+                        backgroundColor: theme.tint,
+                        borderRadius: 14,
+                        overflow: 'hidden' as const,
+                      },
+                    ]}>
+                    <Text style={styles.exploreBtnText}>Explorer les randos</Text>
                   </Pressable>
                 )}
               </View>
-            }
-          />
+            ) : (
+              <>
+                {/* Section A venir */}
+                {visibleUpcoming.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <View style={styles.sectionHeaderRow}>
+                      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
+                        A venir
+                      </Text>
+                      <View
+                        style={[
+                          styles.sectionDivider,
+                          { backgroundColor: theme.border },
+                        ]}
+                      />
+                    </View>
+
+                    {visibleUpcoming.map((item) => {
+                      const rando = getHikeData(item);
+                      const firstStation =
+                        item.outwardTrain?.legs?.find((l) => l.mode !== 'walk')?.fromName ||
+                        item.outwardTrain?.legs?.[0]?.fromName ||
+                        item.departureStationName ||
+                        rando.startStation;
+
+                      return (
+                        <RandoCard
+                          key={item.id}
+                          variant="adventure-upcoming"
+                          id={item.id}
+                          title={rando.title}
+                          imageUrl={rando.imageUrl}
+                          location={rando.location || rando.startStation}
+                          departureStation={firstStation}
+                          date={formatDateString(item.outwardDate, item.returnDate)}
+                          onPress={() => handleCardPress(item.id)}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+
+                {/* Section Aventures précédentes */}
+                {visiblePast.length > 0 && (
+                  <View style={styles.sectionBlock}>
+                    <View style={styles.sectionHeaderRow}>
+                      <Text style={[styles.sectionTitle, { color: theme.textMuted }]}>
+                        Aventures précédentes
+                      </Text>
+                      <View
+                        style={[
+                          styles.sectionDivider,
+                          { backgroundColor: theme.border },
+                        ]}
+                      />
+                    </View>
+
+                    {visiblePast.map((item) => {
+                      const rando = getHikeData(item);
+                      const displayTime =
+                        item.outwardTrain?.time ||
+                        formatHikeDuration(rando.durationHours) ||
+                        undefined;
+
+                      return (
+                        <RandoCard
+                          key={item.id}
+                          variant="adventure-past"
+                          id={item.id}
+                          title={rando.title}
+                          imageUrl={rando.imageUrl}
+                          location={rando.location || rando.startStation}
+                          distance={rando.distance}
+                          elevation={rando.elevation}
+                          time={displayTime}
+                          date={formatDateString(item.outwardDate, item.returnDate)}
+                          onPress={() => handleCardPress(item.id)}
+                        />
+                      );
+                    })}
+                  </View>
+                )}
+              </>
+            )}
+          </Animated.ScrollView>
         )}
       </SafeAreaView>
     </Animated.View>
@@ -518,34 +556,41 @@ const styles = StyleSheet.create({
     paddingBottom: 8,
   },
   headerTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 22,
+    fontFamily: 'BricolageGrotesque',
+    fontSize: 32,
+    fontWeight: '600',
     letterSpacing: -0.5,
   },
   headerSub: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4,
+    fontSize: 16,
+    lineHeight: 20,
   },
-  tabsContainer: {
-    flexDirection: 'row',
+  chipsBlock: {
+    paddingBottom: 16,
+    paddingTop: 4,
+  },
+  chipsScrollView: {
+    marginHorizontal: -20,
+  },
+  chipsScrollContent: {
     paddingHorizontal: 20,
-    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
     gap: 8,
   },
-  tabPill: {
-    paddingHorizontal: 14,
+  resetButton: {
+    paddingHorizontal: 8,
     paddingVertical: 7,
-    borderRadius: 100,
-    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  tabPillText: {
+  resetButtonText: {
     fontFamily: 'Satoshi-Bold',
     fontSize: 12,
   },
   loadingContainer: {
-    paddingHorizontal: 16,
+    paddingHorizontal: 20,
     paddingTop: 12,
     gap: 14,
   },
@@ -553,121 +598,27 @@ const styles = StyleSheet.create({
     borderRadius: 20,
   },
   listContent: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
-    paddingTop: 8,
+    paddingHorizontal: 20,
+    paddingTop: 4,
   },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 16,
-    ...Platform.select({
-      ios: {
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.05,
-        shadowRadius: 8,
-      },
-      android: {
-        elevation: 2,
-      },
-    }),
-  },
-  cardPressed: {
-    opacity: 0.95,
-    transform: [{ scale: 0.99 }],
-  },
-  cardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
+  sectionBlock: {
     marginBottom: 8,
   },
-  dateBadgeWrapper: {
+  sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 16,
+    marginTop: 8,
+    marginBottom: 14,
   },
-  cardDate: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 12,
-    textTransform: 'capitalize',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  actionIconBtn: {
-    width: 28,
-    height: 28,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  titleBlock: {
-    marginBottom: 10,
-    gap: 3,
-  },
-  cardTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 17,
-  },
-  locationRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  locationText: {
+  sectionTitle: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 11,
+    fontSize: 16,
+    lineHeight: 22,
   },
-  transitBlock: {
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 10,
-    marginBottom: 12,
-  },
-  transitRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  transitText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 12,
+  sectionDivider: {
     flex: 1,
-  },
-  cardFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  statusBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 6,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  statusText: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 11,
-  },
-  actionLinkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  actionLink: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 12,
+    height: 1,
   },
   emptyContainer: {
     alignItems: 'center',
@@ -685,7 +636,8 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   emptyTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: '600',
     fontSize: 18,
   },
   emptySub: {
@@ -699,7 +651,6 @@ const styles = StyleSheet.create({
   exploreBtn: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 14,
   },
   exploreBtnText: {
     fontFamily: 'Satoshi-Bold',

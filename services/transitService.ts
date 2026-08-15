@@ -83,6 +83,11 @@ export interface TransitOption {
  */
 export type TransitSource = 'live' | 'cache' | 'fallback';
 
+/** `cache` reste de la vraie donnée IDFM, seul `fallback` est une estimation. */
+export function isRealSource(source: TransitSource): boolean {
+  return source !== 'fallback';
+}
+
 export interface TransitResult {
   options: TransitOption[];
   source: TransitSource;
@@ -468,6 +473,36 @@ export function toTrainOption(option: TransitOption, isRealtime: boolean): Train
     legs: option.legs,
     co2Grams: option.co2Grams,
     isRealtime,
+  };
+}
+
+/**
+ * Réciproque de `toTrainOption` : reconstitue un itinéraire à partir de ce
+ * qu'une aventure enregistrée en a gardé.
+ *
+ * La conversion perd forcément quelque chose — les perturbations n'ont pas été
+ * enregistrées, et elles n'auraient de toute façon plus cours des semaines plus
+ * tard. Le reste suffit à réafficher le trajet : ses tronçons, ses horaires et
+ * sa durée.
+ */
+export function fromTrainOption(train: TrainOption): TransitOption {
+  const legs = train.legs ?? [];
+  const firstTransitLeg = legs.find((leg) => leg.mode !== 'walk');
+
+  return {
+    id: train.id,
+    departureTime: train.time,
+    arrivalTime: train.arrivalTime ?? '',
+    // La durée n'a été gardée que sous sa forme lisible : on la recompose depuis
+    // les tronçons, seule source chiffrée qui subsiste.
+    durationMinutes: legs.reduce((total, leg) => total + (leg.durationMinutes || 0), 0),
+    durationFormatted: train.duration,
+    transfers: train.transfers ?? 0,
+    lineName: firstTransitLeg?.lineName ?? '',
+    lineType: firstTransitLeg?.mode ?? '',
+    priceEstimate: train.price,
+    co2Grams: train.co2Grams,
+    legs,
   };
 }
 

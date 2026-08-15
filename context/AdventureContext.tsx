@@ -36,6 +36,7 @@ export interface PlannedAdventure {
   isBooked: boolean;
   passengersCount?: string;
   passengers?: any[];
+  shareToken?: string;
   createdAt?: string;
   hikeSnapshot?: {
     title: string;
@@ -128,6 +129,11 @@ interface AdventureContextType {
   toggleFavorite: (hikeId: string) => void;
   isLoadingFavorites: boolean;
   refreshFavorites: () => Promise<void>;
+
+  // Offline
+  offlineHikeIds: Set<string>;
+  isSavedOffline: (hikeId: string) => boolean;
+  toggleOffline: (hikeId: string, explicitValue?: boolean) => Promise<boolean>;
 }
 
 const AdventureContext = createContext<AdventureContextType | undefined>(undefined);
@@ -200,6 +206,18 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [hikes, setHikes] = useState<RandoData[]>([]);
   const [favoriteHikeIds, setFavoriteHikeIds] = useState<Set<string>>(new Set());
   const favoriteHikeIdsRef = useRef<Set<string>>(favoriteHikeIds);
+
+  // Offline Hikes State & Persistence
+  const [offlineHikeIds, setOfflineHikeIds] = useState<Set<string>>(new Set());
+  const offlineHikeIdsRef = useRef<Set<string>>(offlineHikeIds);
+
+  const OFFLINE_HIKES_IDS_KEY = '@neve_offline_hike_ids';
+  const OFFLINE_HIKES_DATA_KEY = '@neve_offline_hikes_data';
+
+  const updateOfflineHikeIds = useCallback((next: Set<string>) => {
+    offlineHikeIdsRef.current = next;
+    setOfflineHikeIds(next);
+  }, []);
 
   const adventuresCacheKey = useMemo(() => {
     return `@neve_planned_adventures_${user ? user.id : 'guest'}`;
@@ -360,13 +378,15 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     pointsOfInterest: row.points_of_interest || row.pointsOfInterest || ['Nature', 'Panorama'],
     galleryUrls: row.gallery_urls && row.gallery_urls.length > 0 ? row.gallery_urls : [row.cover_image_url || row.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80'],
     routeType: row.route_type || row.routeType || 'boucle',
+    ratingAvg: row.rating_avg ?? row.ratingAvg ?? null,
+    ratingCount: row.rating_count ?? row.ratingCount ?? null,
   };
 }
 
   // Lightweight columns only: full geometry/description are fetched on-demand
   // via loadHikeDetail when a hike's detail page is actually opened.
   const HIKES_LIST_COLUMNS =
-    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, start_lat, start_lng, location_name, cover_image_url, gallery_urls, start_station_name, start_station_lat, start_station_lng, end_station_name, end_station_lat, end_station_lng';
+    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, rating_avg, rating_count, start_lat, start_lng, location_name, cover_image_url, gallery_urls, start_station_name, start_station_lat, start_station_lng, end_station_name, end_station_lat, end_station_lng';
 
   const loadHikes = async (area?: { latitude: number; longitude: number; radiusKm: number }) => {
     // Sans zone explicite (ex: pull-to-refresh) : on recharge la même zone qu'avant,
@@ -705,6 +725,95 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     [user, favoriteHikeIds, favoriteSavedAt, saveFavoritesToCache]
   );
 
+  // Load offline hikes on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const rawIds = await AsyncStorage.getItem(OFFLINE_HIKES_IDS_KEY);
+        const rawData = await AsyncStorage.getItem(OFFLINE_HIKES_DATA_KEY);
+        if (rawIds) {
+          const parsedIds: string[] = JSON.parse(rawIds);
+          if (Array.isArray(parsedIds)) {
+            updateOfflineHikeIds(new Set(parsedIds));
+          }
+        }
+        if (rawData) {
+          const parsedData: RandoData[] = JSON.parse(rawData);
+          if (Array.isArray(parsedData) && parsedData.length > 0) {
+            setHikes((prev) => {
+              const byId = new Map(parsedData.map((h) => [h.id, h]));
+              const merged = prev.map((h) => {
+                const richer = byId.get(h.id);
+                if (!richer) return h;
+                byId.delete(h.id);
+                return {
+                  ...h,
+                  ...richer,
+                  hasFullDetail: true,
+                };
+              });
+              return [...merged, ...byId.values()];
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Error loading offline hikes from AsyncStorage:', e);
+      }
+    })();
+  }, [updateOfflineHikeIds]);
+
+  const isSavedOffline = useCallback(
+    (hikeId: string) => offlineHikeIds.has(hikeId),
+    [offlineHikeIds]
+  );
+
+  const toggleOffline = useCallback(
+    async (hikeId: string, explicitValue?: boolean): Promise<boolean> => {
+      const isCurrentlyOffline = offlineHikeIdsRef.current.has(hikeId);
+      const nextState = explicitValue !== undefined ? explicitValue : !isCurrentlyOffline;
+
+      const nextIds = new Set(offlineHikeIdsRef.current);
+      if (nextState) {
+        nextIds.add(hikeId);
+      } else {
+        nextIds.delete(hikeId);
+      }
+      updateOfflineHikeIds(nextIds);
+
+      try {
+        await AsyncStorage.setItem(OFFLINE_HIKES_IDS_KEY, JSON.stringify(Array.from(nextIds)));
+
+        // Update cached hike data
+        const rawData = await AsyncStorage.getItem(OFFLINE_HIKES_DATA_KEY);
+        let existingList: RandoData[] = rawData ? JSON.parse(rawData) : [];
+        if (!Array.isArray(existingList)) existingList = [];
+
+        if (nextState) {
+          let hikeData = hikes.find((h) => h.id === hikeId);
+          if (!hikeData || !hikeData.hasFullDetail) {
+            const { data } = await supabase.from('hikes').select('*').eq('id', hikeId).maybeSingle();
+            if (data) {
+              hikeData = { ...mapSupabaseHikeToRandoData(data), hasFullDetail: true };
+            }
+          }
+          if (hikeData) {
+            existingList = existingList.filter((h) => h.id !== hikeId);
+            existingList.push({ ...hikeData, hasFullDetail: true });
+          }
+        } else {
+          existingList = existingList.filter((h) => h.id !== hikeId);
+        }
+
+        await AsyncStorage.setItem(OFFLINE_HIKES_DATA_KEY, JSON.stringify(existingList));
+      } catch (err) {
+        console.warn('Error persisting offline hikes:', err);
+      }
+
+      return nextState;
+    },
+    [hikes, updateOfflineHikeIds]
+  );
+
   const refreshUserLocation = async () => {
     setIsLocating(true);
     try {
@@ -784,6 +893,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       isBooked: Boolean(row.is_booked),
       passengersCount: row.passengers_count ?? undefined,
       passengers: row.passengers ?? undefined,
+      shareToken: row.share_token ?? undefined,
       createdAt: row.created_at,
       hikeSnapshot: row.hike_snapshot ?? undefined,
     };
@@ -804,6 +914,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       is_booked: adv.isBooked ?? false,
       passengers_count: adv.passengersCount ?? null,
       passengers: adv.passengers ?? null,
+      share_token: adv.shareToken ?? null,
       hike_snapshot: adv.hikeSnapshot ?? null,
       created_at: adv.createdAt ?? new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -933,9 +1044,14 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
           }
         : undefined;
 
+      const shareToken =
+        adventure.shareToken ||
+        Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+
       const newAdventure: PlannedAdventure = {
         ...adventure,
         id,
+        shareToken,
         createdAt: new Date().toISOString(),
         hikeSnapshot: snapshot ?? adventure.hikeSnapshot,
       };
@@ -979,6 +1095,11 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
           rowUpdates.departure_station_name = updates.departureStationName;
         if (updates.returnStationName !== undefined)
           rowUpdates.return_station_name = updates.returnStationName;
+        if (updates.isReversed !== undefined) rowUpdates.is_reversed = updates.isReversed;
+        if (updates.passengersCount !== undefined)
+          rowUpdates.passengers_count = updates.passengersCount;
+        if (updates.passengers !== undefined) rowUpdates.passengers = updates.passengers;
+        if (updates.shareToken !== undefined) rowUpdates.share_token = updates.shareToken;
 
         supabase
           .from('user_adventures')
@@ -1318,6 +1439,9 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         toggleFavorite,
         isLoadingFavorites,
         refreshFavorites: loadFavorites,
+        offlineHikeIds,
+        isSavedOffline,
+        toggleOffline,
       }}>
       {children}
     </AdventureContext.Provider>

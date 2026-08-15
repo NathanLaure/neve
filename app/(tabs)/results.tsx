@@ -48,6 +48,7 @@ import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/Fil
 import PoiChipsBar from '@/components/PoiChipsBar';
 import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
 import { useBottomChromeHideDistance, useTabBarHeight } from '@/components/TabBar';
+import { useHikeTraces } from '@/components/useHikeTraces';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import Fab from '@/components/Fab';
 
@@ -117,7 +118,8 @@ export default function SearchResultsScreen() {
   } = useAdventure();
 
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
-  const { isImmersive, toggleImmersive } = useMapImmersiveMode();
+  const { isImmersive, toggleImmersive, exitImmersive } = useMapImmersiveMode();
+  const carouselRef = useRef<FlatList<RandoData>>(null);
   const [sheetIndex, setSheetIndex] = useState<number>(2); // Start at 2 since the sheet is open at max
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
@@ -283,6 +285,10 @@ export default function SearchResultsScreen() {
       return dist <= radius;
     });
   }, [filteredHikes, mapAreaCenter, mapAreaBounds, mapAreaZoom, searchRadiusKm, isMapAreaActive, userLocation]);
+
+  // Tracés des randos à l'écran, chargés à la volée une fois le seuil de zoom
+  // franchi — ils ne font pas partie des colonnes de liste.
+  const { traces, onCameraChange: onTracesCameraChange } = useHikeTraces(filteredRandos);
 
   const handleCameraChangeComplete = React.useCallback(
     (center: { latitude: number; longitude: number }, zoom: number, bounds: BoundingBox | null) => {
@@ -475,6 +481,30 @@ export default function SearchResultsScreen() {
     return '';
   };
 
+  /**
+   * Tap sur un marqueur de départ ou sur un tracé : on amène la carte de la rando
+   * dans le carrousel plutôt que d'ouvrir sa fiche. Toucher la carte, c'est
+   * explorer — ouvrir la fiche reste un geste délibéré, sur la carte du carrousel.
+   * Le recadrage automatique est neutralisé, sans quoi la caméra sauterait au
+   * départ de la rando, loin de l'endroit touché.
+   */
+  const handleHikeFocus = useCallback(
+    (hikeId: string) => {
+      const index = filteredRandos.findIndex((hike) => hike.id === hikeId);
+      if (index < 0) return;
+
+      exitImmersive();
+      mapRef.current?.suppressNextRecenter();
+      setSelectedHikeId(hikeId);
+      hasLeftFirstCarouselCardRef.current = true;
+      carouselRef.current?.scrollToOffset({
+        offset: index * (cardWidth + 12),
+        animated: true,
+      });
+    },
+    [filteredRandos, cardWidth, exitImmersive]
+  );
+
   const handleSelectHike = useCallback(
     (id?: string) => {
       if (!id) return;
@@ -549,13 +579,15 @@ export default function SearchResultsScreen() {
           userLocation={userLocation}
           userLocationName={userLocationName}
           hikes={filteredRandos}
+          traces={traces}
           selectedHikeId={selectedHikeId}
-          onSelectHike={handleSelectHike}
           onMapPress={handleMapPress}
+          onHikeFocus={handleHikeFocus}
           onBearingChange={(bearing) => {
             compassBearing.value = bearing;
           }}
           onCameraChangeComplete={handleCameraChangeComplete}
+          onCameraStateChange={onTracesCameraChange}
           mapStyle={mapStyle}
           style={styles.mapContainerFullScreen}
         />
@@ -692,6 +724,7 @@ export default function SearchResultsScreen() {
               animatedCarouselStyle,
             ]}>
             <FlatList
+              ref={carouselRef}
               data={filteredRandos}
               horizontal
               keyExtractor={(item) => `carousel-${item.id}`}

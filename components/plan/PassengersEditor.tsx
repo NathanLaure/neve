@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { StyleSheet, Text, View, Pressable } from 'react-native';
 import Animated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
-import { Minus, Plus, Trash2, UserRound } from 'lucide-react-native';
+import { Plus, Trash2, UserRound } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { DASHED_BOX, DASHED_BOX_ROW_HEIGHT } from '@/constants/DashedBox';
@@ -12,8 +12,10 @@ import {
   AGE_BRACKETS,
   AgeBracketId,
   DEFAULT_AGE_BRACKET,
+  DEFAULT_TRANSPORT_PASS,
   Passenger,
-  groupByBracket,
+  TRANSPORT_PASSES,
+  TransportPassId,
 } from '@/types/passenger';
 
 export interface PassengersEditorProps {
@@ -27,17 +29,10 @@ export interface PassengersEditorProps {
   validateLabel?: string;
   /**
    * Fond de l'hôte, derrière l'encart « Nouveau randonneur ».
-   *
-   * Cet encart n'a pas de fond propre — juste une bordure pointillée — mais la
-   * pastille de label du `Select` doit masquer la bordure derrière elle, donc se
-   * peindre de la couleur qu'elle recouvre. Or les deux hôtes diffèrent : carte
-   * blanche dans l'écran, `background` dans la feuille.
    */
   surfaceColor?: string;
 }
 
-// Durées fixes, pas de ressort : un fondu net plutôt qu'un rebond sur des
-// éléments qui apparaissent, disparaissent ou poussent leurs voisins.
 const ENTER = FadeIn.duration(180);
 const EXIT = FadeOut.duration(140);
 const REFLOW = LinearTransition.duration(200);
@@ -50,13 +45,6 @@ function nextPassengerId(): string {
   return `passenger-${Date.now()}-${passengerSeq}`;
 }
 
-/**
- * Contenu de « Qui part à l'aventure ? ».
- *
- * Volontairement sans conteneur : les maquettes le montrent tantôt en bottom
- * sheet (depuis la puce d'en-tête), tantôt en accordéon dans le déroulé de
- * l'écran. Un seul composant, deux hôtes.
- */
 export default function PassengersEditor({
   passengers,
   onChange,
@@ -70,108 +58,102 @@ export default function PassengersEditor({
 
   // Brouillon du randonneur en cours d'ajout. `null` = formulaire fermé.
   const [draftBracket, setDraftBracket] = useState<AgeBracketId | null>(null);
+  const [draftPass, setDraftPass] = useState<TransportPassId>(DEFAULT_TRANSPORT_PASS);
 
-  const groups = groupByBracket(passengers);
+  const updatePassenger = (id: string, updates: Partial<Passenger>) => {
+    onChange(
+      passengers.map((p) => (p.id === id ? { ...p, ...updates } : p))
+    );
+  };
 
-  const changeCount = (bracket: AgeBracketId, delta: number) => {
-    if (delta > 0) {
-      onChange([...passengers, { id: nextPassengerId(), bracket }]);
-      return;
-    }
-    // Une rando sans personne n'en est plus une : le bouton est désactivé dans ce
-    // cas, mais la garde reste ici aussi au cas où l'appel viendrait d'ailleurs.
-    if (passengers.length === 1) return;
-    // On retire le dernier de la tranche : la ligne disparaît, la corbeille le dit.
-    const lastIndex = passengers.map((p) => p.bracket).lastIndexOf(bracket);
-    if (lastIndex === -1) return;
-    onChange(passengers.filter((_, index) => index !== lastIndex));
+  const removePassenger = (id: string) => {
+    if (passengers.length <= 1) return;
+    onChange(passengers.filter((p) => p.id !== id));
   };
 
   const confirmDraft = () => {
     if (!draftBracket) return;
-    onChange([...passengers, { id: nextPassengerId(), bracket: draftBracket }]);
+    onChange([
+      ...passengers,
+      {
+        id: nextPassengerId(),
+        bracket: draftBracket,
+        discountPass: draftPass,
+      },
+    ]);
     setDraftBracket(null);
+    setDraftPass(DEFAULT_TRANSPORT_PASS);
   };
 
   return (
     <View style={styles.container}>
-      {groups.map(({ bracket, count }) => {
-        // Au dernier randonneur d'une tranche, décrémenter ne réduit plus un
-        // nombre : ça fait disparaître la ligne. La corbeille le dit, le moins
-        // le laissait deviner.
-        const removesRow = count === 1;
-        // Une rando sans personne n'en est plus une : le dernier randonneur ne se
-        // supprime pas, quelle que soit sa tranche d'âge.
-        const isOnlyPassenger = removesRow && passengers.length === 1;
+      {/* Liste des randonneurs existants */}
+      {passengers.map((passenger, index) => {
+        const isFirst = index === 0;
+        const canDelete = passengers.length > 1;
+
         return (
           <Animated.View
-            key={bracket.id}
+            key={passenger.id}
             layout={REFLOW}
             entering={ENTER}
             exiting={EXIT}
-            style={styles.bracketRow}>
-            <Text style={[styles.bracketLabel, { color: theme.text }]}>{bracket.label}</Text>
+            style={[
+              styles.passengerCard,
+              {
+                backgroundColor: theme.card,
+                borderColor: theme.border,
+              },
+            ]}>
+            <View style={styles.passengerHeader}>
+              <View style={styles.passengerIdentity}>
+                <UserRound size={18} color={theme.tint} />
+                <Text style={[styles.passengerName, { color: theme.text }]}>
+                  {isFirst ? 'Randonneur 1 (Vous)' : `Randonneur ${index + 1}`}
+                </Text>
+              </View>
 
-            <View style={styles.stepper}>
-              <Pressable
-                accessibilityLabel={
-                  isOnlyPassenger
-                    ? `Retirer un randonneur ${bracket.label} (impossible, il en faut au moins un)`
-                    : removesRow
-                      ? `Supprimer les randonneurs ${bracket.label}`
-                      : `Retirer un randonneur ${bracket.label}`
-                }
-                accessibilityState={{ disabled: isOnlyPassenger }}
-                disabled={isOnlyPassenger}
-                onPress={() => changeCount(bracket.id, -1)}
-                android_ripple={
-                  isOnlyPassenger
-                    ? undefined
-                    : {
-                        color: theme.ripple,
-                        borderless: true,
-                      }
-                }
-                style={[
-                  styles.stepperButton,
-                  { backgroundColor: theme.surfaceSecondary || theme.background },
-                  isOnlyPassenger && { opacity: 0.4 },
-                ]}>
-                {/* La bascule moins/corbeille au dernier randonneur d'une tranche
-                    change de sens, un fondu évite qu'elle saute aux yeux. Pas de
-                    corbeille pour le tout dernier randonneur : elle suggérerait une
-                    suppression possible, alors que le bouton est désactivé. */}
-                {removesRow && !isOnlyPassenger ? (
-                  <Animated.View key="trash" entering={ENTER} exiting={EXIT}>
-                    <Trash2 size={16} color={theme.text} />
-                  </Animated.View>
-                ) : (
-                  <Animated.View key="minus" entering={ENTER} exiting={EXIT}>
-                    <Minus size={16} color={isOnlyPassenger ? theme.textDisabled : theme.text} />
-                  </Animated.View>
-                )}
-              </Pressable>
+              {canDelete && (
+                <Pressable
+                  accessibilityLabel={`Supprimer le randonneur ${index + 1}`}
+                  hitSlop={8}
+                  onPress={() => removePassenger(passenger.id)}
+                  android_ripple={{ color: theme.ripple, borderless: true }}>
+                  <Trash2 size={18} color={theme.tint} />
+                </Pressable>
+              )}
+            </View>
 
-              <Text style={[styles.stepperCount, { color: theme.text }]}>{count}</Text>
+            <View style={styles.passengerFields}>
+              <Select
+                label="Âge"
+                value={passenger.bracket}
+                options={AGE_BRACKETS.map((bracket) => ({
+                  value: bracket.id,
+                  label: bracket.label,
+                }))}
+                onSelect={(val) => updatePassenger(passenger.id, { bracket: val as AgeBracketId })}
+                labelBackgroundColor={theme.card}
+                containerStyle={styles.fieldItem}
+              />
 
-              <Pressable
-                accessibilityLabel={`Ajouter un randonneur ${bracket.label}`}
-                onPress={() => changeCount(bracket.id, 1)}
-                android_ripple={{
-                  color: theme.ripple,
-                  borderless: true,
-                }}
-                style={[
-                  styles.stepperButton,
-                  { backgroundColor: theme.surfaceSecondary || theme.background },
-                ]}>
-                <Plus size={16} color={theme.text} />
-              </Pressable>
+              <Select
+                label="Abonnement"
+                value={passenger.discountPass ?? DEFAULT_TRANSPORT_PASS}
+                options={TRANSPORT_PASSES.map((pass) => ({
+                  value: pass.id,
+                  label: pass.label,
+                }))}
+                onSelect={(val) => updatePassenger(passenger.id, { discountPass: val as TransportPassId })}
+                labelBackgroundColor={theme.card}
+                containerStyle={styles.fieldItem}
+              />
             </View>
           </Animated.View>
         );
       })}
 
+      {/* Formulaire d'ajout d'un nouveau randonneur */}
       {draftBracket !== null && (
         <Animated.View
           layout={REFLOW}
@@ -182,19 +164,19 @@ export default function PassengersEditor({
             style={[styles.draftHeader, { borderBottomColor: theme.borderStrong || '#989898' }]}>
             <Text style={[styles.draftTitle, { color: theme.text }]}>Nouveau randonneur</Text>
             <Pressable
-              accessibilityLabel="Supprimer ce randonneur"
+              accessibilityLabel="Annuler l'ajout"
               hitSlop={8}
               android_ripple={{
                 color: theme.ripple,
                 borderless: true,
               }}
               onPress={() => setDraftBracket(null)}>
-              <Trash2 size={24} color={theme.tint} />
+              <Trash2 size={20} color={theme.tint} />
             </Pressable>
           </View>
 
           <Select
-            label="Age du randonneur"
+            label="Âge du randonneur"
             placeholder="30 - 59 ans"
             value={draftBracket}
             options={AGE_BRACKETS.map((bracket) => ({
@@ -202,22 +184,35 @@ export default function PassengersEditor({
               label: bracket.label,
             }))}
             onSelect={(value) => setDraftBracket(value as AgeBracketId)}
-            // Le badge du label masque la bordure derrière lui : l'encart n'ayant
-            // plus de fond propre, c'est celui de l'hôte qu'il doit reprendre.
+            labelBackgroundColor={hostSurface}
+            containerStyle={styles.draftSelect}
+          />
+
+          <Select
+            label="Abonnement de transport"
+            placeholder="Sélectionner..."
+            value={draftPass}
+            options={TRANSPORT_PASSES.map((pass) => ({
+              value: pass.id,
+              label: pass.label,
+            }))}
+            onSelect={(value) => setDraftPass(value as TransportPassId)}
             labelBackgroundColor={hostSurface}
             containerStyle={styles.draftSelect}
           />
         </Animated.View>
       )}
 
-      {/* Masqué pendant la saisie : la carte « Nouveau randonneur » et ses deux
-          boutons tiennent déjà le rôle, un « Ajouter » grisé en plus embrouille. */}
+      {/* Bouton d'ajout */}
       {draftBracket === null && (
         <AnimatedPressable
           layout={REFLOW}
           entering={ENTER}
           exiting={EXIT}
-          onPress={() => setDraftBracket(DEFAULT_AGE_BRACKET)}
+          onPress={() => {
+            setDraftBracket(DEFAULT_AGE_BRACKET);
+            setDraftPass(DEFAULT_TRANSPORT_PASS);
+          }}
           android_ripple={{
             color: theme.ripple,
             borderless: false,
@@ -225,7 +220,11 @@ export default function PassengersEditor({
           }}
           style={[
             styles.addRow,
-            { borderColor: theme.borderStrong || '#989898', overflow: 'hidden' as const },
+            {
+              borderRadius: 8,
+              borderColor: theme.borderStrong || '#989898',
+              overflow: 'hidden' as const,
+            },
           ]}>
           <View style={styles.addRowContent}>
             <UserRound size={20} color={theme.textMuted} />
@@ -264,32 +263,31 @@ const styles = StyleSheet.create({
   container: {
     gap: 16,
   },
-  bracketRow: {
+  passengerCard: {
+    borderWidth: 1,
+    borderRadius: 12,
+    padding: 14,
+    gap: 12,
+  },
+  passengerHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
   },
-  bracketLabel: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 16,
-  },
-  stepper: {
+  passengerIdentity: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
   },
-  stepperButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  stepperCount: {
+  passengerName: {
     fontFamily: 'Satoshi-Bold',
-    fontSize: 16,
-    minWidth: 16,
-    textAlign: 'center',
+    fontSize: 15,
+  },
+  passengerFields: {
+    gap: 10,
+  },
+  fieldItem: {
+    marginVertical: 2,
   },
   /* Figma 653:37139 : encart sans fond, bordure pointillée `border/strong`.
      Géométrie strictement identique au bouton d'ouverture du calendrier et au

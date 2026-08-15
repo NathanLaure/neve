@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
-import { Star, Route, Heart, Train, Clock, TrendingUp } from 'lucide-react-native';
+import { Star, Route, Heart, Train, Clock, TrendingUp, Download } from 'lucide-react-native';
 import Tag from '@/components/Tag';
 
 import Colors from '@/constants/Colors';
@@ -48,6 +48,12 @@ export interface RandoCardProps {
   width?: number;
   gpxTrace?: { latitude: number; longitude: number }[];
   startStationCoords?: { latitude: number; longitude: number };
+  /** Variant of the card: default vertical, horizontal, compact, adventure-upcoming, adventure-past */
+  variant?: 'vertical' | 'horizontal' | 'compact' | 'adventure-upcoming' | 'adventure-past';
+  /** Formatted date string for adventure cards */
+  date?: string;
+  /** Formatted time/hour for adventure cards */
+  time?: string;
 }
 
 const DEFAULT_IMAGE =
@@ -78,14 +84,18 @@ function RandoCard({
   width: widthProp,
   gpxTrace,
   startStationCoords,
+  variant,
+  date,
+  time,
 }: RandoCardProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { width: windowWidth } = useWindowDimensions();
   const screenWidth = windowWidth > 0 ? windowWidth : Dimensions.get('window').width;
 
-  const { isFavorite: isFavoriteHike, toggleFavorite } = useAdventure();
+  const { isFavorite: isFavoriteHike, toggleFavorite, isSavedOffline } = useAdventure();
   const isFavorite = !!id && isFavoriteHike(id);
+  const isOffline = !!id && (isSavedOffline ? isSavedOffline(id) : false);
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const [cardImageWidth, setCardImageWidth] = useState(0);
 
@@ -184,7 +194,226 @@ function RandoCard({
     if (id) toggleFavorite(id);
   };
 
-  if (compact) {
+  if (variant === 'adventure-upcoming') {
+    const displayLocation = getHikeLocation();
+    const cleanedDeparture = departureStation
+      ? departureStation
+          .replace(/^Gare\s+(des|du|de\s+la|de\s+l'|d'|de)\s+/i, '')
+          .replace(/^Paris\s+/i, '')
+          .trim()
+      : null;
+
+    const parseEphemeride = (dateStr?: string) => {
+      if (!dateStr) return null;
+      const match = dateStr.match(/(\d+)\s+([a-zA-Zéûùà]+)/i);
+      if (match) {
+        return {
+          day: match[1],
+          month: match[2].slice(0, 4).toUpperCase(),
+        };
+      }
+      const d = new Date(dateStr);
+      if (!isNaN(d.getTime())) {
+        return {
+          day: d.getDate().toString(),
+          month: d.toLocaleDateString('fr-FR', { month: 'short' }).replace('.', '').toUpperCase(),
+        };
+      }
+      return null;
+    };
+
+    const ephemeride = parseEphemeride(date);
+
+    const upcomingItemStyle = [
+      styles.adventureUpcomingPressable,
+      {
+        borderRadius: 20,
+        overflow: 'hidden' as const,
+        backgroundColor: theme.card,
+        borderColor: theme.borderLight,
+        shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
+      },
+    ];
+
+    return (
+      <Pressable
+        onPress={() => onPress?.(id)}
+        onLongPress={
+          onLongPress
+            ? () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                onLongPress(id);
+              }
+            : undefined
+        }
+        delayLongPress={350}
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
+        style={upcomingItemStyle}>
+        <View style={styles.adventureUpcomingCard}>
+          <View style={styles.adventureUpcomingImageWrapper}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.adventureUpcomingImage}
+              resizeMode="cover"
+            />
+            {ephemeride ? (
+              <View
+                style={[
+                  styles.ephemerideBadge,
+                  {
+                    backgroundColor: theme.card,
+                    borderColor: theme.borderLight,
+                  },
+                ]}>
+                <Text style={[styles.ephemerideMonth, { color: theme.tint }]}>
+                  {ephemeride.month}
+                </Text>
+                <Text style={[styles.ephemerideDay, { color: theme.text }]}>
+                  {ephemeride.day}
+                </Text>
+              </View>
+            ) : null}
+          </View>
+          <View style={styles.adventureUpcomingContent}>
+            <View style={styles.adventureUpcomingTextGroup}>
+              <Text
+                style={[styles.adventureUpcomingTitle, { color: theme.text }]}
+                numberOfLines={2}
+                ellipsizeMode="tail">
+                {title}
+              </Text>
+              <Text
+                style={[styles.adventureUpcomingLocation, { color: theme.textMuted }]}
+                numberOfLines={1}>
+                {displayLocation}
+              </Text>
+            </View>
+            {cleanedDeparture ? (
+              <View style={styles.adventureUpcomingDepartureRow}>
+                <Text style={[styles.adventureUpcomingDepartureText, { color: theme.textMuted }]}>
+                  Départ de{' '}
+                  <Text style={[styles.adventureUpcomingDepartureBold, { color: theme.text }]}>
+                    {cleanedDeparture}
+                  </Text>
+                </Text>
+              </View>
+            ) : null}
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
+
+  if (variant === 'adventure-past') {
+    const gainMatch = elevation?.match(/\+(\d+)/);
+    const gainText = gainMatch ? `${gainMatch[1]} m` : elevation || null;
+    const displayTime = time || duration || trainDuration || null;
+    const displayDistance = distance || null;
+    const displayLocation = getHikeLocation();
+    const displayDate = date || 'Date passée';
+
+    const pastItemStyle = [
+      styles.adventurePastPressable,
+      {
+        borderRadius: 20,
+        overflow: 'hidden' as const,
+        backgroundColor: theme.card,
+        borderColor: theme.borderLight,
+        shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
+      },
+    ];
+
+    return (
+      <Pressable
+        onPress={() => onPress?.(id)}
+        onLongPress={
+          onLongPress
+            ? () => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                onLongPress(id);
+              }
+            : undefined
+        }
+        delayLongPress={350}
+        android_ripple={{
+          color: theme.ripple,
+          borderless: false,
+          foreground: true,
+        }}
+        style={pastItemStyle}>
+        <View style={styles.adventurePastCard}>
+          <Image
+            source={{ uri: imageUrl }}
+            style={[styles.adventurePastImage, { borderColor: theme.borderLight }]}
+            resizeMode="cover"
+          />
+          <View style={styles.adventurePastContent}>
+            <Text
+              style={[styles.adventurePastTitle, { color: theme.text }]}
+              numberOfLines={1}
+              ellipsizeMode="tail">
+              {title}
+            </Text>
+
+            <View style={styles.adventurePastMetricsRow}>
+              {displayTime ? (
+                <View style={styles.adventurePastMetricItem}>
+                  <Clock size={12} color={theme.textMuted} />
+                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                    {displayTime}
+                  </Text>
+                </View>
+              ) : null}
+
+              {displayTime && displayDistance ? (
+                <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
+              ) : null}
+
+              {displayDistance ? (
+                <View style={styles.adventurePastMetricItem}>
+                  <Route size={12} color={theme.textMuted} />
+                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                    {displayDistance}
+                  </Text>
+                </View>
+              ) : null}
+
+              {(displayTime || displayDistance) && gainText ? (
+                <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
+              ) : null}
+
+              {gainText ? (
+                <View style={styles.adventurePastMetricItem}>
+                  <TrendingUp size={12} color={theme.textMuted} />
+                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                    {gainText}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+
+            <View style={styles.adventurePastSubRow}>
+              <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>
+                {displayDate}
+              </Text>
+              <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>·</Text>
+              <Text
+                style={[styles.adventurePastSubText, { color: theme.textMuted, flexShrink: 1 }]}
+                numberOfLines={1}>
+                {displayLocation}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </Pressable>
+    );
+  }
+
+  if (compact || variant === 'compact') {
     const difficultyStatut = difficulty === 'Facile' ? 'Success' : difficulty === 'Difficile' ? 'Error' : 'Warning';
     const gainMatch = elevation?.match(/\+(\d+)/);
     const gainText = gainMatch ? `${gainMatch[1]} m` : null;
@@ -234,9 +463,16 @@ function RandoCard({
           </View>
 
           <View style={styles.compactContent}>
-            <Text style={[styles.compactTitle, { color: theme.text }]} numberOfLines={2}>
-              {title}
-            </Text>
+            <View style={styles.compactHeaderRow}>
+              <Text style={[styles.compactTitle, { color: theme.text }]} numberOfLines={2}>
+                {title}
+              </Text>
+              {isOffline && (
+                <View style={styles.compactOfflineBadge}>
+                  <Download size={16} color={theme.textMuted} />
+                </View>
+              )}
+            </View>
             <View style={styles.compactMetaRow}>
               {duration ? (
                 <>
@@ -289,7 +525,9 @@ function RandoCard({
             styles.horizontalCard,
             {
               width: cardWidth,
-              backgroundColor: theme.background,
+              borderColor: theme.card,
+              borderWidth: 4,
+              backgroundColor: theme.card,
               shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
             },
           ]}>
@@ -624,11 +862,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 5,
   },
+  compactHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
   compactTitle: {
     fontFamily: 'BricolageGrotesque',
     fontSize: 18,
     fontWeight: '600',
     lineHeight: 22,
+    flex: 1,
+  },
+  compactOfflineBadge: {
+    paddingTop: 3,
+    paddingLeft: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   compactMetaRow: {
     flexDirection: 'row',
@@ -651,8 +902,9 @@ const styles = StyleSheet.create({
     height: '100%',
   },
   contentContainer: {
-    paddingBottom: 8,
+    paddingBottom: 16,
     paddingTop: 20,
+    paddingHorizontal: 12,
     width: '100%',
   },
   headerRow: {
@@ -732,14 +984,18 @@ const styles = StyleSheet.create({
   },
   horizontalImageContainer: {
     position: 'relative',
-    width: 88,
+    width: 100,
     height: 120,
   },
   horizontalImage: {
-    width: 88,
-    height: 120,
-    borderTopLeftRadius: 20,
-    borderBottomLeftRadius: 20,
+    width: 100,
+    // Pas de hauteur fixe : la carte fait 120 bordures comprises (border-box), donc
+    // son intérieur n'en fait que 112. Une image de 120 débordait de 8 px, rognés
+    // par l'`overflow: 'hidden'` — l'arrondi bas-droit était tranché avant la fin
+    // de sa courbe et paraissait presque carré, quand le bas-gauche était sauvé
+    // par le rayon intérieur de la carte (20 − 4 = 16).
+    alignSelf: 'stretch',
+    borderRadius: 16,
   },
   horizontalMiniMapContainer: {
     position: 'absolute',
@@ -830,6 +1086,184 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi-medium',
     fontSize: 16,
     fontWeight: '600',
+  },
+  adventureUpcomingPressable: {
+    width: '100%',
+    marginBottom: 12,
+    borderWidth: 1,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  adventureUpcomingCard: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    minHeight: 126,
+    padding: 4,
+    paddingRight: 12,
+    gap: 14,
+  },
+  adventureUpcomingImageWrapper: {
+    position: 'relative',
+    aspectRatio: 1,
+    minWidth: 118,
+    minHeight: 118,
+    alignSelf: 'stretch',
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  adventureUpcomingImage: {
+    width: '100%',
+    height: '100%',
+  },
+  ephemerideBadge: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    minWidth: 38,
+    paddingVertical: 4,
+    paddingHorizontal: 6,
+    borderRadius: 9,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.14,
+        shadowRadius: 3,
+      },
+      android: {
+        elevation: 3,
+      },
+    }),
+  },
+  ephemerideMonth: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 9,
+    lineHeight: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  ephemerideDay: {
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: '700',
+    fontSize: 16,
+    lineHeight: 18,
+  },
+  adventureUpcomingContent: {
+    flex: 1,
+    paddingVertical: 12,
+    gap: 6,
+    justifyContent: 'space-between',
+  },
+  adventureUpcomingTextGroup: {
+    gap: 4,
+  },
+  adventureUpcomingTitle: {
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: '600',
+    fontSize: 20,
+    lineHeight: 26,
+    letterSpacing: -0.5,
+  },
+  adventureUpcomingLocation: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 12,
+    lineHeight: 15,
+  },
+  adventureUpcomingDepartureRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  adventureUpcomingDepartureText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  adventureUpcomingDepartureBold: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
+    lineHeight: 18,
+  },
+  adventurePastPressable: {
+    width: '100%',
+    marginBottom: 12,
+    borderWidth: 1,
+    ...Platform.select({
+      ios: {
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.04,
+        shadowRadius: 4,
+      },
+      android: {
+        elevation: 1.5,
+      },
+    }),
+  },
+  adventurePastCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingRight: 12,
+    paddingVertical: 4,
+    paddingLeft: 4,
+    gap: 10,
+  },
+  adventurePastImage: {
+    width: 86,
+    height: 86,
+    borderRadius: 18,
+    borderWidth: 1,
+  },
+  adventurePastContent: {
+    flex: 1,
+    paddingVertical: 6,
+    gap: 5,
+    justifyContent: 'center',
+  },
+  adventurePastTitle: {
+    fontFamily: 'BricolageGrotesque',
+    fontWeight: '600',
+    fontSize: 16,
+    lineHeight: 18,
+  },
+  adventurePastMetricsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  adventurePastMetricItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  adventurePastMetricBold: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  adventurePastSeparator: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 11,
+    lineHeight: 14,
+  },
+  adventurePastSubRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  adventurePastSubText: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 10,
+    lineHeight: 13,
   },
 });
 

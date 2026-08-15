@@ -5,7 +5,6 @@ import {
   View,
   ScrollView,
   Pressable,
-  Linking,
   ActivityIndicator,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
@@ -24,33 +23,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
 import { useAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS } from '@/constants/RandosData';
-
-const TRAINLINE_URNS: Record<string, string> = {
-  'Paris Gare de Lyon': 'urn:trainline:generic:loc:4924',
-  'Paris Montparnasse': 'urn:trainline:generic:loc:4920',
-  'Paris Est': 'urn:trainline:generic:loc:4919',
-  'Gare de Rambouillet': 'urn:trainline:generic:loc:5817',
-  'Gare de Fontainebleau-Avon': 'urn:trainline:generic:loc:187',
-  'Gare de Melun': 'urn:trainline:generic:loc:4737',
-  Paris: 'urn:trainline:generic:loc:4916',
-};
-
-const getStationUrn = (name: string): string => {
-  const normalized = name.trim();
-  if (TRAINLINE_URNS[normalized]) {
-    return TRAINLINE_URNS[normalized];
-  }
-  const match = Object.keys(TRAINLINE_URNS).find(
-    (k) => k.toLowerCase() === normalized.toLowerCase()
-  );
-  if (match) {
-    return TRAINLINE_URNS[match];
-  }
-  if (normalized.toLowerCase().includes('paris')) {
-    return TRAINLINE_URNS['Paris'];
-  }
-  return 'urn:trainline:generic:loc:4916';
-};
+import { buildTrainlineSearchUrl, openBookingProvider } from '@/services/bookingService';
 
 export default function RecapScreen() {
   const { adventureId } = useLocalSearchParams();
@@ -129,40 +102,21 @@ export default function RecapScreen() {
     setRedirectProvider('trainline');
     setIsRedirecting(true);
 
-    const originUrn = getStationUrn(adventure.departureStationName);
-    const destinationUrn = getStationUrn(rando.startStation);
-
-    const outTime = adventure.outwardTrain.time;
-    const inTime = adventure.returnTrain.time;
-
-    const queryParams = new URLSearchParams({
-      journeySearchType: 'return',
-      origin: originUrn,
-      destination: destinationUrn,
-      outwardDate: `${adventure.outwardDate}T${outTime}:00`,
-      outwardDateType: 'departAfter',
-      inwardDate: `${adventure.returnDate}T${inTime}:00`,
-      inwardDateType: 'departAfter',
-      selectedTab: 'train',
-      splitSave: 'true',
-      lang: 'fr',
+    const trainlineUrl = buildTrainlineSearchUrl({
+      originName: adventure.departureStationName,
+      destinationName: rando.startStation,
+      outwardDate: adventure.outwardDate,
+      outwardTime: adventure.outwardTrain.time,
+      returnDate: adventure.returnDate,
+      returnTime: adventure.returnTrain.time,
     });
-
-    const trainlineUrl = `https://www.thetrainline.com/book/results?${queryParams.toString()}&transportModes%5B%5D=mixed`;
 
     // Mark as booked in our local state
     updateAdventure(adventure.id, { isBooked: true });
 
     setTimeout(async () => {
-      try {
-        await Linking.openURL(trainlineUrl);
-      } catch (err) {
-        console.warn('Error opening deep link:', err);
-        // Fallback
-        await Linking.openURL(`https://www.thetrainline.com/`);
-      } finally {
-        setIsRedirecting(false);
-      }
+      await openBookingProvider('trainline', trainlineUrl);
+      setIsRedirecting(false);
     }, 1200); // Small delay to show redirect screen
   };
 
@@ -170,28 +124,12 @@ export default function RecapScreen() {
     setRedirectProvider(provider);
     setIsRedirecting(true);
 
-    const appUrl = provider === 'sncf' ? 'sncfconnect://' : 'idfmobilites://';
-    const webUrl =
-      provider === 'sncf'
-        ? 'https://www.sncf-connect.com/'
-        : 'https://www.iledefrance-mobilites.fr/';
-
     // Mark as booked in our local state
     updateAdventure(adventure.id, { isBooked: true });
 
     setTimeout(async () => {
-      try {
-        await Linking.openURL(appUrl);
-      } catch {
-        // Fallback to web URL
-        try {
-          await Linking.openURL(webUrl);
-        } catch (webErr) {
-          console.warn('Failed to open web URL:', webErr);
-        }
-      } finally {
-        setIsRedirecting(false);
-      }
+      await openBookingProvider(provider === 'sncf' ? 'sncf' : 'idfm');
+      setIsRedirecting(false);
     }, 1200);
   };
 

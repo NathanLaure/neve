@@ -2,8 +2,8 @@ import React, { forwardRef } from 'react';
 import {
   StyleSheet,
   Text,
-  Pressable,
-  PressableProps,
+  TouchableOpacity,
+  TouchableOpacityProps,
   View,
   TextStyle,
   ActivityIndicator,
@@ -12,7 +12,7 @@ import {
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 
-export interface ButtonProps extends Omit<PressableProps, 'style'> {
+export interface ButtonProps extends TouchableOpacityProps {
   title?: string;
   variant?: 'primary' | 'secondary' | 'tertiary' | 'social' | 'text' | 'transparent' | 'icon' | 'outlined';
   shape?: 'default' | 'round';
@@ -39,6 +39,7 @@ export const Button = forwardRef<View, ButtonProps>(
       textStyle,
       disabled,
       colorScheme: customColorScheme,
+      onPress,
       ...touchableProps
     },
     ref
@@ -57,16 +58,6 @@ export const Button = forwardRef<View, ButtonProps>(
       return theme.text;
     };
 
-    const getRippleColor = () => {
-      if (variant === 'primary' || variant === 'tertiary') {
-        return theme.rippleOnBrand;
-      }
-      if (variant === 'secondary') {
-        return activeColorScheme === 'dark' ? 'rgba(0, 0, 0, 0.15)' : theme.rippleOnBrand;
-      }
-      return theme.ripple;
-    };
-
     const renderIcon = () => {
       if (!icon) return null;
       if (React.isValidElement(icon)) {
@@ -81,23 +72,16 @@ export const Button = forwardRef<View, ButtonProps>(
       defaultStyles.button,
       isIconOnlyMode && defaultStyles.iconOnlyContainer,
       variantStyles.button,
-      { overflow: 'hidden' as const },
       style,
     ];
 
     return (
-      <Pressable
+      <TouchableOpacity
         ref={ref}
         disabled={disabled || loading}
-        android_ripple={
-          disabled || loading
-            ? undefined
-            : {
-                color: getRippleColor(),
-                borderless: false,
-                foreground: true,
-              }
-        }
+        activeOpacity={0.8}
+        delayPressIn={0}
+        onPress={disabled || loading ? undefined : onPress}
         hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
         style={buttonStyle}
         {...touchableProps}>
@@ -106,12 +90,16 @@ export const Button = forwardRef<View, ButtonProps>(
         ) : isIconOnlyMode ? (
           <View style={defaultStyles.centeredIconWrapper}>{renderIcon()}</View>
         ) : (
-          <>
-            {icon && <View style={defaultStyles.iconWrapper}>{renderIcon()}</View>}
-            {title ? <Text style={[variantStyles.text, textStyle]}>{title}</Text> : null}
-          </>
+          <View style={defaultStyles.contentRow}>
+            {icon ? <View style={defaultStyles.iconWrapper}>{renderIcon()}</View> : null}
+            {title ? (
+              <Text style={[variantStyles.text, textStyle]}>
+                {title}
+              </Text>
+            ) : null}
+          </View>
         )}
-      </Pressable>
+      </TouchableOpacity>
     );
   }
 );
@@ -149,9 +137,9 @@ const getButtonStyles = (
       },
       text: {
         color: theme.buttonTextDisabled || '#7C7C7C',
-        fontFamily: 'BricolageGrotesque-Medium',
+        fontFamily: 'Satoshi-Bold',
         fontSize: variant === 'tertiary' || size === 'small' ? 14 : 16,
-        fontWeight: '600' as const,
+        includeFontPadding: false,
       },
     };
   }
@@ -164,13 +152,12 @@ const getButtonStyles = (
           height: size === 'small' ? 36 : 48,
           borderRadius,
           paddingHorizontal: size === 'small' ? 16 : 24,
-          paddingVertical: size === 'small' ? 8 : 12,
         },
         text: {
           color: theme.buttonTextOnBrand || '#FFFFFF',
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: size === 'small' ? 14 : 16,
-          fontWeight: '600' as const,
+          includeFontPadding: false,
         },
       };
 
@@ -181,13 +168,12 @@ const getButtonStyles = (
           height: size === 'small' ? 36 : 48,
           borderRadius,
           paddingHorizontal: size === 'small' ? 16 : 24,
-          paddingVertical: size === 'small' ? 8 : 12,
         },
         text: {
           color: theme.buttonSecondaryText || '#111111',
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: size === 'small' ? 14 : 16,
-          fontWeight: '600' as const,
+          includeFontPadding: false,
         },
       };
 
@@ -200,13 +186,12 @@ const getButtonStyles = (
           height: size === 'small' ? 36 : 48,
           borderRadius,
           paddingHorizontal: size === 'small' ? 16 : 24,
-          paddingVertical: size === 'small' ? 8 : 12,
         },
         text: {
           color: theme.text,
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: size === 'small' ? 14 : 16,
-          fontWeight: '600' as const,
+          includeFontPadding: false,
         },
       };
 
@@ -217,13 +202,12 @@ const getButtonStyles = (
           borderRadius,
           height: size === 'small' ? 32 : 40,
           paddingHorizontal: size === 'small' ? 12 : 16,
-          paddingVertical: size === 'small' ? 6 : 8,
         },
         text: {
           color: theme.buttonTextOnBrand || '#FFFFFF',
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: 14,
-          fontWeight: '500' as const,
+          includeFontPadding: false,
         },
       };
 
@@ -242,6 +226,7 @@ const getButtonStyles = (
         text: {
           color: theme.text,
           fontSize: 14,
+          includeFontPadding: false,
         },
       };
 
@@ -254,13 +239,12 @@ const getButtonStyles = (
           borderRadius,
           height: 48,
           paddingHorizontal: 16,
-          paddingVertical: 10,
         },
         text: {
           color: theme.text,
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: 14,
-          fontWeight: '500' as const,
+          includeFontPadding: false,
         },
       };
 
@@ -273,13 +257,12 @@ const getButtonStyles = (
           height: size === 'small' ? 36 : 48,
           borderRadius,
           paddingHorizontal: size === 'small' ? 16 : 24,
-          paddingVertical: size === 'small' ? 8 : 12,
         },
         text: {
           color: theme.text || '#FFFFFF',
-          fontFamily: 'BricolageGrotesque-Medium',
+          fontFamily: 'Satoshi-Bold',
           fontSize: size === 'small' ? 14 : 16,
-          fontWeight: '600' as const,
+          includeFontPadding: false,
         },
       };
   }
@@ -287,6 +270,11 @@ const getButtonStyles = (
 
 const defaultStyles = StyleSheet.create({
   button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  contentRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',

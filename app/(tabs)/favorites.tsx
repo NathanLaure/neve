@@ -21,6 +21,7 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import RandoCard from '@/components/RandoCard';
 import Chip from '@/components/Chip';
+import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
 import { Input } from '@/components/Input';
 import ItemButton from '@/components/ItemButton';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
@@ -102,6 +103,7 @@ export default function FavoritesScreen() {
     refreshFavorites,
     toggleFavorite,
     getTransitInfo,
+    offlineHikeIds,
   } = useAdventure();
 
   // Search & Filter States
@@ -130,10 +132,10 @@ export default function FavoritesScreen() {
     [hikes, favoriteHikeIds]
   );
 
-  // Number of favorite hikes stored offline (having GPX trace / details loaded)
+  // Real number of favorite hikes stored offline on the device
   const offlineCount = useMemo(() => {
-    return favoriteHikes.filter((h) => Boolean(h.hasFullDetail || (h.gpxTrace && h.gpxTrace.length > 0))).length;
-  }, [favoriteHikes]);
+    return favoriteHikes.filter((h) => offlineHikeIds.has(h.id)).length;
+  }, [favoriteHikes, offlineHikeIds]);
 
   // Helper filter function for custom criteria overrides (used for sheet counts)
   const filterAndSortHikes = useCallback(
@@ -165,7 +167,7 @@ export default function FavoritesScreen() {
 
         // Offline filter
         if (activeOffline) {
-          const isOffline = Boolean(h.hasFullDetail || (h.gpxTrace && h.gpxTrace.length > 0));
+          const isOffline = offlineHikeIds.has(h.id);
           if (!isOffline) return false;
         }
 
@@ -298,22 +300,27 @@ export default function FavoritesScreen() {
   const renderItem = ({ item }: { item: RandoData }) => {
     const transitInfo = getTransitInfo(item);
     return (
-      <RandoCard
-        compact
-        id={item.id}
-        title={item.title}
-        distance={item.distance}
-        trainDuration={transitInfo.durationText}
-        difficulty={item.difficulty}
-        elevation={item.elevation}
-        onPress={handleSelectHike}
-        onLongPress={handleLongPressHike}
-        location={item.location}
-        gpxTrace={item.gpxTrace}
-        startStationCoords={item.startStationCoords}
-        duration={formatHikeDuration(item.durationHours)}
-        savedAt={favoriteSavedAt.get(item.id)}
-      />
+      <Reanimated.View
+        entering={FadeIn.duration(220)}
+        exiting={FadeOut.duration(150)}
+        layout={LinearTransition.duration(200)}>
+        <RandoCard
+          compact
+          id={item.id}
+          title={item.title}
+          distance={item.distance}
+          trainDuration={transitInfo.durationText}
+          difficulty={item.difficulty}
+          elevation={item.elevation}
+          onPress={handleSelectHike}
+          onLongPress={handleLongPressHike}
+          location={item.location}
+          gpxTrace={item.gpxTrace}
+          startStationCoords={item.startStationCoords}
+          duration={formatHikeDuration(item.durationHours)}
+          savedAt={favoriteSavedAt.get(item.id)}
+        />
+      </Reanimated.View>
     );
   };
 

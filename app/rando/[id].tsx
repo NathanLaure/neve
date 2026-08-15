@@ -92,12 +92,14 @@ export default function RandoDetailScreen() {
     isLoadingHikes,
     isFavorite: isFavoriteHike,
     toggleFavorite,
+    isSavedOffline,
+    toggleOffline,
   } = useAdventure();
   const isFavorite = !!id && isFavoriteHike(String(id));
+  const isOffline = !!id && isSavedOffline(String(id));
 
   // Local interactive states
   const [refreshing, setRefreshing] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
   const [isMapModalVisible, setIsMapModalVisible] = useState(false);
   const [hasOpenedMapModal, setHasOpenedMapModal] = useState(false);
   const [fullMapStyle, setFullMapStyle] = useState<MapStyleType>('default');
@@ -649,8 +651,10 @@ export default function RandoDetailScreen() {
             title="Conserver hors ligne"
             icon={<Download size={24} color={theme.text} />}
             value={isOffline}
-            onValueChange={(val: boolean) => {
-              setIsOffline(val);
+            onValueChange={async (val: boolean) => {
+              if (id) {
+                await toggleOffline(String(id), val);
+              }
               if (val) {
                 Toast.show({
                   type: 'success',
@@ -901,22 +905,23 @@ export default function RandoDetailScreen() {
           <ItemButton
             icon={isOffline ? <Trash2 size={20} color={theme.text} /> : <Download size={20} color={theme.text} />}
             label={isOffline ? 'Supprimer la sauvegarde locale' : 'Rendre disponible hors connexion'}
-            onPress={() => {
+            onPress={async () => {
               actionsSheetRef.current?.dismiss();
-              const nextState = !isOffline;
-              setIsOffline(nextState);
-              if (nextState) {
-                Toast.show({
-                  type: 'success',
-                  text1: 'Enregistrée hors ligne',
-                  text2: 'Randonnée et tracé GPX disponibles sans connexion.',
-                });
-              } else {
-                Toast.show({
-                  type: 'info',
-                  text1: 'Sauvegarde supprimée',
-                  text2: 'La randonnée a été retirée de votre stockage local.',
-                });
+              if (id) {
+                const nextState = await toggleOffline(String(id));
+                if (nextState) {
+                  Toast.show({
+                    type: 'success',
+                    text1: 'Enregistrée hors ligne',
+                    text2: 'Randonnée et tracé GPX disponibles sans connexion.',
+                  });
+                } else {
+                  Toast.show({
+                    type: 'info',
+                    text1: 'Sauvegarde supprimée',
+                    text2: 'La randonnée a été retirée de votre stockage local.',
+                  });
+                }
               }
             }}
           />

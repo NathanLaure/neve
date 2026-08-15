@@ -67,6 +67,27 @@ export function Select({
 
   return (
     <View style={[styles.wrapper, containerStyle]}>
+      {/* Floating Label Badge — placé en dehors du Pressable (overflow: hidden) pour ne pas être rogné */}
+      {label ? (
+        <View
+          pointerEvents="none"
+          style={[
+            styles.floatingLabelBadge,
+            { backgroundColor: labelBackgroundColor ?? theme.card },
+          ]}>
+          <Text
+            style={[
+              styles.floatingLabelText,
+              {
+                color: labelColor,
+                fontFamily: selectedOption ? 'Satoshi-Bold' : 'Satoshi-Medium',
+              },
+            ]}>
+            {label}
+          </Text>
+        </View>
+      ) : null}
+
       {/* Trigger Box */}
       <Pressable
         onPress={() => {
@@ -84,28 +105,10 @@ export function Select({
             backgroundColor: 'transparent',
             borderColor,
             borderWidth: 1.5,
+            borderRadius: 12,
             overflow: 'hidden' as const,
           },
         ]}>
-        {label ? (
-          <View
-            style={[
-              styles.floatingLabelBadge,
-              { backgroundColor: labelBackgroundColor ?? theme.card },
-            ]}>
-            <Text
-              style={[
-                styles.floatingLabelText,
-                {
-                  color: labelColor,
-                  fontFamily: selectedOption ? 'Satoshi-Bold' : 'Satoshi-Medium',
-                },
-              ]}>
-              {label}
-            </Text>
-          </View>
-        ) : null}
-
         <Text
           style={[
             styles.valueText,

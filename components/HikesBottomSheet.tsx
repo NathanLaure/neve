@@ -20,6 +20,9 @@ import Animated, {
   useSharedValue,
   interpolate,
   withTiming,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
 } from 'react-native-reanimated';
 
 import Colors from '@/constants/Colors';
@@ -256,7 +259,11 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     ({ item }: { item: RandoData }) => {
       const transitInfo = getTransitInfo(item);
       return (
-        <View style={{ paddingHorizontal: 24 }}>
+        <Animated.View
+          entering={FadeIn.duration(220)}
+          exiting={FadeOut.duration(150)}
+          layout={LinearTransition.duration(200)}
+          style={{ paddingHorizontal: 24 }}>
           <RandoCard
             id={item.id}
             title={item.title}
@@ -276,7 +283,7 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
             startStationCoords={item.startStationCoords}
             duration={formatHikeDuration(item.durationHours)}
           />
-        </View>
+        </Animated.View>
       );
     },
     [getTransitInfo, onSelectHike]

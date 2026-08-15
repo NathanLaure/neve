@@ -59,8 +59,6 @@ export default function Chip({
     : theme.text;
 
   const hasBadge = badgeCount != null && badgeCount > 0;
-  const overflow = badgePosition === 'chip-corner' ? 'visible' : 'hidden';
-
   const chipStyle = [
     styles.container,
     {
@@ -71,19 +69,25 @@ export default function Chip({
       borderColor: defaultBorderColor,
       borderWidth: defaultBorderWidth,
       opacity: disabled ? 0.4 : 1,
-      overflow,
+      overflow: 'hidden' as const,
     },
     style,
+    { overflow: 'hidden' as const },
   ];
 
   return (
     <Pressable
       disabled={disabled}
       onPress={onPress}
-      android_ripple={{
-        color: theme.ripple,
-        borderless: false,
-      }}
+      android_ripple={
+        disabled
+          ? undefined
+          : {
+              color: theme.ripple,
+              borderless: false,
+              foreground: true,
+            }
+      }
       style={chipStyle}>
       {icon && (
         <View style={styles.iconWrapper}>
@@ -134,6 +138,8 @@ const styles = StyleSheet.create({
     position: 'relative',
     borderWidth: 1,
     borderStyle: 'solid',
+    borderRadius: 12,
+    overflow: 'hidden',
     gap: 6,
   },
   iconWrapper: {

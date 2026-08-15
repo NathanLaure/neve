@@ -53,6 +53,10 @@ export interface RandoData {
   pointsOfInterest?: string[];
   galleryUrls?: string[];
   routeType?: 'boucle' | 'aller_retour' | 'point_a_point';
+  /** Note moyenne sur 5 (`hikes.rating_avg`). Nulle tant que personne n'a noté. */
+  ratingAvg?: number | null;
+  /** Nombre d'avis derrière la moyenne (`hikes.rating_count`). */
+  ratingCount?: number | null;
   /** False when only lightweight list data has been fetched (e.g. gpxTrace/description not loaded yet). */
   hasFullDetail?: boolean;
 }

@@ -1,22 +1,26 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { addDays, toISODate } from '@/components/plan/DateRangeCalendar';
-import { fetchTransitHorizon } from '@/services/transitService';
+import { fetchTransitHorizon, TransitOption } from '@/services/transitService';
 
 export type TripType = 'round' | 'oneway';
 
 /**
- * Choix de dates en cours de planification.
+ * Choix en cours de planification, partagés par les écrans du parcours.
  *
- * Il vit ici et non dans l'écran de planification parce que le calendrier est une
- * route à part, présentée en modale : deux écrans frères dans la même pile, sans
- * autre parent commun que la racine. Les faire dialoguer par paramètres d'URL
- * imposerait un effet de synchronisation dans les deux sens — c'est exactement ce
- * transport manuel d'état qui avait fait perdre le lieu de retour et la date de
- * retour entre la planification et les écrans aller/retour.
+ * Ils vivent ici et non dans l'écran de planification parce que le calendrier est
+ * une route à part, présentée en modale : deux écrans frères dans la même pile,
+ * sans autre parent commun que la racine. Les faire dialoguer par paramètres
+ * d'URL imposerait un effet de synchronisation dans les deux sens — c'est
+ * exactement ce transport manuel d'état qui avait fait perdre le lieu de retour et
+ * la date de retour entre la planification et les écrans aller/retour.
  *
- * Volontairement limité aux dates pour l'instant. Le point de départ, le lieu de
- * retour et le sens de parcours pourront le rejoindre : la structure s'y prête.
+ * Les itinéraires retenus l'ont rejoint pour une autre raison : un `TransitOption`
+ * porte tous ses tronçons et leurs perturbations, soit plusieurs kilo-octets que
+ * l'écran de résumé doit afficher intégralement. Les faire transiter en JSON dans
+ * l'URL les rendrait illisibles et fragiles. Le reste du contexte (point de
+ * départ, lieu de retour, sens de parcours, voyageurs) continue de passer par
+ * paramètres : ce sont des scalaires, ils y sont à leur place.
  */
 export interface PlanDraft {
   /** `YYYY-MM-DD`. `null` tant que l'utilisateur n'a pas sélectionné de date. */
@@ -33,12 +37,47 @@ export interface PlanDraft {
   outwardTime: string;
   /** Les dates ont été confirmées dans la modale : la suite du formulaire s'ouvre. */
   datesValidated: boolean;
+  /** Itinéraire d'aller retenu sur `/plan/outward`. */
+  outwardJourney: TransitOption | null;
+  /** Itinéraire de retour retenu sur `/plan/return`. Nul en aller simple. */
+  returnJourney: TransitOption | null;
+  /**
+   * Les horaires retenus viennent du calculateur et non de l'estimation locale.
+   * Enregistré avec l'aventure : sans lui, une estimation de repli s'y figerait
+   * en horaire ferme.
+   */
+  outwardIsRealtime: boolean;
+  returnIsRealtime: boolean;
+  /**
+   * Aventure déjà enregistrée depuis le résumé de ce parcours.
+   *
+   * Elle ne peut pas vivre dans l'écran de résumé : revenir modifier l'aller le
+   * démonte, et le résumé suivant en rouvrirait un neuf — qui enregistrerait une
+   * deuxième aventure au lieu de corriger la première.
+   */
+  savedAdventureId: string | null;
 }
+
+/** Les seuls champs que la modale des dates a la charge de poser. */
+export type PlanDates = Pick<
+  PlanDraft,
+  'startDate' | 'endDate' | 'tripType' | 'hasCustomReturn' | 'outwardTime'
+>;
 
 interface PlanDraftContextValue {
   draft: PlanDraft;
   /** Enregistre un choix de dates et le marque comme confirmé. */
-  commitDates: (dates: Omit<PlanDraft, 'datesValidated'>) => void;
+  commitDates: (dates: PlanDates) => void;
+  /**
+   * Retient l'itinéraire d'aller choisi. Le retour déjà retenu est effacé :
+   * revenir modifier l'aller change l'heure à laquelle le retour est possible,
+   * le précédent n'a plus de raison d'être proposé au résumé.
+   */
+  selectOutwardJourney: (journey: TransitOption, isRealtime: boolean) => void;
+  /** Retient l'itinéraire de retour choisi. */
+  selectReturnJourney: (journey: TransitOption, isRealtime: boolean) => void;
+  /** Note l'aventure enregistrée, pour que le résumé la corrige au lieu d'en créer une autre. */
+  setSavedAdventureId: (id: string) => void;
   /**
    * Réajuste la seule heure d'aller, sans repasser par la modale : l'écran de
    * résultats la propose pendant qu'on parcourt la liste des trains.
@@ -68,6 +107,11 @@ function createEmptyDraft(): PlanDraft {
     hasCustomReturn: false,
     outwardTime: DEFAULT_OUTWARD_TIME,
     datesValidated: false,
+    outwardJourney: null,
+    returnJourney: null,
+    outwardIsRealtime: false,
+    returnIsRealtime: false,
+    savedAdventureId: null,
   };
 }
 
@@ -89,8 +133,33 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  const commitDates = useCallback((dates: Omit<PlanDraft, 'datesValidated'>) => {
-    setDraft({ ...dates, datesValidated: true });
+  const commitDates = useCallback((dates: PlanDates) => {
+    // Changer les dates invalide les itinéraires déjà retenus : ils portent des
+    // horaires calculés pour l'ancienne journée.
+    setDraft((current) => ({
+      ...current,
+      ...dates,
+      datesValidated: true,
+      outwardJourney: null,
+      returnJourney: null,
+    }));
+  }, []);
+
+  const selectOutwardJourney = useCallback((journey: TransitOption, isRealtime: boolean) => {
+    setDraft((current) => ({
+      ...current,
+      outwardJourney: journey,
+      outwardIsRealtime: isRealtime,
+      returnJourney: null,
+    }));
+  }, []);
+
+  const selectReturnJourney = useCallback((journey: TransitOption, isRealtime: boolean) => {
+    setDraft((current) => ({ ...current, returnJourney: journey, returnIsRealtime: isRealtime }));
+  }, []);
+
+  const setSavedAdventureId = useCallback((savedAdventureId: string) => {
+    setDraft((current) => ({ ...current, savedAdventureId }));
   }, []);
 
   const setOutwardTime = useCallback((outwardTime: string) => {
@@ -105,11 +174,23 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
     () => ({
       draft,
       commitDates,
+      selectOutwardJourney,
+      selectReturnJourney,
+      setSavedAdventureId,
       setOutwardTime,
       resetDraft,
       horizon,
     }),
-    [draft, commitDates, setOutwardTime, resetDraft, horizon]
+    [
+      draft,
+      commitDates,
+      selectOutwardJourney,
+      selectReturnJourney,
+      setSavedAdventureId,
+      setOutwardTime,
+      resetDraft,
+      horizon,
+    ]
   );
 
   return <PlanDraftContext.Provider value={value}>{children}</PlanDraftContext.Provider>;

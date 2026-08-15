@@ -68,6 +68,7 @@ import {
 import {
   calculateCo2Impact,
   fetchTransitOptions,
+  isRealSource,
   toTrainOption,
   TimeMode,
   TransitOption,
@@ -108,11 +109,6 @@ interface DeparturePoint {
   name: string;
   latitude: number;
   longitude: number;
-}
-
-/** `cache` reste de la vraie donnée IDFM, seul `fallback` est une estimation. */
-function isRealSource(source: TransitSource): boolean {
-  return source !== 'fallback';
 }
 
 interface TransitOptionsListProps {
@@ -378,14 +374,14 @@ export default function PlanScreen() {
    * changement de rando ci-dessus ne couvrait pas.
    *
    * Le nettoyage est branché sur le DÉMONTAGE et non sur la perte de focus.
-   * Pousser `/plan/dates`, `/plan/outward` ou `/plan/return` empile par-dessus cet
-   * écran sans le démonter : un reset au blur effacerait les dates en plein milieu
-   * du parcours, au moment précis où la suite en dépend.
+   * Pousser `/plan/dates`, `/plan/outward`, `/plan/return` ou `/plan/summary`
+   * empile par-dessus cet écran sans le démonter : un reset au blur effacerait les
+   * dates — et désormais les itinéraires retenus — en plein milieu du parcours, au
+   * moment précis où la suite en dépend.
    *
    * Les deux sorties passent bien par là — le retour vers la rando, qui dépile, et
-   * la validation vers `/recap`, qui remplace. Aucun écran en aval ne lit le
-   * brouillon, ils reçoivent tout par paramètres d'URL : le vider ne leur retire
-   * rien.
+   * l'enregistrement depuis `/plan/summary`, qui remplace la pile par les onglets.
+   * Dans les deux cas le parcours est fini : le brouillon n'a plus rien à porter.
    */
   useEffect(() => {
     return () => resetDraft();
@@ -763,9 +759,16 @@ export default function PlanScreen() {
             </Text>
             <Pressable
               onPress={openDatePicker}
+              android_ripple={{
+                color: theme.ripple,
+                borderless: false,
+                foreground: true,
+              }}
               style={[
                 styles.dashedBox,
                 {
+                  borderRadius: 8,
+                  overflow: 'hidden' as const,
                   borderColor: theme.borderStrong || '#989898',
                   borderStyle: datesValidated && startDate ? 'solid' : 'dashed',
                 },

@@ -20,8 +20,10 @@ import {
   getAvailableTransportModes,
   filterOptionsByTransportModes,
   formatTransportModesSummary,
+  isRealSource,
   Disruption,
   TransitOption,
+  TransitSource,
   TransitTransportMode,
 } from '@/services/transitService';
 import { OutwardHeader } from '@/components/plan/OutwardHeader';
@@ -89,7 +91,7 @@ export default function OutwardPlanScreen() {
   }>();
 
   const { hikes, userLocationName, userLocation } = useAdventure();
-  const { draft, setOutwardTime } = usePlanDraft();
+  const { draft, setOutwardTime, selectOutwardJourney } = usePlanDraft();
 
   const rando = useMemo(
     () => hikes.find((r) => r.id === params.randoId) ?? hikes[0],
@@ -170,6 +172,10 @@ export default function OutwardPlanScreen() {
 
   // State pour le transit
   const [options, setOptions] = useState<TransitOption[]>([]);
+  // Provenance des horaires affichés : elle suit l'itinéraire choisi jusqu'à
+  // l'aventure enregistrée, où une estimation de repli ne doit pas passer pour
+  // un horaire ferme.
+  const [source, setSource] = useState<TransitSource>('fallback');
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -227,6 +233,7 @@ export default function OutwardPlanScreen() {
           { ...baseQuery, to: stationCoords }
         );
         setOptions(result.options);
+        setSource(result.source);
         // Le filtre repart de « tout coché » à chaque nouvelle liste : une
         // exclusion posée pour une recherche n'a pas de sens pour la suivante.
         setSelectedModes(new Set(getAvailableTransportModes(result.options)));
@@ -261,6 +268,9 @@ export default function OutwardPlanScreen() {
   const handleConfirmOption = (option: TransitOption) => {
     setSelectedId(option.id);
     journeyDetailSheetRef.current?.dismiss();
+    // L'itinéraire retenu passe par le brouillon partagé et non par l'URL : il
+    // porte tous ses tronçons, que le résumé affiche en détail (PlanDraftContext).
+    selectOutwardJourney(option, isRealSource(source));
     const arrivalPoint = returnPoint ?? departurePoint;
     // Naviguer vers la page Retour
     router.push({

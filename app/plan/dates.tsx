@@ -291,7 +291,20 @@ export default function PlanDatesScreen() {
           <Animated.View layout={REFLOW}>
           <Pressable
             onPress={() => timeSheetRef.current?.present()}
-            style={[styles.timeRow, { borderColor: theme.border, backgroundColor: theme.card }]}>
+            android_ripple={{
+              color: theme.ripple,
+              borderless: false,
+              foreground: true,
+            }}
+            style={[
+              styles.timeRow,
+              {
+                borderRadius: 8,
+                overflow: 'hidden' as const,
+                borderColor: theme.border,
+                backgroundColor: theme.card,
+              },
+            ]}>
             <View style={styles.timeRowLabel}>
               <Text style={[styles.timeRowText, { color: theme.text }]}>Aller à partir de</Text>
               <View style={[styles.timePill, { backgroundColor: theme.tint }]}>

@@ -43,6 +43,7 @@ import FilterChipsBar from '@/components/FilterChipsBar';
 import Fab from '@/components/Fab';
 import { MAP_CHIPS_BAR_GAP, MAP_CHIPS_BAR_HEIGHT } from '@/components/MapChipsBar';
 import { useBottomChromeHideDistance, useTabBarHeight } from '@/components/TabBar';
+import { useHikeTraces } from '@/components/useHikeTraces';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -114,7 +115,8 @@ export default function ExplorerScreen() {
   } = useAdventure();
 
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
-  const { isImmersive, toggleImmersive } = useMapImmersiveMode();
+  const { isImmersive, toggleImmersive, exitImmersive } = useMapImmersiveMode();
+  const carouselRef = useRef<FlatList<RandoData>>(null);
   const [sheetIndex, setSheetIndex] = useState<number>(0);
   const [showSimulator] = useState<boolean>(false);
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
@@ -288,6 +290,10 @@ export default function ExplorerScreen() {
   const isInitialAreaSetRef = useRef(false);
   const hasLeftFirstCarouselCardRef = useRef(false);
 
+  // Tracés des randos à l'écran, chargés à la volée une fois le seuil de zoom
+  // franchi — ils ne font pas partie des colonnes de liste.
+  const { traces, onCameraChange: onTracesCameraChange } = useHikeTraces(filteredRandos);
+
   const handleCameraChangeComplete = useCallback(
     (center: { latitude: number; longitude: number }, zoom: number, bounds: BoundingBox | null) => {
       // Automatically set initial screen bounds on app startup
@@ -441,6 +447,30 @@ export default function ExplorerScreen() {
     toggleImmersive();
   }, [isImmersive, sheetIndex, toggleImmersive]);
 
+  /**
+   * Tap sur un marqueur de départ ou sur un tracé : on amène la carte de la rando
+   * dans le carrousel plutôt que d'ouvrir sa fiche. Toucher la carte, c'est
+   * explorer — ouvrir la fiche reste un geste délibéré, sur la carte du carrousel.
+   * Le recadrage automatique est neutralisé, sans quoi la caméra sauterait au
+   * départ de la rando, loin de l'endroit touché.
+   */
+  const handleHikeFocus = useCallback(
+    (hikeId: string) => {
+      const index = filteredRandos.findIndex((hike) => hike.id === hikeId);
+      if (index < 0) return;
+
+      exitImmersive();
+      mapRef.current?.suppressNextRecenter();
+      setSelectedHikeId(hikeId);
+      hasLeftFirstCarouselCardRef.current = true;
+      carouselRef.current?.scrollToOffset({
+        offset: index * (cardWidth + 12),
+        animated: true,
+      });
+    },
+    [filteredRandos, cardWidth, exitImmersive]
+  );
+
   const handleSelectHike = useCallback(
     (id?: string) => {
       if (!id) return;
@@ -515,13 +545,15 @@ export default function ExplorerScreen() {
           userLocation={userLocation}
           userLocationName={userLocationName}
           hikes={filteredRandos}
+          traces={traces}
           selectedHikeId={selectedHikeId}
-          onSelectHike={handleSelectHike}
           onMapPress={handleMapPress}
+          onHikeFocus={handleHikeFocus}
           onBearingChange={(bearing) => {
             compassBearing.value = bearing;
           }}
           onCameraChangeComplete={handleCameraChangeComplete}
+          onCameraStateChange={onTracesCameraChange}
           mapStyle={mapStyle}
           style={styles.mapContainerFullScreen}
         />
@@ -657,6 +689,7 @@ export default function ExplorerScreen() {
               animatedCarouselStyle,
             ]}>
             <FlatList
+              ref={carouselRef}
               data={filteredRandos}
               horizontal
               keyExtractor={(item) => `carousel-${item.id}`}
