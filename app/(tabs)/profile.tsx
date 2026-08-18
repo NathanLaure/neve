@@ -1,14 +1,52 @@
-import React, { useEffect, useState } from 'react';
-import { StyleSheet, Text, View, Pressable, ScrollView, Platform, Animated } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import {
+  Animated,
+  Image,
+  Pressable,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Leaf, Cloud, Compass, Train, Sun, Moon, Settings, LogOut, User as UserIcon, Sparkles } from 'lucide-react-native';
+import {
+  Bell,
+  ChevronRight,
+  Cloud,
+  Compass,
+  Crown,
+  Footprints,
+  LifeBuoy,
+  LogOut,
+  Palette,
+  Pencil,
+  Scale,
+  Settings,
+  Share2,
+  TrainFront,
+  UserRound,
+} from 'lucide-react-native';
 import { usePathname, useRouter } from 'expo-router';
 
 import Colors from '@/constants/Colors';
-import { useColorScheme, setThemeOverride, getThemeOverride } from '@/components/useColorScheme';
+import { useColorScheme } from '@/components/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
-import { Button } from '@/components/Button';
+import { useAdventure, isOneWayAdventure } from '@/context/AdventureContext';
 import { useTabBarHeight } from '@/components/TabBar';
+import { IconButton } from '@/components/IconButton';
+import ProfileMenuRow from '@/components/profile/ProfileMenuRow';
+import ProfileStatTile from '@/components/profile/ProfileStatTile';
+import { toISODate } from '@/components/plan/DateRangeCalendar';
+import { calculateCo2Impact, estimateLegsDistanceKm } from '@/services/transitService';
+import { buildAdventureNotifications } from '@/utils/notifications';
+import { formatPassesLabel } from '@/types/passenger';
+
+/** « 12 km », « 8,4 km » -> nombre. Les distances de rando sont des libellés. */
+function parseDistanceKm(label?: string): number {
+  if (!label) return 0;
+  const value = parseFloat(label.replace(',', '.'));
+  return Number.isFinite(value) ? value : 0;
+}
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -18,8 +56,13 @@ export default function ProfileScreen() {
   const pathname = usePathname();
   const isFocused = pathname === '/profile';
   const [fadeAnim] = useState(() => new Animated.Value(0));
+  const [scrollY] = useState(() => new Animated.Value(0));
 
   const { user, profile, signOut } = useAuth();
+  const { plannedAdventures, hikes } = useAdventure();
+
+  const transportSummary =
+    formatPassesLabel(profile?.transportPasses ?? []) ?? 'Aucun abonnement déclaré';
 
   useEffect(() => {
     if (isFocused) {
@@ -34,257 +77,268 @@ export default function ProfileScreen() {
     }
   }, [isFocused, fadeAnim]);
 
-  // Track the override locally to update segmented buttons immediately
-  const [activeTheme, setActiveTheme] = useState<'light' | 'dark' | null>(() => getThemeOverride());
+  /*
+   * Le nom se relaie entre le corps et l'en-tête : il n'apparaît en haut qu'une
+   * fois le bloc d'identité sorti de l'écran. Les deux bornes se recouvrent à
+   * peine pour qu'on ne lise jamais le nom en double.
+   */
+  const headerNameOpacity = scrollY.interpolate({
+    inputRange: [56, 96],
+    outputRange: [0, 1],
+    extrapolate: 'clamp',
+  });
 
-  useEffect(() => {
-    if (isFocused) {
-      setActiveTheme(getThemeOverride());
-    }
-  }, [isFocused]);
-
-  const handleThemeChange = (mode: 'light' | 'dark' | null) => {
-    setThemeOverride(mode);
-    setActiveTheme(mode);
-  };
+  const headerNameTranslate = scrollY.interpolate({
+    inputRange: [56, 96],
+    outputRange: [8, 0],
+    extrapolate: 'clamp',
+  });
 
   const handleSignOut = async () => {
     await signOut();
     router.replace('/(auth)/register');
   };
 
-  const displayName = profile?.fullName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Nathan Laure';
-  const displayEmail = user?.email || 'nathan.laure@neve.fr';
+  const handleShare = () => router.push('/share-profile');
+
+  /*
+   * Bilan de l'éco-randonneur, calculé sur les seules aventures terminées : une
+   * sortie planifiée pour le mois prochain n'a évité aucun gramme de CO₂.
+   *
+   * Les kilomètres en transport sont une estimation (voir
+   * `estimateLegsDistanceKm`), qui vaut pour un cumul mais pas pour un trajet.
+   * Sans itinéraire détaillé — aventures d'avant les horaires réels — le trajet
+   * compte pour zéro plutôt que pour une valeur inventée.
+   */
+  const stats = useMemo(() => {
+    const today = toISODate(new Date());
+    const past = plannedAdventures.filter(
+      (adventure) => (adventure.returnDate || adventure.outwardDate) < today
+    );
+
+    let transitKm = 0;
+    let trailKm = 0;
+
+    past.forEach((adventure) => {
+      transitKm += estimateLegsDistanceKm(adventure.outwardTrain?.legs);
+      if (!isOneWayAdventure(adventure)) {
+        transitKm += estimateLegsDistanceKm(adventure.returnTrain?.legs);
+      }
+
+      const hike = hikes.find((item) => item.id === adventure.randoId);
+      trailKm +=
+        hike?.distanceKm ?? parseDistanceKm(hike?.distance ?? adventure.hikeSnapshot?.distance);
+    });
+
+    return {
+      completedCount: past.length,
+      transitKm: Math.round(transitKm),
+      trailKm: Math.round(trailKm),
+      savedCo2Kg: Math.round(calculateCo2Impact(transitKm).savedCo2Kg),
+    };
+  }, [plannedAdventures, hikes]);
+
+  const notificationCount = useMemo(
+    () => buildAdventureNotifications(plannedAdventures, hikes, toISODate(new Date())).length,
+    [plannedAdventures, hikes]
+  );
+
+  const displayName =
+    profile?.fullName || user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'Randonneur';
+  const displayLocation = profile?.homeLocation;
 
   return (
     <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
       <SafeAreaView
         edges={['top', 'left', 'right']}
         style={[styles.safeArea, { backgroundColor: theme.background }]}>
-        <ScrollView
-          style={styles.container}
-          // La TabBar flotte au-dessus de l'écran : sans cette réserve, le bouton
-          // de déconnexion finit sous les onglets.
-          contentContainerStyle={{ paddingBottom: tabBarHeight }}
-          showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={[styles.headerTitle, { color: theme.text }]}>Mon Profil</Text>
-            <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-              {"Suivez votre impact écologique et gérez vos préférences d'affichage."}
-            </Text>
-          </View>
+        <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-          {/* User Card */}
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <View style={styles.userProfileRow}>
-              <View style={[styles.avatarContainer, { backgroundColor: theme.greenBadge }]}>
-                <Leaf size={32} color={theme.tint} />
-              </View>
-              <View style={styles.userInfo}>
-                <Text style={[styles.userName, { color: theme.text }]}>{displayName}</Text>
-                <Text style={[styles.userEmail, { color: theme.textMuted }]}>{displayEmail}</Text>
-                <View style={[styles.badge, { backgroundColor: theme.tint, marginTop: 4 }]}>
-                  <Text style={styles.badgeText}>{"Éco-Explorateur d'Or"}</Text>
-                </View>
-              </View>
-            </View>
-          </View>
-
-          {/* Eco Stats Title */}
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Impact Éco-Responsable</Text>
-
-          {/* Eco Stats Grid */}
-          <View style={styles.statsGrid}>
-            {/* Card 1: CO2 */}
-            <View
-              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Cloud size={24} color="#2D6A4F" />
-              <Text style={[styles.statValue, { color: theme.text }]}>84 kg</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>CO₂ économisé</Text>
-            </View>
-
-            {/* Card 2: Hikes */}
-            <View
-              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Compass size={24} color={theme.tint} />
-              <Text style={[styles.statValue, { color: theme.text }]}>6</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>Aventures</Text>
-            </View>
-
-            {/* Card 3: Distance */}
-            <View
-              style={[styles.statCard, { backgroundColor: theme.card, borderColor: theme.border }]}>
-              <Train size={24} color={theme.secondary} />
-              <Text style={[styles.statValue, { color: theme.text }]}>320 km</Text>
-              <Text style={[styles.statLabel, { color: theme.textMuted }]}>En train</Text>
-            </View>
-          </View>
-
-          {/* Preferences Section */}
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            {"Préférences de l'Application"}
-          </Text>
-
-          <View style={[styles.card, { backgroundColor: theme.card, borderColor: theme.border }]}>
-            <Text style={[styles.cardLabel, { color: theme.text, marginBottom: 12 }]}>
-              {"Thème d'affichage"}
-            </Text>
-
-            {/* Segmented Theme Picker */}
-            <View
-              style={[
-                styles.segmentedControl,
-                { backgroundColor: theme.background, borderColor: theme.border },
-              ]}>
-              {/* Light Option */}
-              <Pressable
-                onPress={() => handleThemeChange('light')}
-                android_ripple={{
-                  color: theme.ripple,
-                  borderless: false,
-                  foreground: true,
-                }}
-                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
-                <View
-                  style={[
-                    styles.segmentBtn,
-                    activeTheme === 'light'
-                      ? { backgroundColor: theme.card }
-                      : { backgroundColor: 'transparent' },
-                  ]}>
-                  <Sun size={16} color={activeTheme === 'light' ? theme.tint : theme.textMuted} />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      { color: activeTheme === 'light' ? theme.text : theme.textMuted },
-                    ]}>
-                    Clair
-                  </Text>
-                </View>
-              </Pressable>
-
-              {/* Dark Option */}
-              <Pressable
-                onPress={() => handleThemeChange('dark')}
-                android_ripple={{
-                  color: theme.ripple,
-                  borderless: false,
-                  foreground: true,
-                }}
-                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
-                <View
-                  style={[
-                    styles.segmentBtn,
-                    activeTheme === 'dark'
-                      ? { backgroundColor: theme.card }
-                      : { backgroundColor: 'transparent' },
-                  ]}>
-                  <Moon size={16} color={activeTheme === 'dark' ? theme.tint : theme.textMuted} />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      { color: activeTheme === 'dark' ? theme.text : theme.textMuted },
-                    ]}>
-                    Sombre
-                  </Text>
-                </View>
-              </Pressable>
-
-              {/* System Option */}
-              <Pressable
-                onPress={() => handleThemeChange(null)}
-                android_ripple={{
-                  color: theme.ripple,
-                  borderless: false,
-                  foreground: true,
-                }}
-                style={[styles.segmentBtnWrapper, { borderRadius: 8, overflow: 'hidden' as const }]}>
-                <View
-                  style={[
-                    styles.segmentBtn,
-                    activeTheme === null
-                      ? { backgroundColor: theme.card }
-                      : { backgroundColor: 'transparent' },
-                  ]}>
-                  <Settings size={16} color={activeTheme === null ? theme.tint : theme.textMuted} />
-                  <Text
-                    style={[
-                      styles.segmentText,
-                      { color: activeTheme === null ? theme.text : theme.textMuted },
-                    ]}>
-                    Système
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
-          </View>
-
-          {/* Eco-hiker Charter */}
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>
-            {"Charte de l'Éco-Voyageur"}
-          </Text>
-
-          <View
+        {/* En-tête fixe : les raccourcis, et le nom une fois le corps défilé. */}
+        <View style={styles.header}>
+          <Animated.Text
+            numberOfLines={1}
             style={[
-              styles.card,
-              { backgroundColor: theme.card, borderColor: theme.border, marginBottom: 40 },
+              styles.headerName,
+              {
+                color: theme.text,
+                opacity: headerNameOpacity,
+                transform: [{ translateY: headerNameTranslate }],
+              },
             ]}>
-            <View style={styles.charterItem}>
-              <Text style={styles.charterIcon}>🚆</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.charterTitle, { color: theme.text }]}>Mobilité Douce</Text>
-                <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                  Privilégier le train et les transports en commun pour se rendre au point de départ
-                  de chaque randonnée.
-                </Text>
-              </View>
-            </View>
+            {displayName}
+          </Animated.Text>
 
-            <View style={[styles.charterItem, { marginTop: 14 }]}>
-              <Text style={styles.charterIcon}>🚯</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.charterTitle, { color: theme.text }]}>Zéro Déchet</Text>
-                <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                  Ne laisser aucune trace. Emporter ses déchets et trier une fois rentré à la
-                  maison.
-                </Text>
-              </View>
-            </View>
+          {/* Gabarit par défaut du bouton rond, celui de la fiche randonnée :
+              40×40, fond `card`, icône en 20. Rien à surcharger. */}
+          <IconButton
+            variant="circle"
+            icon={<Bell size={20} color={theme.text} />}
+            badgeCount={notificationCount}
+            onPress={() => router.push('/notifications')}
+            accessibilityLabel={
+              notificationCount > 0
+                ? `Notifications, ${notificationCount} en attente`
+                : 'Notifications'
+            }
+          />
+          <IconButton
+            variant="circle"
+            icon={<Share2 size={20} color={theme.text} />}
+            onPress={handleShare}
+            accessibilityLabel="Partager mon profil"
+          />
+        </View>
 
-            <View style={[styles.charterItem, { marginTop: 14 }]}>
-              <Text style={styles.charterIcon}>🌿</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.charterTitle, { color: theme.text }]}>Respect du Vivant</Text>
-                <Text style={[styles.charterText, { color: theme.textMuted }]}>
-                  Rester sur les sentiers balisés pour ne pas piétiner la flore et ne pas perturber
-                  la faune sauvage.
-                </Text>
+        <Animated.ScrollView
+          onScroll={Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
+            useNativeDriver: true,
+          })}
+          scrollEventThrottle={16}
+          style={styles.scroll}
+          // La TabBar flotte au-dessus de l'écran : sans cette réserve, le dernier
+          // bloc finit sous les onglets.
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: tabBarHeight + 24 }]}
+          showsVerticalScrollIndicator={false}>
+          {/* Identité : dans le flux et non dans l'en-tête, pour laisser
+              l'avatar prendre sa place et s'effacer au défilement. */}
+          <View style={styles.identityRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Modifier les informations de profil"
+              onPress={() => router.push('/settings/profile-info')}
+              style={styles.avatarPress}>
+              <View style={[styles.avatar, { backgroundColor: theme.blueBadge }]}>
+                {profile?.avatarUrl ? (
+                  <Image source={{ uri: profile.avatarUrl }} style={styles.avatarImage} />
+                ) : (
+                  <UserRound size={54} color={theme.text} strokeWidth={1.5} />
+                )}
               </View>
+              <View
+                style={[
+                  styles.avatarBadge,
+                  { backgroundColor: theme.text, borderColor: theme.background },
+                ]}>
+                <Pencil size={12} color={theme.background} />
+              </View>
+            </Pressable>
+            <View style={styles.identityText}>
+              <Text style={[styles.name, { color: theme.text }]} numberOfLines={1}>
+                {displayName}
+              </Text>
+              {displayLocation ? (
+                <Text style={[styles.location, { color: theme.textMuted }]} numberOfLines={1}>
+                  {displayLocation}
+                </Text>
+              ) : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push('/settings/home-address')}
+                  hitSlop={8}>
+                  <Text style={[styles.locationEmpty, { color: theme.tint }]}>
+                    Ajouter ma localisation
+                  </Text>
+                </Pressable>
+              )}
             </View>
           </View>
 
-          {/* Account Actions Section */}
-          <View style={{ gap: 12, marginBottom: 40 }}>
-            <Button
-              title="Voir la présentation (Onboarding)"
-              variant="secondary"
-              icon={<Sparkles size={18} color={theme.text} />}
-              onPress={() => router.push('/onboarding')}
-              style={{ backgroundColor: theme.card, borderWidth: 0, height: 48 }}
-              textStyle={{ color: theme.text, fontFamily: 'BricolageGrotesque-Medium', fontSize: 15 }}
-            />
+          {/* Grille du bilan (Figma 722:14435) */}
+          <View style={styles.grid}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Abonnement de transport : ${transportSummary}`}
+              onPress={() => router.push('/settings/transport-passes')}
+              android_ripple={{ color: theme.ripple, borderless: false, foreground: true }}
+              style={[styles.passCard, { backgroundColor: theme.card }]}>
+              <View style={styles.passText}>
+                <Text style={[styles.passTitle, { color: theme.text }]}>
+                  Abonnement de transport
+                </Text>
+                <Text style={[styles.passValue, { color: theme.text }]} numberOfLines={1}>
+                  {transportSummary}
+                </Text>
+              </View>
+              <ChevronRight size={20} color={theme.textMuted} />
+            </Pressable>
 
-            <Button
-              title="Se déconnecter"
-              variant="secondary"
-              icon={<LogOut size={18} color={theme.statusBgError} />}
+            <View style={styles.gridRow}>
+              <ProfileStatTile
+                value={`${stats.savedCo2Kg} kg`}
+                label="de CO₂ évité par rapport à la voiture"
+                Icon={Cloud}
+                iconColor={theme.primary}
+              />
+              <ProfileStatTile
+                value={`${stats.completedCount}`}
+                label="Aventures terminées"
+                Icon={Compass}
+                iconColor={theme.primary}
+              />
+            </View>
+
+            <View style={styles.gridRow}>
+              <ProfileStatTile
+                value={`${stats.transitKm} km`}
+                label="en transports en commun"
+                Icon={TrainFront}
+                iconColor={theme.primary}
+              />
+              <ProfileStatTile
+                value={`${stats.trailKm} km`}
+                label="de sentiers parcourus"
+                Icon={Footprints}
+                iconColor={theme.primary}
+              />
+            </View>
+          </View>
+
+          <View style={[styles.menuCard]}>
+            <ProfileMenuRow
+              label="Paramètres"
+              Icon={Settings}
+              flush
+              onPress={() => router.push('/settings/general')}
+            />
+            <ProfileMenuRow
+              label="Suggestions et assistance"
+              Icon={LifeBuoy}
+              flush
+              onPress={() => router.push('/settings/support')}
+            />
+            <ProfileMenuRow
+              label="Apparence"
+              Icon={Palette}
+              flush
+              onPress={() => router.push('/settings/appearance')}
+            />
+            <ProfileMenuRow
+              label="Névé+"
+              Icon={Crown}
+              flush
+              onPress={() => router.push('/settings/neve-plus')}
+            />
+          </View>
+
+          <View style={[styles.divider, { backgroundColor: theme.border }]} />
+
+          <View style={[styles.menuCard]}>
+            <ProfileMenuRow
+              label="Informations légales"
+              Icon={Scale}
+              flush
+              onPress={() => router.push('/settings/legal')}
+            />
+            <ProfileMenuRow
+              label="Déconnexion"
+              Icon={LogOut}
+              trailing="none"
+              flush
               onPress={handleSignOut}
-              style={{ backgroundColor: theme.card, borderWidth: 0, height: 48 }}
-              textStyle={{ color: theme.statusBgError, fontFamily: 'BricolageGrotesque-Medium', fontSize: 15 }}
             />
           </View>
-        </ScrollView>
+        </Animated.ScrollView>
       </SafeAreaView>
     </Animated.View>
   );
@@ -294,150 +348,122 @@ const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
   },
-  container: {
-    flex: 1,
-    paddingHorizontal: 20,
-  },
   header: {
-    paddingTop: 16,
-    paddingBottom: 20,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    paddingBottom: 12,
   },
-  headerTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 22,
-    letterSpacing: -0.5,
+  /* `flex: 1` sur le nom : il occupe la largeur laissée par les boutons, ce qui
+     les maintient à droite même quand il est invisible. */
+  headerName: {
+    flex: 1,
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 18,
+    lineHeight: 32,
   },
-  headerSub: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 12,
-    lineHeight: 18,
-    marginTop: 4,
+  scroll: {
+    flex: 1,
   },
-  card: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 20,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 6,
-      },
-      android: {
-        elevation: 1.5,
-      },
-    }),
+  scrollContent: {
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    gap: 20,
   },
-  userProfileRow: {
+  identityRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 16,
+    paddingBottom: 24,
   },
-  avatarContainer: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+  avatarPress: {
+    width: 80,
+    height: 80,
+  },
+  avatar: {
+    width: 80,
+    height: 80,
+    borderRadius: 100,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 26,
+    height: 26,
+    borderRadius: 100,
+    borderWidth: 2,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  userInfo: {
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+  },
+  identityText: {
     flex: 1,
-    gap: 4,
   },
-  userName: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 18,
+  name: {
+    fontFamily: 'BricolageGrotesque-SemiBold',
+    fontSize: 24,
+    lineHeight: 34,
   },
-  userEmail: {
+  location: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 13,
-  },
-  badge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  badgeText: {
-    fontFamily: 'Satoshi-Bold',
-    color: '#FFFFFF',
-    fontSize: 10,
-  },
-  sectionTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 15,
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
-  },
-  statCard: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-  },
-  statValue: {
-    fontFamily: 'Satoshi-Bold',
     fontSize: 16,
+    lineHeight: 24,
   },
-  statLabel: {
+  locationEmpty: {
     fontFamily: 'Satoshi-Bold',
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  cardLabel: {
-    fontFamily: 'BricolageGrotesque-Bold',
     fontSize: 14,
+    lineHeight: 24,
   },
-  segmentedControl: {
+  grid: {
+    gap: 8,
+  },
+  gridRow: {
     flexDirection: 'row',
-    borderRadius: 12,
-    borderWidth: 1,
-    padding: 4,
-    gap: 4,
+    gap: 8,
   },
-  segmentBtnWrapper: {
-    flex: 1,
-  },
-  segmentBtn: {
+  /* Tableau de styles statique et non `style={({ pressed }) => …}` : sous cette
+     forme React Native ne peint ni le fond ni le rayon de la carte. L'appui se
+     signale par l'ondulation. */
+  passCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 8,
-    paddingVertical: 8,
-    gap: 6,
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 16,
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 24,
   },
-  segmentText: {
-    fontFamily: 'Satoshi-Bold',
-    fontSize: 11,
+  passText: {
+    flex: 1,
   },
-  charterItem: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-  charterIcon: {
-    fontSize: 22,
-    marginTop: 2,
-  },
-  charterTitle: {
-    fontFamily: 'BricolageGrotesque-Bold',
-    fontSize: 13,
-    marginBottom: 2,
-  },
-  charterText: {
+  passTitle: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 11,
-    lineHeight: 16,
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  passValue: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  divider: {
+    height: 1,
+    marginVertical: 4,
+  },
+  /* `overflow: hidden` : ce sont les angles de la carte qui découpent la première
+     et la dernière ligne, elles n'ont pas de rayon propre. */
+  menuCard: {
+    marginHorizontal: -24,
+    overflow: 'hidden',
   },
 });
