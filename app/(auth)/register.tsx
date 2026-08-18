@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   KeyboardAvoidingView,
@@ -17,6 +17,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { showToast } from '@/utils/toast';
+import { supabase } from '@/utils/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthEntryStep } from '@/components/auth/AuthEntryStep';
 import { SignupPasswordStep } from '@/components/auth/SignupPasswordStep';
@@ -28,7 +30,12 @@ import { LoginStep } from '@/components/auth/LoginStep';
 import { WelcomeStep } from '@/components/auth/WelcomeStep';
 import { ForgotPassStep } from '@/components/auth/ForgotPassStep';
 import { LocationStep } from '@/components/auth/LocationStep';
+import { SignupHomeLocationStep } from '@/components/auth/SignupHomeLocationStep';
+import { TransportStep } from '@/components/auth/TransportStep';
 import { useAdventure } from '@/context/AdventureContext';
+import { TransportPassId } from '@/types/passenger';
+import { GeocodedPlace } from '@/services/geocodingService';
+import { formatPlaceLabel } from '@/components/PlaceSearchField';
 
 export default function SwarmAuthScreen() {
   const router = useRouter();
@@ -51,25 +58,65 @@ export default function SwarmAuthScreen() {
     resetPassword,
     updateProfile,
     completeOnboarding,
+    hasCompletedAccountOnboarding,
+    accountOnboardingStep,
+    setAccountOnboardingStep,
+    completeAccountOnboarding,
     isLoading,
   } = useAuth();
 
+  const initialAuthMode = (() => {
+    const raw = Array.isArray(searchParams.mode) ? searchParams.mode[0] : searchParams.mode;
+    if (
+      raw === 'notifications' ||
+      raw === 'location' ||
+      raw === 'home-location' ||
+      raw === 'transport' ||
+      raw === 'newsletter' ||
+      raw === 'welcome' ||
+      raw === 'login' ||
+      raw === 'verify-email'
+    ) {
+      return raw;
+    }
+    if (!hasCompletedAccountOnboarding && accountOnboardingStep) {
+      return accountOnboardingStep as any;
+    }
+    return 'entry';
+  })();
+
   const [authMode, setAuthMode] = useState<
-    'entry' | 'login' | 'signup' | 'verify-email' | 'notifications' | 'location' | 'newsletter' | 'forgot-password' | 'welcome'
-  >('entry');
+    | 'entry'
+    | 'login'
+    | 'signup'
+    | 'verify-email'
+    | 'notifications'
+    | 'location'
+    | 'home-location'
+    | 'transport'
+    | 'newsletter'
+    | 'forgot-password'
+    | 'welcome'
+  >(initialAuthMode);
   const [signupStep, setSignupStep] = useState<1 | 2>(1);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
-  const [selectedStation, setSelectedStation] = useState('Paris Gare de Lyon');
+  const [gender, setGender] = useState('');
+  /* Lieu de résidence principal déclaré après l'étape de géolocalisation.
+     Les coordonnées servent à classer les randonnées par temps de trajet. */
+  const [homePlace, setHomePlace] = useState<GeocodedPlace | null>(null);
+  const [transportPasses, setTransportPasses] = useState<TransportPassId[]>([]);
   const [newsletterConsent, setNewsletterConsent] = useState(false);
   const [isCheckingEmail, setIsCheckingEmail] = useState(false);
   const [isResendingEmail, setIsResendingEmail] = useState(false);
   const [isCheckingConfirmation, setIsCheckingConfirmation] = useState(false);
 
   const [isPasswordValid, setIsPasswordValid] = useState(false);
+
+  const lastHandledModeRef = useRef<string | null>(initialAuthMode);
 
   // Animated transitions between auth modes and signup steps
   const [fadeAnim] = useState(() => new Animated.Value(1));
@@ -93,15 +140,59 @@ export default function SwarmAuthScreen() {
     ]).start();
   }, [authMode, signupStep]);
 
-  // Handle URL mode parameter e.g. /register?mode=notifications
+  const goToStep = async (
+    nextMode:
+      | 'entry'
+      | 'login'
+      | 'signup'
+      | 'verify-email'
+      | 'notifications'
+      | 'location'
+      | 'home-location'
+      | 'transport'
+      | 'newsletter'
+      | 'forgot-password'
+      | 'welcome'
+  ) => {
+    lastHandledModeRef.current = nextMode;
+    setAuthMode(nextMode);
+    router.setParams({ mode: nextMode });
+    if (
+      nextMode === 'notifications' ||
+      nextMode === 'location' ||
+      nextMode === 'home-location' ||
+      nextMode === 'transport' ||
+      nextMode === 'newsletter' ||
+      nextMode === 'welcome'
+    ) {
+      try {
+        await setAccountOnboardingStep(nextMode);
+      } catch (e) {
+        console.warn('Error saving onboarding step:', e);
+      }
+    }
+  };
+
+  // Handle external URL mode parameter e.g. /register?mode=notifications
   useEffect(() => {
     const rawMode = Array.isArray(searchParams.mode) ? searchParams.mode[0] : searchParams.mode;
-    if (rawMode === 'notifications') {
-      setAuthMode('notifications');
-    } else if (rawMode === 'newsletter') {
-      setAuthMode('newsletter');
-    } else if (rawMode === 'welcome') {
-      setAuthMode('welcome');
+    if (rawMode && rawMode !== lastHandledModeRef.current) {
+      lastHandledModeRef.current = rawMode;
+      if (
+        rawMode === 'notifications' ||
+        rawMode === 'location' ||
+        rawMode === 'home-location' ||
+        rawMode === 'transport' ||
+        rawMode === 'newsletter' ||
+        rawMode === 'welcome' ||
+        rawMode === 'login' ||
+        rawMode === 'verify-email' ||
+        rawMode === 'forgot-password' ||
+        rawMode === 'entry'
+      ) {
+        setAuthMode(rawMode as any);
+        setAccountOnboardingStep(rawMode);
+      }
     }
   }, [searchParams.mode]);
 
@@ -135,10 +226,10 @@ export default function SwarmAuthScreen() {
           `Ce compte Névé a été créé avec ${providerName}. Cliquez sur "Continuer avec ${providerName}" ci-dessous.`
         );
       } else {
-        setAuthMode('login');
+        goToStep('login');
       }
     } else {
-      setAuthMode('signup');
+      goToStep('signup');
       setSignupStep(1);
     }
   };
@@ -154,8 +245,11 @@ export default function SwarmAuthScreen() {
     if (error) {
       showToast.error('Erreur de connexion', error);
     } else {
-      completeOnboarding();
-      router.replace('/(tabs)');
+      if (!hasCompletedAccountOnboarding && accountOnboardingStep) {
+        goToStep(accountOnboardingStep as any);
+      } else {
+        router.replace('/(tabs)');
+      }
     }
   };
 
@@ -176,7 +270,7 @@ export default function SwarmAuthScreen() {
       if ((result as any).isResent) {
         showToast.success('E-mail envoyé 📩', 'Un nouvel e-mail de confirmation vient de vous être envoyé !');
       }
-      setAuthMode('verify-email');
+      goToStep('verify-email');
     }
   };
 
@@ -201,8 +295,7 @@ export default function SwarmAuthScreen() {
         await signIn(email, password);
       }
       setIsCheckingConfirmation(false);
-      completeOnboarding();
-      setAuthMode('notifications');
+      await goToStep('notifications');
     } else {
       setIsCheckingConfirmation(false);
       showToast.error('E-mail non confirmé', 'Merci de cliquer sur le lien reçu dans votre boîte mail.');
@@ -220,9 +313,10 @@ export default function SwarmAuthScreen() {
     setPassword('');
     setFirstName('');
     setLastName('');
-    setSelectedStation('Paris Gare de Lyon');
+    setGender('');
+    setHomePlace(null);
     setSignupStep(1);
-    setAuthMode('entry');
+    goToStep('entry');
   };
 
   // OAuth Authentication
@@ -234,8 +328,49 @@ export default function SwarmAuthScreen() {
     if (res.error) {
       showToast.error('Erreur d’authentification', res.error);
     } else {
-      completeOnboarding();
-      setAuthMode('notifications');
+      const {
+        data: { session: currentSession },
+      } = await supabase.auth.getSession();
+      const currentUserId = currentSession?.user?.id;
+      let isCompleted = false;
+      let savedStep: string | null = null;
+      if (currentUserId) {
+        const isCompletedVal = await AsyncStorage.getItem(
+          `@neve_account_onboarding_completed_${currentUserId}`
+        );
+        isCompleted = isCompletedVal === 'true';
+        savedStep = await AsyncStorage.getItem(
+          `@neve_account_onboarding_step_${currentUserId}`
+        );
+
+        if (!isCompleted && !savedStep) {
+          try {
+            const { data: dbProfile } = await supabase
+              .from('profiles')
+              .select('id, full_name, home_location')
+              .eq('id', currentUserId)
+              .maybeSingle();
+
+            if (dbProfile?.full_name || dbProfile?.home_location) {
+              isCompleted = true;
+              await AsyncStorage.setItem(
+                `@neve_account_onboarding_completed_${currentUserId}`,
+                'true'
+              );
+            }
+          } catch (e) {
+            console.warn('Error checking existing profile in handleOAuth:', e);
+          }
+        }
+      }
+
+      if (isCompleted) {
+        router.replace('/(tabs)');
+      } else if (savedStep) {
+        goToStep(savedStep as any);
+      } else {
+        await goToStep('notifications');
+      }
     }
   };
 
@@ -261,7 +396,7 @@ export default function SwarmAuthScreen() {
     } catch (e) {
       console.warn('Notifications permission notice:', e);
     }
-    setAuthMode('location');
+    await goToStep('location');
   };
 
   // Handle Location Permission Request Post Registration
@@ -271,7 +406,38 @@ export default function SwarmAuthScreen() {
     } catch (e) {
       console.warn('Location permission notice:', e);
     }
-    setAuthMode('newsletter');
+    await goToStep('home-location');
+  };
+
+  // Handle Home Location declaration
+  const handleHomeLocationChoice = async () => {
+    if (homePlace) {
+      try {
+        await updateProfile({
+          homeLocation: formatPlaceLabel(homePlace),
+          homeLat: homePlace.latitude,
+          homeLng: homePlace.longitude,
+        });
+      } catch (e) {
+        console.warn('Home location notice:', e);
+      }
+    }
+    await goToStep('transport');
+  };
+
+  /*
+   * Abonnements de transport déclarés à l'inscription. Une liste vide est une
+   * réponse valide (« je n'en ai pas encore ») et s'enregistre comme telle : le
+   * profil est ensuite la source de vérité, y compris pour préremplir le premier
+   * randonneur d'une aventure.
+   */
+  const handleTransportChoice = async () => {
+    try {
+      await updateProfile({ transportPasses });
+    } catch (e) {
+      console.warn('Transport passes notice:', e);
+    }
+    await goToStep('newsletter');
   };
 
   // Handle Newsletter Opt-In Post Registration
@@ -281,7 +447,13 @@ export default function SwarmAuthScreen() {
     } catch (e) {
       console.warn('Newsletter consent notice:', e);
     }
-    setAuthMode('welcome');
+    await goToStep('welcome');
+  };
+
+  // Final step: Explore Main App
+  const handleWelcomeExplore = async () => {
+    await completeAccountOnboarding();
+    router.replace('/(tabs)');
   };
 
   // Handle Forgot Password reset request with email verification
@@ -309,7 +481,7 @@ export default function SwarmAuthScreen() {
         `Compte ${providerName} détecté`,
         `Ce compte Névé a été créé avec ${providerName}. Connectez-vous directement via ${providerName}.`
       );
-      setAuthMode('entry');
+      goToStep('entry');
       return;
     }
 
@@ -324,7 +496,7 @@ export default function SwarmAuthScreen() {
         'E-mail envoyé 📩',
         `Un lien de réinitialisation sécurisé vient d'être envoyé à ${email}.`
       );
-      setAuthMode('login');
+      goToStep('login');
     }
   };
 
@@ -343,19 +515,26 @@ export default function SwarmAuthScreen() {
         keyboardShouldPersistTaps="handled">
         
         {/* Topbar with Circular Back Button */}
-        {authMode !== 'entry' && authMode !== 'welcome' && authMode !== 'notifications' ? (
+        {/* Les étapes qui suivent la création du compte n'ont pas de retour :
+            il ramènerait à la saisie de l'e-mail alors que le compte existe. */}
+        {authMode !== 'entry' &&
+        authMode !== 'welcome' &&
+        authMode !== 'notifications' &&
+        authMode !== 'location' &&
+        authMode !== 'home-location' &&
+        authMode !== 'transport' ? (
           <View style={styles.topbar}>
             <Pressable
               onPress={() => {
-                if (authMode === 'signup' && signupStep === 2) {
+                if (authMode === 'signup' && signupStep > 1) {
                   setSignupStep(1);
                 } else if (authMode === 'verify-email') {
-                  setAuthMode('signup');
+                  goToStep('signup');
                   setSignupStep(2);
                 } else if (authMode === 'forgot-password') {
-                  setAuthMode('login');
+                  goToStep('login');
                 } else {
-                  setAuthMode('entry');
+                  goToStep('entry');
                 }
               }}
               style={[styles.circularBackBtn, { backgroundColor: theme.card }]}>
@@ -400,8 +579,8 @@ export default function SwarmAuthScreen() {
               setFirstName={setFirstName}
               lastName={lastName}
               setLastName={setLastName}
-              selectedStation={selectedStation}
-              setSelectedStation={setSelectedStation}
+              gender={gender}
+              setGender={setGender}
               onSubmit={handleSignupSubmit}
               isLoading={isLoading}
             />
@@ -421,14 +600,32 @@ export default function SwarmAuthScreen() {
           {authMode === 'notifications' && (
             <NotificationStep
               onRequestNotifications={handleRequestNotifications}
-              onSkip={() => setAuthMode('location')}
+              onSkip={() => goToStep('location')}
             />
           )}
 
           {authMode === 'location' && (
             <LocationStep
               onRequestLocation={handleRequestLocation}
-              onSkip={() => setAuthMode('newsletter')}
+              onSkip={() => goToStep('home-location')}
+            />
+          )}
+
+          {authMode === 'home-location' && (
+            <SignupHomeLocationStep
+              place={homePlace}
+              setPlace={setHomePlace}
+              onContinue={handleHomeLocationChoice}
+              onSkip={() => goToStep('transport')}
+              isLoading={isLoading}
+            />
+          )}
+
+          {authMode === 'transport' && (
+            <TransportStep
+              passes={transportPasses}
+              setPasses={setTransportPasses}
+              onContinue={handleTransportChoice}
             />
           )}
 
@@ -442,7 +639,7 @@ export default function SwarmAuthScreen() {
               password={password}
               setPassword={setPassword}
               onLoginSubmit={handleLoginSubmit}
-              onForgotPassword={() => setAuthMode('forgot-password')}
+              onForgotPassword={() => goToStep('forgot-password')}
               onOAuth={handleOAuth}
               isLoading={isLoading}
             />
@@ -453,13 +650,13 @@ export default function SwarmAuthScreen() {
               email={email}
               setEmail={setEmail}
               onSubmit={handleSendResetLink}
-              onBackToLogin={() => setAuthMode('login')}
+              onBackToLogin={() => goToStep('login')}
               isLoading={isCheckingEmail}
             />
           )}
 
           {authMode === 'welcome' && (
-            <WelcomeStep onExplore={() => router.replace('/(tabs)')} />
+            <WelcomeStep onExplore={handleWelcomeExplore} />
           )}
 
         </Animated.View>

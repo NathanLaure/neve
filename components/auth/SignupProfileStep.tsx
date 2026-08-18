@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { StyleSheet, Text, View, Linking, TextInput, Keyboard } from 'react-native';
+import { StyleSheet, Text, View, TextInput, Keyboard, Linking } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { Input } from '@/components/Input';
@@ -14,7 +14,7 @@ interface SignupProfileStepProps {
   gender: string;
   setGender: (gender: string) => void;
   onSubmit: () => void;
-  isLoading: boolean;
+  isLoading?: boolean;
 }
 
 const GENDER_OPTIONS = [
@@ -32,7 +32,7 @@ export function SignupProfileStep({
   gender,
   setGender,
   onSubmit,
-  isLoading,
+  isLoading = false,
 }: SignupProfileStepProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
@@ -82,6 +82,7 @@ export function SignupProfileStep({
           value={gender}
           options={GENDER_OPTIONS}
           onSelect={setGender}
+          labelBackgroundColor={theme.background}
         />
       </View>
 
@@ -93,7 +94,7 @@ export function SignupProfileStep({
             <Text
               onPress={() => Linking.openURL('https://neve-rando.fr/terms')}
               style={[styles.legalLink, { color: theme.text }]}>
-              Conditions d’utilisation
+              Conditions d{'’'}utilisation
             </Text>{' '}
             et notre{' '}
             <Text
@@ -104,6 +105,7 @@ export function SignupProfileStep({
             .
           </Text>
         </View>
+
         <Button
           variant="primary"
           title="Créer mon compte"

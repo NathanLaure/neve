@@ -31,7 +31,7 @@ export function LocationStep({ onRequestLocation, onSkip }: LocationStepProps) {
 
       <View style={[styles.formGroup, { width: '100%' }]}>
         <Button
-          title="Activer la géolocalisation 📍"
+          title="Activer la géolocalisation"
           onPress={onRequestLocation}
           style={styles.actionBtn}
         />

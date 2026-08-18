@@ -5,17 +5,32 @@ import { makeRedirectUri } from 'expo-auth-session';
 import { User, Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
+import { TransportPassId, normalizePasses } from '@/types/passenger';
 
 WebBrowser.maybeCompleteAuthSession();
 
 export interface UserProfile {
   id: string;
   fullName: string;
-  avatarUrl?: string;
+  /** `null` retire la photo — `undefined` la laisse telle quelle. */
+  avatarUrl?: string | null;
   defaultStation?: string;
   preferredDifficulty?: string;
   favoriteCount?: number;
   newsletterConsent?: boolean;
+  /**
+   * Lieu de résidence principal, déclaré à l'inscription — « Paris, 17ᵉ ». Ne
+   * dit pas où l'utilisateur se trouve maintenant (c'est le rôle de la position
+   * GPS), mais d'où il part d'habitude. Absent tant qu'il n'a rien déclaré.
+   */
+  homeLocation?: string;
+  homeLat?: number;
+  homeLng?: number;
+  /**
+   * Abonnements de transport détenus, déclarés à l'inscription et modifiables
+   * depuis le profil. Liste vide = aucun abonnement.
+   */
+  transportPasses?: TransportPassId[];
 }
 
 interface AuthContextType {
@@ -24,13 +39,23 @@ interface AuthContextType {
   profile: UserProfile | null;
   isLoading: boolean;
   hasCompletedOnboarding: boolean;
+  hasCompletedAccountOnboarding: boolean;
+  accountOnboardingStep: string | null;
+  setAccountOnboardingStep: (step: string) => Promise<void>;
+  completeAccountOnboarding: () => Promise<void>;
   isEmailConfirmed: boolean;
   signUp: (
     email: string,
     password: string,
     fullName?: string,
     defaultStation?: string,
-    newsletterConsent?: boolean
+    newsletterConsent?: boolean,
+    /**
+     * Lieu de résidence déclaré à l'étape qui suit « Parlez-nous de vous ».
+     * Écrit avec le profil initial plutôt que par un `updateProfile` qui suivrait :
+     * l'utilisateur n'est pas encore posé dans l'état du contexte à cet instant.
+     */
+    home?: { location: string; latitude: number; longitude: number }
   ) => Promise<{ error: string | null }>;
   signIn: (email: string, password: string) => Promise<{ error: string | null }>;
   signInWithOAuth: (
@@ -45,6 +70,12 @@ interface AuthContextType {
   completeOnboarding: () => void;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   updateUserPassword: (password: string) => Promise<{ error: string | null }>;
+  /**
+   * Demande le changement d'adresse e-mail. Rien n'est appliqué tout de suite :
+   * Supabase envoie un lien à la nouvelle adresse, et c'est ce clic qui bascule
+   * le compte. `user.email` garde donc l'ancienne valeur jusque-là.
+   */
+  updateUserEmail: (email: string) => Promise<{ error: string | null }>;
   updateProfile: (updates: Partial<UserProfile>) => Promise<{ error: string | null }>;
 }
 
@@ -136,8 +167,62 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
+  const [hasCompletedAccountOnboarding, setHasCompletedAccountOnboarding] = useState(true);
+  const [accountOnboardingStep, setAccountOnboardingStepState] = useState<string | null>(null);
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
+
+  const checkAccountOnboarding = async (currentUser: User) => {
+    try {
+      const isCompleted = await AsyncStorage.getItem(`@neve_account_onboarding_completed_${currentUser.id}`);
+      if (isCompleted === 'true') {
+        setHasCompletedAccountOnboarding(true);
+        setAccountOnboardingStepState(null);
+        return;
+      }
+
+      const savedStep = await AsyncStorage.getItem(`@neve_account_onboarding_step_${currentUser.id}`);
+      if (savedStep) {
+        setHasCompletedAccountOnboarding(false);
+        setAccountOnboardingStepState(savedStep);
+        return;
+      }
+
+      // Par défaut pour les comptes déjà établis sans étape en suspens
+      setHasCompletedAccountOnboarding(true);
+      setAccountOnboardingStepState(null);
+    } catch (e) {
+      console.warn('Error checking account onboarding:', e);
+    }
+  };
+
+  const setAccountOnboardingStep = async (step: string) => {
+    setAccountOnboardingStepState(step);
+    setHasCompletedAccountOnboarding(false);
+    const targetUserId = user?.id || session?.user?.id;
+    if (targetUserId) {
+      try {
+        await AsyncStorage.setItem(`@neve_account_onboarding_step_${targetUserId}`, step);
+        await AsyncStorage.removeItem(`@neve_account_onboarding_completed_${targetUserId}`);
+      } catch (e) {
+        console.warn('Error saving account onboarding step:', e);
+      }
+    }
+  };
+
+  const completeAccountOnboarding = async () => {
+    setHasCompletedAccountOnboarding(true);
+    setAccountOnboardingStepState(null);
+    const targetUserId = user?.id || session?.user?.id;
+    if (targetUserId) {
+      try {
+        await AsyncStorage.setItem(`@neve_account_onboarding_completed_${targetUserId}`, 'true');
+        await AsyncStorage.removeItem(`@neve_account_onboarding_step_${targetUserId}`);
+      } catch (e) {
+        console.warn('Error completing account onboarding:', e);
+      }
+    }
+  };
 
   const loadUserProfile = async (currentUser: User) => {
     try {
@@ -156,7 +241,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           preferredDifficulty: data.preferred_difficulty || 'Modéré',
           favoriteCount: data.favorite_count || 0,
           newsletterConsent: data.newsletter_consent ?? currentUser.user_metadata?.newsletter_consent ?? false,
+          homeLocation: data.home_location ?? currentUser.user_metadata?.home_location ?? undefined,
+          // `NUMERIC` revient en chaîne via PostgREST : la conversion est explicite.
+          homeLat: data.home_lat != null ? Number(data.home_lat) : undefined,
+          homeLng: data.home_lng != null ? Number(data.home_lng) : undefined,
+          // Colonne `text[]` : le contenu n'est pas typé côté base, d'où le filtrage.
+          transportPasses: normalizePasses(data.transport_passes),
         });
+
+        /* `auth.users.email` fait foi, `profiles.email` n'en est qu'une copie
+           consultable — celle sur laquelle s'appuient `checkUserExists` et
+           `checkUserProvider`. Un changement d'adresse ne bascule qu'à la
+           confirmation, hors de l'app : c'est ici, au chargement suivant, qu'on
+           s'en aperçoit et qu'on réaligne. */
+        if (currentUser.email && data.email !== currentUser.email) {
+          supabase
+            .from('profiles')
+            .update({ email: currentUser.email, updated_at: new Date().toISOString() })
+            .eq('id', currentUser.id)
+            .then(({ error: syncError }) => {
+              if (syncError) console.warn('Could not sync profile email:', syncError);
+            });
+        }
       } else {
         setProfile({
           id: currentUser.id,
@@ -166,6 +272,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           preferredDifficulty: 'Modéré',
           favoriteCount: 0,
           newsletterConsent: currentUser.user_metadata?.newsletter_consent ?? false,
+          transportPasses: [],
         });
       }
     } catch {
@@ -177,6 +284,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         preferredDifficulty: 'Modéré',
         favoriteCount: 0,
         newsletterConsent: currentUser.user_metadata?.newsletter_consent ?? false,
+        transportPasses: [],
       });
     }
   };
@@ -195,6 +303,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadUserProfile(session.user);
+        checkAccountOnboarding(session.user);
       }
       setIsLoading(false);
     });
@@ -207,8 +316,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadUserProfile(session.user);
+        checkAccountOnboarding(session.user);
       } else {
         setProfile(null);
+        setHasCompletedAccountOnboarding(true);
+        setAccountOnboardingStepState(null);
       }
       setIsLoading(false);
     });
@@ -223,7 +335,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     fullName?: string,
     defaultStation: string = 'Paris Gare de Lyon',
-    newsletterConsent: boolean = false
+    newsletterConsent: boolean = false,
+    home?: { location: string; latitude: number; longitude: number }
   ) => {
     setIsLoading(true);
     const cleanEmail = email.trim().toLowerCase();
@@ -237,6 +350,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           full_name: fullName,
           default_station: defaultStation,
           newsletter_consent: newsletterConsent,
+          home_location: home?.location,
         },
       },
     });
@@ -265,6 +379,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         full_name: fullName || cleanEmail.split('@')[0],
         default_station: defaultStation,
         newsletter_consent: newsletterConsent,
+        /* Laissés à `undefined` — et donc absents de la requête — quand l'étape
+           a été passée : rien à écrire, et la colonne garde sa valeur. */
+        home_location: home?.location,
+        home_lat: home?.latitude,
+        home_lng: home?.longitude,
         updated_at: new Date().toISOString(),
       });
       await loadUserProfile(data.user);
@@ -298,9 +417,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithOAuth = async (provider: 'google' | 'apple' | 'facebook') => {
     setIsLoading(true);
     try {
-      const redirectUrl = makeRedirectUri({
-        path: 'auth/callback',
-      });
+      const redirectUrl = makeRedirectUri();
       console.log('OAuth redirectUrl generated:', redirectUrl);
 
       const { data, error } = await supabase.auth.signInWithOAuth({
@@ -492,6 +609,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error ? translateAuthError(error) : null };
   };
 
+  /*
+   * Le changement ne prend effet qu'une fois le lien de confirmation ouvert
+   * depuis la nouvelle boîte : Supabase ne fait ici qu'envoyer ce lien. La
+   * colonne `profiles.email` n'est donc pas touchée — elle se réaligne au
+   * chargement du profil suivant, une fois `auth.users.email` réellement changé
+   * (voir `loadUserProfile`).
+   */
+  const updateUserEmail = async (email: string) => {
+    const cleanEmail = email.trim().toLowerCase();
+    const { error } = await supabase.auth.updateUser(
+      { email: cleanEmail },
+      { emailRedirectTo: 'https://neve-rando.fr/auth/confirmed' }
+    );
+    return { error: error ? translateAuthError(error) : null };
+  };
+
   const updateProfile = async (updates: Partial<UserProfile>) => {
     if (!user) return { error: 'Aucun utilisateur connecté.' };
     setProfile((prev) => (prev ? { ...prev, ...updates } : null));
@@ -503,6 +636,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         default_station: updates.defaultStation,
         preferred_difficulty: updates.preferredDifficulty,
         newsletter_consent: updates.newsletterConsent,
+        home_location: updates.homeLocation,
+        home_lat: updates.homeLat,
+        home_lng: updates.homeLng,
+        transport_passes: updates.transportPasses,
         updated_at: new Date().toISOString(),
       });
       return { error: error ? translateAuthError(error) : null };
@@ -519,6 +656,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         profile,
         isLoading,
         hasCompletedOnboarding,
+        hasCompletedAccountOnboarding,
+        accountOnboardingStep,
+        setAccountOnboardingStep,
+        completeAccountOnboarding,
         isEmailConfirmed,
         signUp,
         signIn,
@@ -532,6 +673,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         completeOnboarding,
         resetPassword,
         updateUserPassword,
+        updateUserEmail,
         updateProfile,
       }}>
       {children}

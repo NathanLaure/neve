@@ -30,7 +30,7 @@ export function NewsletterStep({ onChoice }: NewsletterStepProps) {
 
       <View style={[styles.formGroup, { width: '100%' }]}>
         <Button
-          title="Oui, recevoir les pépites 🏔️"
+          title="Oui, recevoir les pépites"
           onPress={() => onChoice(true)}
           style={styles.actionBtn}
         />
