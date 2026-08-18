@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { StyleSheet, Text, View, RefreshControl } from 'react-native';
+import { StyleSheet, View, RefreshControl } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedScrollHandler,
@@ -11,7 +11,7 @@ import Colors from '@/constants/Colors';
 import Skeleton from '@/components/Skeleton';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
-import { usePlanDraft } from '@/context/PlanDraftContext';
+import { usePlanDraft, computeAutoReturnDate } from '@/context/PlanDraftContext';
 import { formatDateRangeSummary } from '@/components/plan/DateRangeCalendar';
 import {
   fetchTransitOptionsWithFallback,
@@ -20,6 +20,7 @@ import {
   getAvailableTransportModes,
   filterOptionsByTransportModes,
   formatTransportModesSummary,
+  TRANSIT_TRANSPORT_MODES,
   isRealSource,
   Disruption,
   TransitOption,
@@ -31,7 +32,9 @@ import { SearchTransportCard } from '@/components/plan/SearchTransportCard';
 import { RecommendedWrapper } from '@/components/plan/RecommendedWrapper';
 import { ItineraryCard, DeparturePoint } from '@/components/plan/ItineraryCard';
 import DatePhasePillRow from '@/components/plan/DatePhasePillRow';
-import FilterChip from '@/components/plan/FilterChip';
+import JourneyEmptyState from '@/components/plan/JourneyEmptyState';
+import JourneyUnavailableSheet from '@/components/plan/JourneyUnavailableSheet';
+import FilterChip from '@/components/FilterChip';
 import TransportModeSheet from '@/components/plan/TransportModeSheet';
 import DisruptionsBottomSheet from '@/components/plan/DisruptionsBottomSheet';
 import JourneyDetailSheet from '@/components/plan/JourneyDetailSheet';
@@ -40,18 +43,14 @@ import JourneyOptionsSheet from '@/components/plan/JourneyOptionsSheet';
 import TimePickerSheet from '@/components/plan/TimePickerSheet';
 import PassengersBottomSheet from '@/components/plan/PassengersBottomSheet';
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
-import { Passenger, createDefaultPassengers, formatPassengerCount } from '@/types/passenger';
-
-/** Repli si l'écran est atteint sans la liste détaillée (deep link). */
-function parsePassengersParam(json?: string): Passenger[] | null {
-  if (!json) return null;
-  try {
-    const parsed = JSON.parse(json);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
+import {
+  Passenger,
+  allPassengersHave,
+  createDefaultPassengers,
+  formatPassengerCount,
+  normalizePassengers,
+} from '@/types/passenger';
+import { isFullyCoveredByNavigo } from '@/services/bookingService';
 
 /** « 08h » ou « 08h30 » — jamais « 08:00 », qui ne colle pas au reste de l'écran. */
 function formatHourLabel(time: string): string {
@@ -72,6 +71,10 @@ export default function OutwardPlanScreen() {
   const transportModeSheetRef = React.useRef<BaseBottomSheetModalRef>(null);
   const passengersSheetRef = React.useRef<BaseBottomSheetModalRef>(null);
   const journeyDetailSheetRef = React.useRef<BaseBottomSheetModalRef>(null);
+  const unavailableSheetRef = React.useRef<BaseBottomSheetModalRef>(null);
+  /* Suit l'état affiché de la feuille d'indisponibilité. Un ref et non un état :
+     il ne pilote aucun rendu, il évite seulement de rejouer une ouverture. */
+  const isUnavailableOpenRef = React.useRef(false);
 
   const params = useLocalSearchParams<{
     randoId?: string;
@@ -90,7 +93,7 @@ export default function OutwardPlanScreen() {
     isReversed?: string;
   }>();
 
-  const { hikes, userLocationName, userLocation } = useAdventure();
+  const { hikes, deviceLocationName, deviceLocation } = useAdventure();
   const { draft, setOutwardTime, selectOutwardJourney } = usePlanDraft();
 
   const rando = useMemo(
@@ -122,21 +125,21 @@ export default function OutwardPlanScreen() {
   // Position GPS, repli par défaut du point de départ.
   const gpsDeparture: DeparturePoint = useMemo(
     () => ({
-      name: userLocationName,
-      latitude: userLocation.latitude,
-      longitude: userLocation.longitude,
+      name: deviceLocationName,
+      latitude: deviceLocation.latitude,
+      longitude: deviceLocation.longitude,
     }),
-    [userLocationName, userLocation.latitude, userLocation.longitude]
+    [deviceLocationName, deviceLocation.latitude, deviceLocation.longitude]
   );
 
   const paramsDeparturePoint: DeparturePoint = useMemo(() => {
-    const coords = parseCoordinates(params.departureLat, params.departureLng) ?? userLocation;
+    const coords = parseCoordinates(params.departureLat, params.departureLng) ?? deviceLocation;
     return {
-      name: params.departureName || userLocationName || 'Paris',
+      name: params.departureName || deviceLocationName || 'Paris',
       latitude: coords.latitude,
       longitude: coords.longitude,
     };
-  }, [params.departureName, params.departureLat, params.departureLng, userLocationName, userLocation]);
+  }, [params.departureName, params.departureLat, params.departureLng, deviceLocationName, deviceLocation]);
 
   // Adresse choisie à la main sur cet écran, qui l'emporte tant qu'elle est posée.
   const [customDeparture, setCustomDeparture] = useState<DeparturePoint | null>(null);
@@ -160,15 +163,29 @@ export default function OutwardPlanScreen() {
   // servent que de repli si l'écran était atteint sans lui.
   const outwardDate = draft.startDate || params.outwardDate || new Date().toISOString().split('T')[0];
   const outwardTime = draft.outwardTime || params.outwardTime || '08:00';
+  /*
+   * Date de retour effective. Repasser en aller-retour depuis un aller simple
+   * laisse `endDate` vide tant qu'aucune seconde date n'a été tapée : sans le
+   * retour calculé d'office en dernier recours, la pilule « Retour » ne
+   * reviendrait pas alors que le voyage en compte un.
+   */
   const returnDateValue =
-    draft.tripType === 'oneway' ? null : draft.endDate || params.returnDate || null;
+    draft.tripType === 'oneway'
+      ? null
+      : draft.endDate ||
+        params.returnDate ||
+        computeAutoReturnDate(outwardDate, rando?.durationHours);
 
   // Liste détaillée si elle a suivi (repli sur un unique passager par défaut) :
   // c'est elle qui permet la modification/ajout depuis la puce d'en-tête.
   const [passengers, setPassengers] = useState<Passenger[]>(
-    () => parsePassengersParam(params.passengers) ?? createDefaultPassengers()
+    () => normalizePassengers(params.passengers) ?? createDefaultPassengers()
   );
   const passengersCountText = formatPassengerCount(passengers);
+
+  /* « Inclus Navigo » ne s'annonce que si personne n'a de billet à acheter :
+     un seul randonneur sans pass, et le groupe passe quand même en caisse. */
+  const groupHasNavigo = allPassengersHave(passengers, 'navigo');
 
   // State pour le transit
   const [options, setOptions] = useState<TransitOption[]>([]);
@@ -186,9 +203,15 @@ export default function OutwardPlanScreen() {
   // non depuis la carte, que l'aller s'engage.
   const [detailedOption, setDetailedOption] = useState<TransitOption | null>(null);
 
-  // Filtre par mode de transport, réinitialisé à « tout coché » à chaque
-  // nouvelle recherche — voir l'effet plus bas.
-  const [selectedModes, setSelectedModes] = useState<Set<TransitTransportMode>>(new Set());
+  /*
+   * Modes que l'utilisateur a écartés. C'est l'exclusion qu'on retient, et non
+   * la sélection : elle est transmise au calculateur, qui recompose de vrais
+   * itinéraires sans ces modes. Trier la réponse ne donnait rien dès que tous
+   * les trajets proposés empruntaient le mode décoché.
+   */
+  const [excludedModes, setExcludedModes] = useState<Set<TransitTransportMode>>(new Set());
+  /** Forme comparable du Set, pour piloter le rechargement sans suivre sa référence. */
+  const excludedModesKey = Array.from(excludedModes).sort().join(',');
 
   // Animation scroll
   const scrollY = useSharedValue(0);
@@ -224,6 +247,8 @@ export default function OutwardPlanScreen() {
           date: outwardDate,
           time: outwardTime,
           direction: 'go' as const,
+          // Décochés par l'utilisateur : le calculateur recompose sans eux.
+          excludedModes: Array.from(excludedModes),
         };
 
         const result = await fetchTransitOptionsWithFallback(
@@ -234,9 +259,20 @@ export default function OutwardPlanScreen() {
         );
         setOptions(result.options);
         setSource(result.source);
-        // Le filtre repart de « tout coché » à chaque nouvelle liste : une
-        // exclusion posée pour une recherche n'a pas de sens pour la suivante.
-        setSelectedModes(new Set(getAvailableTransportModes(result.options)));
+
+        /* Le calculateur n'a pas répondu : ce qui revient ici n'est qu'une
+           estimation à vol d'oiseau. On le dit franchement plutôt que de laisser
+           l'utilisateur choisir un train qui n'existe pas.
+           La feuille n'est ouverte ou refermée qu'au changement d'état : sans ce
+           garde-fou, chaque rechargement — nouvelle heure, nouvelle date,
+           tirer-pour-rafraîchir, réessai — la rejouerait alors qu'elle est déjà
+           à l'écran. */
+        const unavailable = !isRealSource(result.source);
+        if (unavailable !== isUnavailableOpenRef.current) {
+          isUnavailableOpenRef.current = unavailable;
+          if (unavailable) unavailableSheetRef.current?.present();
+          else unavailableSheetRef.current?.dismiss();
+        }
       }
     } catch (err) {
       console.error('Error fetching transit options:', err);
@@ -249,7 +285,9 @@ export default function OutwardPlanScreen() {
   useEffect(() => {
     loadTransit();
     // Primitives et non les objets `departurePoint` / `arrivalStation`, recréés
-    // à chaque rendu.
+    // à chaque rendu. `excludedModesKey` sérialise le Set pour la même raison :
+    // décocher un mode doit relancer la recherche, pas un simple changement de
+    // référence.
   }, [
     rando?.id,
     outwardDate,
@@ -258,6 +296,7 @@ export default function OutwardPlanScreen() {
     departurePoint.latitude,
     departurePoint.longitude,
     isReversed,
+    excludedModesKey,
   ]);
 
   const handleOpenDetails = (option: TransitOption) => {
@@ -272,6 +311,31 @@ export default function OutwardPlanScreen() {
     // porte tous ses tronçons, que le résumé affiche en détail (PlanDraftContext).
     selectOutwardJourney(option, isRealSource(source));
     const arrivalPoint = returnPoint ?? departurePoint;
+
+    /* Aller simple : il n'y a pas de retour à choisir, l'étape suivante est le
+       récapitulatif. Le résumé sait déjà se passer d'un trajet retour — il n'en
+       affiche pas la section et reprend l'aller pour l'estimation. */
+    if (draft.tripType === 'oneway') {
+      router.push({
+        pathname: '/plan/summary',
+        params: {
+          randoId: rando?.id,
+          departureName: departurePoint.name,
+          // Coordonnées transmises pour que « Ajouter un retour » depuis le
+          // résumé reparte du lieu réellement choisi, et non du GPS.
+          departureLat: String(departurePoint.latitude),
+          departureLng: String(departurePoint.longitude),
+          returnName: arrivalPoint.name,
+          returnLat: String(arrivalPoint.latitude),
+          returnLng: String(arrivalPoint.longitude),
+          outwardDate,
+          passengers: JSON.stringify(passengers),
+          isReversed: String(isReversed),
+        },
+      });
+      return;
+    }
+
     // Naviguer vers la page Retour
     router.push({
       pathname: '/plan/return',
@@ -297,7 +361,28 @@ export default function OutwardPlanScreen() {
     });
   };
 
-  const availableModes = useMemo(() => getAvailableTransportModes(options), [options]);
+  /* Les modes proposés au décochage : ceux présents dans la liste, plus ceux
+     qu'on a écartés. Sans ce complément, décocher le bus le ferait disparaître
+     des résultats donc de la feuille, et on ne pourrait plus le rétablir. */
+  const availableModes = useMemo(() => {
+    const present = new Set(getAvailableTransportModes(options));
+    excludedModes.forEach((mode) => present.add(mode));
+    return TRANSIT_TRANSPORT_MODES.filter((mode) => present.has(mode));
+  }, [options, excludedModes]);
+
+  const selectedModes = useMemo(
+    () => new Set(availableModes.filter((mode) => !excludedModes.has(mode))),
+    [availableModes, excludedModes]
+  );
+
+  const handleApplyModes = (next: Set<TransitTransportMode>) => {
+    // L'effet de chargement suit `excludedModes` : relancer la recherche est
+    // automatique, il n'y a rien à déclencher ici.
+    setExcludedModes(new Set(availableModes.filter((mode) => !next.has(mode))));
+  };
+
+  /* Garde-fou par-dessus le recalcul : si le calculateur laisse malgré tout
+     passer un mode écarté, il ne doit pas réapparaître dans la liste. */
   const modeFilteredOptions = useMemo(
     () => filterOptionsByTransportModes(options, selectedModes),
     [options, selectedModes]
@@ -395,14 +480,13 @@ export default function OutwardPlanScreen() {
                 <Skeleton key={key} width="100%" height={120} style={styles.skeletonCard} />
               ))}
             </View>
-          ) : sortedOptions.length === 0 ? (
-            <View style={[styles.emptyBox, { borderColor: theme.border }]}>
-              <Text style={[styles.emptyText, { color: theme.textMuted }]}>
-                {options.length === 0
-                  ? 'Aucun itinéraire trouvé pour cette date. Essayez de modifier les critères de recherche.'
-                  : 'Aucun itinéraire ne correspond aux modes de transport sélectionnés.'}
-              </Text>
-            </View>
+          ) : /* Le calculateur ne dessert que l'Île-de-France : ailleurs, il
+                 répond par une erreur et le service la traduit en estimations
+                 locales. Rien n'est rendu ici — les afficher reviendrait à
+                 proposer des trains qui n'existent pas, et c'est la feuille
+                 bloquante qui porte le message. */
+          !isRealSource(source) ? null : sortedOptions.length === 0 ? (
+            <JourneyEmptyState reason={options.length === 0 ? 'no-results' : 'no-mode-match'} />
           ) : (
             <View style={styles.resultsContainer}>
               {sortedOptions.map((option, index) => {
@@ -412,6 +496,7 @@ export default function OutwardPlanScreen() {
                 const cardProps = {
                   option,
                   isSelected,
+                  showNavigoBadge: groupHasNavigo && isFullyCoveredByNavigo(option),
                   onSelect: () => handleOpenDetails(option),
                   onPressPerturbations: () => {
                     setOpenedDisruptions(option.disruptions ?? []);
@@ -441,7 +526,25 @@ export default function OutwardPlanScreen() {
         departureName={departurePoint.name}
         destinationName={destinationName}
         primaryLabel="Choisir cet ALLER"
+        showNavigoBadge={groupHasNavigo && isFullyCoveredByNavigo(detailedOption)}
         onConfirm={() => detailedOption && handleConfirmOption(detailedOption)}
+      />
+
+      {/* Calculateur injoignable : ni horaires ni choix possible ici. */}
+      <JourneyUnavailableSheet
+        ref={unavailableSheetRef}
+        /* Aucun itinéraire à proposer ici : la seule issue est de revenir sur
+           ses pas pour changer de date, d'heure ou de point de départ. */
+        onBack={() => {
+          isUnavailableOpenRef.current = false;
+          unavailableSheetRef.current?.dismiss();
+          router.back();
+        }}
+        onOpenSupport={() => {
+          isUnavailableOpenRef.current = false;
+          unavailableSheetRef.current?.dismiss();
+          router.push('/(tabs)/profile');
+        }}
       />
 
       {/* BottomSheetModal pour les détails des perturbations */}
@@ -504,7 +607,7 @@ export default function OutwardPlanScreen() {
         ref={transportModeSheetRef}
         availableModes={availableModes}
         selectedModes={selectedModes}
-        onApply={setSelectedModes}
+        onApply={handleApplyModes}
       />
 
       <PassengersBottomSheet
@@ -530,18 +633,6 @@ const styles = StyleSheet.create({
   },
   skeletonCard: {
     borderRadius: 8,
-  },
-  emptyBox: {
-    padding: 20,
-    borderRadius: 8,
-    borderWidth: 1,
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  emptyText: {
-    fontFamily: 'Satoshi_Variable',
-    fontSize: 14,
-    textAlign: 'center',
   },
   resultsContainer: {
     gap: 12,

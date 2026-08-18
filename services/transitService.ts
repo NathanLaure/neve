@@ -1,5 +1,6 @@
 import idfStationsData from '@/data/idf-train-stations.json';
 import type { TrainOption } from '@/constants/RandosData';
+import type { TransportPassId } from '@/types/passenger';
 import { supabase } from '@/utils/supabase';
 
 export interface Station {
@@ -103,15 +104,92 @@ export interface Co2Impact {
 const STATIONS: Station[] = idfStationsData as Station[];
 
 /**
+ * Empreinte des gares franciliennes, arrondie au dix-millième de degré (~11 m).
+ *
+ * Les gares de départ des randonnées sont recopiées telles quelles depuis ce
+ * même référentiel à l'ingestion : la correspondance est exacte, l'arrondi ne
+ * sert qu'à absorber la précision d'écriture de la base (`NUMERIC(9,6)`).
+ * Construite une fois, elle évite de balayer les 478 gares pour chaque carte
+ * d'une liste.
+ */
+const IDF_STATION_KEYS = new Set(
+  STATIONS.map((station) => stationKey(station.latitude, station.longitude))
+);
+
+function stationKey(latitude: number, longitude: number): string {
+  return `${latitude.toFixed(4)},${longitude.toFixed(4)}`;
+}
+
+/**
+ * La randonnée se rejoint-elle avec un pass Navigo ?
+ *
+ * Le pass couvre l'intégralité du réseau francilien : la question revient donc à
+ * savoir si la gare de départ en fait partie. Le test porte sur les coordonnées
+ * et non sur le nom, qui est un libellé d'affichage — « Gare de Bois-le-Roi »
+ * côté randonnée contre « Bois-le-Roi » au référentiel, et un repli « Gare
+ * Île-de-France » pour les gares sans intitulé.
+ */
+export function isNavigoAccessible(coords?: Coordinates | null): boolean {
+  if (!coords) return false;
+  const { latitude, longitude } = coords;
+  if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+  // Le point nul est la valeur de repli d'une gare absente, pas une position.
+  if (latitude === 0 && longitude === 0) return false;
+  return IDF_STATION_KEYS.has(stationKey(latitude, longitude));
+}
+
+/**
+ * Restreint les randonnées à celles qu'on rejoint avec les abonnements retenus
+ * dans la feuille « Zones tarifaires ».
+ *
+ * Trois cas, et un seul filtre réellement :
+ * - aucun abonnement retenu : rien n'est restreint, tout reste atteignable en
+ *   achetant les billets ;
+ * - le Navigo seul : la sortie doit tenir dans le forfait, donc uniquement les
+ *   randonnées desservies par le réseau francilien ;
+ * - une carte SNCF, seule ou avec le Navigo : elle donne accès aux grandes
+ *   lignes, donc au réseau national — plus rien à restreindre.
+ *
+ * Les cartes SNCF réduisent le prix sans délimiter un territoire : elles ne
+ * peuvent pas rétrécir la liste, seulement l'ouvrir.
+ */
+export function filterHikesByPasses<T extends { startStationCoords?: Coordinates }>(
+  hikes: T[],
+  passes: TransportPassId[]
+): T[] {
+  const restrictsToIdf = passes.length > 0 && passes.every((pass) => pass === 'navigo');
+  if (!restrictsToIdf) return hikes;
+  return hikes.filter((hike) => isNavigoAccessible(hike.startStationCoords));
+}
+
+/**
  * Searches for train stations matching a query string (e.g. "Montparnasse", "Fontainebleau", "Lyon")
+ */
+/*
+ * Repli d'accents par table plutôt que par `normalize('NFD')` : le moteur JS de
+ * React Native ne garantit pas cette forme selon la plateforme, et le projet
+ * emploie déjà cette approche pour classer les suggestions de lieu.
+ */
+const ACCENT_MAP: Record<string, string> = {
+  à: 'a', á: 'a', â: 'a', ä: 'a', è: 'e', é: 'e', ê: 'e', ë: 'e',
+  ì: 'i', í: 'i', î: 'i', ï: 'i', ò: 'o', ó: 'o', ô: 'o', ö: 'o',
+  ù: 'u', ú: 'u', û: 'u', ü: 'u', ç: 'c', ÿ: 'y', ñ: 'n',
+};
+
+function deaccent(value: string): string {
+  return value.toLowerCase().replace(/[àáâäèéêëìíîïòóôöùúûüçÿñ]/g, (c) => ACCENT_MAP[c] ?? c);
+}
+
+/**
+ * Cherche des gares par nom ou par code, sans tenir compte des accents : 119 des
+ * 478 gares en portent, et personne ne tape « Créteil » avec son accent au
+ * clavier d'un téléphone.
  */
 export function searchStations(query: string, limit = 8): Station[] {
   if (!query || query.trim().length === 0) return STATIONS.slice(0, limit);
-  const q = query.toLowerCase().trim();
+  const q = deaccent(query.trim());
   return STATIONS.filter(
-    (s) =>
-      s.name.toLowerCase().includes(q) ||
-      (s.shortCode && s.shortCode.toLowerCase().includes(q))
+    (s) => deaccent(s.name).includes(q) || (s.shortCode && deaccent(s.shortCode).includes(q))
   ).slice(0, limit);
 }
 
@@ -189,6 +267,41 @@ export function calculateCo2Impact(distanceKm: number): Co2Impact {
     savedCo2Kg,
     treesEquivalent,
   };
+}
+
+/**
+ * Vitesse commerciale moyenne par mode, en km/h.
+ *
+ * Vitesses de bout en bout, arrêts et ralentissements compris — pas des vitesses
+ * de pointe. La marche vaut zéro : ces valeurs ne servent qu'à compter les
+ * kilomètres réellement faits en transport.
+ */
+const AVERAGE_SPEED_KMH: Record<TransitLeg['mode'], number> = {
+  train: 60,
+  rer: 45,
+  metro: 25,
+  tram: 18,
+  bus: 15,
+  walk: 0,
+};
+
+/**
+ * Longueur approximative d'un itinéraire, déduite de la durée de ses tronçons.
+ *
+ * Île-de-France Mobilités ne renvoie que des durées : les itinéraires enregistrés
+ * ne portent aucune distance, et les gares d'une aventure passée ne sont plus
+ * connues que par leur nom. Reste la durée de chaque tronçon, convertie à la
+ * vitesse moyenne de son mode.
+ *
+ * C'est donc une estimation, à réserver aux ordres de grandeur cumulés (bilan de
+ * l'année, kilomètres parcourus) — jamais à la description d'un trajet précis.
+ */
+export function estimateLegsDistanceKm(legs?: TransitLeg[]): number {
+  if (!legs || legs.length === 0) return 0;
+  return legs.reduce((total, leg) => {
+    const speedKmh = AVERAGE_SPEED_KMH[leg.mode] ?? 0;
+    return total + (speedKmh * (leg.durationMinutes || 0)) / 60;
+  }, 0);
 }
 
 // Tarif Île-de-France 2026, ticket Métro-Train-RER à l'unité. Doit rester aligné
@@ -319,10 +432,27 @@ export interface TransitQuery {
   time: string;
   timeMode?: TimeMode;
   direction?: 'go' | 'back';
+  /**
+   * Modes que le calculateur doit éviter. Transmis à Navitia, qui recalcule des
+   * itinéraires sans eux — à la différence d'un tri de la réponse, qui laisse
+   * la liste vide quand tous les trajets proposés empruntent le mode écarté.
+   */
+  excludedModes?: TransitTransportMode[];
 }
 
-/** Repli quand l'horizon PRIM n'est pas lisible : on borne à 30 jours. */
-const FALLBACK_HORIZON_DAYS = 365;
+/**
+ * Repli quand l'horizon PRIM n'est pas lisible.
+ *
+ * Quatre semaines, et non un an : le calculateur francilien ne publie ses
+ * horaires qu'à un mois environ — mesuré à J+29 sur la production du 17/08/2026,
+ * J+30 ne renvoyant plus rien. Une borne trop lointaine fait proposer par le
+ * calendrier des dates dont on sait qu'elles ne donneront aucun itinéraire, et
+ * l'échec passe alors pour une panne.
+ *
+ * Mieux vaut interdire un jour de trop que d'en promettre onze mois : ce repli
+ * ne sert que lorsque la vraie borne n'a pas pu être lue.
+ */
+const FALLBACK_HORIZON_DAYS = 28;
 
 /**
  * Dernière date pour laquelle le calculateur a des horaires (`YYYY-MM-DD`).
@@ -357,7 +487,17 @@ export async function fetchTransitHorizon(): Promise<string> {
  * so the planning screen always has something to show.
  */
 export async function fetchTransitOptions(query: TransitQuery): Promise<TransitResult> {
-  const { from, to, fromName, toName, date, time, timeMode = 'departure', direction = 'go' } = query;
+  const {
+    from,
+    to,
+    fromName,
+    toName,
+    date,
+    time,
+    timeMode = 'departure',
+    direction = 'go',
+    excludedModes = [],
+  } = query;
 
   const fallback = (): TransitResult => ({
     options: generateFallbackOptions(from, to, fromName, toName, time, timeMode, direction),
@@ -373,6 +513,7 @@ export async function fetchTransitOptions(query: TransitQuery): Promise<TransitR
         time,
         timeMode,
         direction,
+        excludedModes,
       },
     });
 

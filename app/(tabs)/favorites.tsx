@@ -368,7 +368,7 @@ export default function FavoritesScreen() {
               </Text>
             ) : (
               <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-                Retrouvez les randonnées que vous avez aimées pour les planifier plus tard.
+                Retrouvez les randonnées que vous avez aimées.
               </Text>
             )}
           </Animated.View>
@@ -380,7 +380,7 @@ export default function FavoritesScreen() {
           </View>
         ) : showEmptyState ? (
           <View style={styles.emptyContainer}>
-            <View style={[styles.iconWrapper, { backgroundColor: theme.greenBadge }]}>
+            <View style={[styles.iconWrapper, { backgroundColor: theme.card }]}>
               <Heart size={40} color={theme.tint} fill={theme.tint} />
             </View>
             <Text style={[styles.emptyTitle, { color: theme.text }]}>
@@ -641,9 +641,9 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 32,
+    paddingHorizontal: 40,
     gap: 12,
-    paddingBottom: 80,
+    marginBottom: 200,
   },
   iconWrapper: {
     width: 80,
@@ -655,14 +655,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontFamily: 'BricolageGrotesque',
-    fontSize: 18,
+    fontSize: 24,
     fontWeight: '800',
   },
   emptySub: {
-    fontFamily: 'Satoshi',
-    fontSize: 13,
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 24,
     marginBottom: 12,
   },
   exploreBtn: {

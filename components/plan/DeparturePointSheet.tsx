@@ -11,6 +11,8 @@ import BaseBottomSheetModal, {
 import PlaceSuggestionRow, { getPlaceKind } from '@/components/PlaceSuggestionRow';
 import SearchInput from '@/components/SearchInput';
 import { GeocodedPlace, searchPlaces } from '@/services/geocodingService';
+import { searchStations } from '@/services/transitService';
+import { formatStationLabel } from '@/utils/stationLabel';
 
 export interface DeparturePoint {
   name: string;
@@ -28,6 +30,27 @@ export interface DeparturePointSheetProps {
 
 /** Même délai que l'écran de recherche : on ne géocode pas à chaque frappe. */
 const DEBOUNCE_MS = 300;
+
+/**
+ * Gares franciliennes correspondant à la saisie, converties au format des
+ * suggestions de lieu.
+ *
+ * Elles viennent du référentiel embarqué, pas du géocodeur : la réponse est
+ * immédiate, tient hors ligne, et surtout les coordonnées sont exactement
+ * celles que le calculateur d'itinéraires attend. Un « Gare de Melun » trouvé
+ * par Mapbox tomberait à quelques dizaines de mètres du quai.
+ */
+function searchLocalStations(query: string, limit = 4): GeocodedPlace[] {
+  return searchStations(query, limit).map((station) => ({
+    id: `station-${station.id}`,
+    name: formatStationLabel(station.name),
+    context: 'Gare · Île-de-France',
+    fullName: formatStationLabel(station.name),
+    latitude: station.latitude,
+    longitude: station.longitude,
+    placeType: 'station',
+  }));
+}
 
 /**
  * Saisie manuelle du point de départ.
@@ -52,14 +75,30 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
         return;
       }
 
+      /* Les gares du référentiel local s'affichent sans attendre le réseau, et
+         restent en tête : c'est ce qu'on vient chercher ici en premier. Le
+         géocodeur complète ensuite avec les adresses et les stations de métro,
+         qui ne sont pas dans le référentiel. */
+      const stations = searchLocalStations(query);
+      setResults(stations);
+
       // Une réponse lente ne doit pas écraser les résultats d'une frappe plus
       // récente : `isStale` neutralise la requête abandonnée.
       let isStale = false;
       const timer = setTimeout(async () => {
         setIsSearching(true);
         try {
-          const places = await searchPlaces(query);
-          if (!isStale) setResults(places);
+          const places = await searchPlaces(query, { includeTransit: true });
+          if (isStale) return;
+          // Une gare déjà proposée localement ne doit pas revenir en doublon
+          // sous son nom Mapbox, à quelques mètres près.
+          const isDuplicate = (place: GeocodedPlace) =>
+            stations.some(
+              (station) =>
+                Math.abs(station.latitude - place.latitude) < 0.002 &&
+                Math.abs(station.longitude - place.longitude) < 0.002
+            );
+          setResults([...stations, ...places.filter((place) => !isDuplicate(place))]);
         } finally {
           if (!isStale) setIsSearching(false);
         }

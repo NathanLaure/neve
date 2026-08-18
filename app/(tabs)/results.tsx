@@ -41,6 +41,7 @@ import {
 } from '@/context/MapImmersiveContext';
 import { type RandoData } from '@/constants/RandosData';
 import ExplorerMap, { type ExplorerMapRef, type BoundingBox } from '@/components/ExplorerMap';
+import { getPreferences, setPreference, usePreferences } from '@/utils/preferences';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
@@ -51,6 +52,12 @@ import { useBottomChromeHideDistance, useTabBarHeight } from '@/components/TabBa
 import { useHikeTraces } from '@/components/useHikeTraces';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import Fab from '@/components/Fab';
+import SortBottomSheet from '@/components/SortBottomSheet';
+import FareZonesBottomSheet from '@/components/FareZonesBottomSheet';
+import { useAuth } from '@/context/AuthContext';
+import { filterHikesByPasses } from '@/services/transitService';
+import { SortOptionId, getSortOptionLabel, sortHikes } from '@/constants/SortOptions';
+import { TransportPassId, formatPassesSummary } from '@/types/passenger';
 
 export type MapStyleType = 'default' | 'satellite';
 
@@ -117,6 +124,7 @@ export default function SearchResultsScreen() {
     resetToUserLocationRadius,
   } = useAdventure();
 
+  const { profile } = useAuth();
   const [selectedHikeId, setSelectedHikeId] = useState<string | null>(null);
   const { isImmersive, toggleImmersive, exitImmersive } = useMapImmersiveMode();
   const carouselRef = useRef<FlatList<RandoData>>(null);
@@ -125,6 +133,8 @@ export default function SearchResultsScreen() {
   const bottomSheetRef = useRef<HikesBottomSheetRef>(null);
   const filtersSheetRef = useRef<FiltersBottomSheetRef>(null);
   const layerSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const sortSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const fareZonesSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const mapboxToken = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
 
   const mapTypes = React.useMemo(() => {
@@ -147,7 +157,10 @@ export default function SearchResultsScreen() {
   }, [colorScheme]);
 
 
-  const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
+  /* Voir `app/(tabs)/index.tsx` : préférence d'appareil, partagée entre la carte
+     de l'explorateur et celle des résultats. */
+  const { mapStyle } = usePreferences();
+  const setMapStyle = (style: MapStyleType) => setPreference('mapStyle', style);
 
   // Shared value, not state: the map emits a bearing on every camera frame and
   // re-rendering this screen that often made the compass needle visibly lag.
@@ -286,9 +299,49 @@ export default function SearchResultsScreen() {
     });
   }, [filteredHikes, mapAreaCenter, mapAreaBounds, mapAreaZoom, searchRadiusKm, isMapAreaActive, userLocation]);
 
+  /*
+   * Réglages de la liste de résultats (Figma 49:2449). Les zones tarifaires
+   * partent des abonnements déclarés au profil : l'utilisateur les a déjà
+   * saisis à l'inscription, les redemander ici n'apprendrait rien.
+   */
+  const [farePasses, setFarePasses] = useState<TransportPassId[]>([]);
+  /* Amorcé sur la préférence, pas asservi à elle : changer le tri ici vaut pour
+     la recherche en cours et ne réécrit pas le défaut choisi dans les réglages. */
+  const [sortOption, setSortOption] = useState<SortOptionId>(
+    () => getPreferences().sortOption
+  );
+  const hasSeededFarePasses = useRef(false);
+
+  const profilePasses = profile?.transportPasses;
+  useEffect(() => {
+    // Une seule fois, à l'arrivée du profil : ensuite la feuille fait foi, y
+    // compris quand l'utilisateur a tout décoché.
+    if (hasSeededFarePasses.current || !profilePasses?.length) return;
+    hasSeededFarePasses.current = true;
+    setFarePasses(profilePasses);
+  }, [profilePasses]);
+
+  /*
+   * Ce que voient la liste, le carrousel et la carte. Filtrage et tri sont
+   * appliqués en un seul point, en aval du découpage géographique : un décompte
+   * de résultats qui ne correspondrait pas aux épingles de la carte se lirait
+   * comme un bug.
+   */
+  const displayedRandos = React.useMemo(() => {
+    const distanceFromUserKm = (hike: RandoData): number | null => {
+      if (!userLocation) return null;
+      const lat = (hike as any)?.start_lat ?? hike?.startStationCoords?.latitude;
+      const lng = (hike as any)?.start_lng ?? hike?.startStationCoords?.longitude;
+      if (lat == null || lng == null) return null;
+      return calculateDistanceKm(userLocation.latitude, userLocation.longitude, lat, lng);
+    };
+
+    return sortHikes(filterHikesByPasses(filteredRandos, farePasses), sortOption, distanceFromUserKm);
+  }, [filteredRandos, farePasses, sortOption, userLocation]);
+
   // Tracés des randos à l'écran, chargés à la volée une fois le seuil de zoom
   // franchi — ils ne font pas partie des colonnes de liste.
-  const { traces, onCameraChange: onTracesCameraChange } = useHikeTraces(filteredRandos);
+  const { traces, onCameraChange: onTracesCameraChange } = useHikeTraces(displayedRandos);
 
   const handleCameraChangeComplete = React.useCallback(
     (center: { latitude: number; longitude: number }, zoom: number, bounds: BoundingBox | null) => {
@@ -385,7 +438,7 @@ export default function SearchResultsScreen() {
     }
   }, [searchRadiusKm, isMapAreaActive, userLocation]);
 
-  const hasCards = filteredRandos.length > 0;
+  const hasCards = displayedRandos.length > 0;
   const showCarousel = !isSearchingArea && hasCards && !isImmersive;
 
   // La TabBar flotte au-dessus de l'écran : tout ce qui se cale en bas doit lui
@@ -490,7 +543,7 @@ export default function SearchResultsScreen() {
    */
   const handleHikeFocus = useCallback(
     (hikeId: string) => {
-      const index = filteredRandos.findIndex((hike) => hike.id === hikeId);
+      const index = displayedRandos.findIndex((hike) => hike.id === hikeId);
       if (index < 0) return;
 
       exitImmersive();
@@ -502,7 +555,7 @@ export default function SearchResultsScreen() {
         animated: true,
       });
     },
-    [filteredRandos, cardWidth, exitImmersive]
+    [displayedRandos, cardWidth, exitImmersive]
   );
 
   const handleSelectHike = useCallback(
@@ -552,7 +605,7 @@ export default function SearchResultsScreen() {
   const handleCarouselScrollEnd = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     const offsetX = event.nativeEvent.contentOffset.x;
     const index = Math.round(offsetX / (cardWidth + 12));
-    const clampedIndex = Math.max(0, Math.min(index, filteredRandos.length - 1));
+    const clampedIndex = Math.max(0, Math.min(index, displayedRandos.length - 1));
 
     if (clampedIndex > 0) {
       hasLeftFirstCarouselCardRef.current = true;
@@ -560,7 +613,7 @@ export default function SearchResultsScreen() {
       return;
     }
 
-    const hike = filteredRandos[clampedIndex];
+    const hike = displayedRandos[clampedIndex];
     if (hike && hike.id !== selectedHikeId) {
       setSelectedHikeId(hike.id);
     }
@@ -578,7 +631,7 @@ export default function SearchResultsScreen() {
           ref={mapRef}
           userLocation={userLocation}
           userLocationName={userLocationName}
-          hikes={filteredRandos}
+          hikes={displayedRandos}
           traces={traces}
           selectedHikeId={selectedHikeId}
           onMapPress={handleMapPress}
@@ -725,7 +778,7 @@ export default function SearchResultsScreen() {
             ]}>
             <FlatList
               ref={carouselRef}
-              data={filteredRandos}
+              data={displayedRandos}
               horizontal
               keyExtractor={(item) => `carousel-${item.id}`}
               showsHorizontalScrollIndicator={false}
@@ -746,7 +799,7 @@ export default function SearchResultsScreen() {
           style={[StyleSheet.absoluteFill, styles.sheetLayer, animatedSheetStyle]}>
           <HikesBottomSheet
             ref={bottomSheetRef}
-            hikes={filteredRandos}
+            hikes={displayedRandos}
             isLoadingHikes={isLoadingHikes || isSearchingArea}
             getTransitInfo={getTransitInfo}
             onSelectHike={handleSelectHike}
@@ -754,6 +807,10 @@ export default function SearchResultsScreen() {
             initialIndex={2}
             expandedTopOffset={MAP_CHIPS_BAR_HEIGHT + MAP_CHIPS_BAR_GAP}
             bottomInset={tabBarHeight}
+            fareZonesLabel={formatPassesSummary(farePasses, 'Zones tarifaires')}
+            sortLabel={getSortOptionLabel(sortOption)}
+            onOpenFareZones={() => fareZonesSheetRef.current?.present()}
+            onOpenSort={() => sortSheetRef.current?.present()}
           />
         </Reanimated.View>
 
@@ -807,6 +864,22 @@ export default function SearchResultsScreen() {
 
         {/* Filters Bottom Sheet Modal */}
         <FiltersBottomSheet ref={filtersSheetRef} baseHikes={geoScopedHikes} />
+
+        {/* Réglages de la liste, ouverts depuis les puces du décompte */}
+        <FareZonesBottomSheet
+          ref={fareZonesSheetRef}
+          value={farePasses}
+          onChange={setFarePasses}
+        />
+
+        <SortBottomSheet
+          ref={sortSheetRef}
+          value={sortOption}
+          onChange={(id) => {
+            setSortOption(id);
+            sortSheetRef.current?.dismiss();
+          }}
+        />
       </View>
     </Animated.View>
   );

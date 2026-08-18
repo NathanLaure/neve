@@ -128,9 +128,9 @@ export const SearchTransportCard: React.FC<SearchTransportCardProps> = ({
 
         {showNavigoBadge ? (
           <View style={[styles.priceBadgeContainer, { backgroundColor: theme.statusBgSuccessSubtle }]}>
-            <Check size={12} color={theme.statusTextSuccess} />
+            <Check size={14} color={theme.statusTextSuccess} />
             <Text style={[styles.cardPriceText, { color: theme.statusTextSuccess }]}>
-              Inclus Navigo
+              Pass' Navigo
             </Text>
           </View>
         ) : option.priceEstimate !== undefined ? (
@@ -259,7 +259,6 @@ export const SearchTransportCard: React.FC<SearchTransportCardProps> = ({
 const styles = StyleSheet.create({
   cardContainer: {
     borderRadius: 8,
-    borderWidth: 2,
     padding: 12,
     gap: 4,
     width: '100%',

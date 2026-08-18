@@ -10,7 +10,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Share2 } from 'lucide-react-native';
+import { ArrowLeft, Plus, Share2 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -32,21 +32,16 @@ import { toTrainOption } from '@/services/transitService';
 import {
   BookingProvider,
   buildTrainlineSearchUrl,
+  isFullyCoveredByNavigo,
   openBookingProvider,
 } from '@/services/bookingService';
-import { Passenger, createDefaultPassengers, formatPassengerCount } from '@/types/passenger';
+import {
+  allPassengersHave,
+  createDefaultPassengers,
+  formatPassengerCount,
+  normalizePassengers,
+} from '@/types/passenger';
 import { showToast } from '@/utils/toast';
-
-/** Repli si l'écran est atteint sans la liste détaillée (deep link). */
-function parsePassengersParam(json?: string): Passenger[] | null {
-  if (!json) return null;
-  try {
-    const parsed = JSON.parse(json);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 /** « 20 mars 2027 » — la date pleine, année comprise : une aventure se planifie loin. */
 function formatFullDate(iso: string): string {
@@ -112,7 +107,12 @@ export default function PlanSummaryScreen() {
   const params = useLocalSearchParams<{
     randoId?: string;
     departureName?: string;
+    /** Coordonnées du départ, nécessaires pour repartir chercher un retour. */
+    departureLat?: string;
+    departureLng?: string;
     returnName?: string;
+    returnLat?: string;
+    returnLng?: string;
     outwardDate?: string;
     returnDate?: string;
     passengers?: string;
@@ -148,7 +148,7 @@ export default function PlanSummaryScreen() {
     draft.tripType === 'oneway' ? null : draft.endDate || params.returnDate || outwardDate;
 
   const passengers = useMemo(
-    () => parsePassengersParam(params.passengers) ?? createDefaultPassengers(),
+    () => normalizePassengers(params.passengers) ?? createDefaultPassengers(),
     [params.passengers]
   );
 
@@ -189,6 +189,9 @@ export default function PlanSummaryScreen() {
         departureStationName: departureName,
         returnStationName: returnName !== departureName ? returnName : undefined,
         isReversed,
+        // `returnTrain` recopie l'aller en aller simple : sans ce drapeau, la
+        // fiche de l'aventure afficherait un retour qui n'a jamais été planifié.
+        isOneWay: !returnJourney,
         isBooked: false,
         passengersCount: formatPassengerCount(passengers),
         passengers,
@@ -220,6 +223,7 @@ export default function PlanSummaryScreen() {
       departureName,
       returnName,
       isReversed,
+      returnJourney,
       passengers,
       savedAdventureId,
       plannedAdventures,
@@ -389,6 +393,32 @@ export default function PlanSummaryScreen() {
   }, []);
 
   /*
+   * Ajout d'un retour à un aller simple déjà planifié.
+   *
+   * Passe par le calendrier avant les résultats : sans date, les horaires
+   * proposés seraient ceux d'un jour choisi à la place de l'utilisateur. La
+   * modale enchaîne ensuite d'elle-même sur les trajets de retour.
+   */
+  const handleAddReturn = useCallback(() => {
+    router.push({
+      pathname: '/plan/dates',
+      params: {
+        next: 'return',
+        randoId: rando?.id,
+        outwardId: outwardJourney?.id,
+        departureName: params.departureName,
+        departureLat: params.departureLat,
+        departureLng: params.departureLng,
+        returnName: params.returnName,
+        returnLat: params.returnLat,
+        returnLng: params.returnLng,
+        passengers: JSON.stringify(passengers),
+        isReversed: params.isReversed,
+      },
+    });
+  }, [outwardJourney?.id, params, passengers, rando, router]);
+
+  /*
    * En-tête repliable, sur le patron de l'écran de planification : le grand titre
    * défile avec le contenu et cède sa place à une version compacte, posée entre
    * les deux boutons de la barre fixe.
@@ -537,6 +567,20 @@ export default function PlanSummaryScreen() {
             </>
           )}
 
+          {/* Aller simple : le retour n'a pas été planifié, mais rien n'oblige à
+              refaire le parcours pour l'ajouter. L'aventure déjà construite est
+              conservée, seul le trajet retour reste à choisir. */}
+          {!returnJourney && (
+            <Button
+              title="Ajouter un trajet retour"
+              variant="outlined"
+              icon={<Plus size={18} color={theme.text} />}
+              style={[styles.addReturnButton, { borderColor: theme.borderStrong || theme.border }]}
+              textStyle={{ color: theme.text }}
+              onPress={handleAddReturn}
+            />
+          )}
+
           <AdventureTimelineCaption
             label="Fin de l'aventure... avant la prochaine."
             arrow="above"
@@ -575,6 +619,10 @@ export default function PlanSummaryScreen() {
         departureName={isReturnDetail ? departBackStationName : departureName}
         destinationName={isReturnDetail ? returnName : arrivalStationName}
         primaryLabel={isReturnDetail ? 'Modifier le retour' : "Modifier l'aller"}
+        showNavigoBadge={
+          allPassengersHave(passengers, 'navigo') &&
+          isFullyCoveredByNavigo(isReturnDetail ? returnJourney : outwardJourney)
+        }
         onConfirm={() => handleModify(detailedPhase)}
       />
     </>
@@ -626,5 +674,10 @@ const styles = StyleSheet.create({
   },
   laterButton: {
     borderWidth: 0,
+  },
+  /* Posé dans la frise, à l'emplacement qu'occuperait la carte du retour :
+     l'aventure se lit toujours de haut en bas, avec une étape en attente. */
+  addReturnButton: {
+    marginTop: 16,
   },
 });

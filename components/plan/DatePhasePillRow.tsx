@@ -11,7 +11,10 @@ export interface DatePhasePillRowProps {
   /** Phase affichée par l'écran courant : détermine quel pill est en avant. */
   activePhase: TripPhase;
   outwardLabel: string;
-  /** `null` en aller simple : le pill retour se grise sans date. */
+  /**
+   * `null` en aller simple : la pilule retour disparaît au lieu d'afficher une
+   * date vide. Il n'y a pas de retour à dater, donc rien à montrer.
+   */
   returnLabel: string | null;
   onPress: () => void;
 }
@@ -31,6 +34,8 @@ export default function DatePhasePillRow({
   const theme = Colors[colorScheme];
 
   const isOutwardActive = activePhase === 'outward';
+  // Aller simple : une seule pilule, qui reprend donc les quatre coins arrondis.
+  const isOneWay = returnLabel === null;
 
   return (
     <View style={styles.row}>
@@ -43,7 +48,7 @@ export default function DatePhasePillRow({
         }}
         style={[
           styles.pill,
-          styles.pillLeft,
+          isOneWay ? styles.pillSolo : styles.pillLeft,
           {
             backgroundColor: isOutwardActive ? theme.brand : theme.card,
             overflow: 'hidden' as const,
@@ -68,40 +73,42 @@ export default function DatePhasePillRow({
         </View>
       </Pressable>
 
-      <Pressable
-        onPress={onPress}
-        android_ripple={{
-          color: !isOutwardActive ? theme.rippleOnBrand : theme.ripple,
-          borderless: false,
-          foreground: true,
-        }}
-        style={[
-          styles.pill,
-          styles.pillRight,
-          {
-            backgroundColor: !isOutwardActive ? theme.brand : theme.card,
-            overflow: 'hidden' as const,
-          },
-        ]}>
-        <View style={styles.content}>
-          {!isOutwardActive && <ArrowRight size={16} color={theme.buttonTextOnBrand} />}
-          <Text
-            style={[
-              styles.label,
-              { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.textMuted },
-            ]}>
-            Retour
-          </Text>
-          <Text
-            style={[
-              styles.date,
-              { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.text },
-            ]}
-            numberOfLines={1}>
-            {returnLabel ?? '—'}
-          </Text>
-        </View>
-      </Pressable>
+      {!isOneWay && (
+        <Pressable
+          onPress={onPress}
+          android_ripple={{
+            color: !isOutwardActive ? theme.rippleOnBrand : theme.ripple,
+            borderless: false,
+            foreground: true,
+          }}
+          style={[
+            styles.pill,
+            styles.pillRight,
+            {
+              backgroundColor: !isOutwardActive ? theme.brand : theme.card,
+              overflow: 'hidden' as const,
+            },
+          ]}>
+          <View style={styles.content}>
+            {!isOutwardActive && <ArrowRight size={16} color={theme.buttonTextOnBrand} />}
+            <Text
+              style={[
+                styles.label,
+                { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.textMuted },
+              ]}>
+              Retour
+            </Text>
+            <Text
+              style={[
+                styles.date,
+                { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.text },
+              ]}
+              numberOfLines={1}>
+              {returnLabel}
+            </Text>
+          </View>
+        </Pressable>
+      )}
     </View>
   );
 }
@@ -123,6 +130,9 @@ const styles = StyleSheet.create({
   pillRight: {
     borderTopRightRadius: 20,
     borderBottomRightRadius: 20,
+  },
+  pillSolo: {
+    borderRadius: 20,
   },
   content: {
     flexDirection: 'row',

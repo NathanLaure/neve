@@ -34,6 +34,7 @@ import {
 } from '@/context/MapImmersiveContext';
 import { type RandoData } from '@/constants/RandosData';
 import ExplorerMap, { type ExplorerMapRef, type BoundingBox } from '@/components/ExplorerMap';
+import { setPreference, usePreferences } from '@/utils/preferences';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
@@ -151,7 +152,10 @@ export default function ExplorerScreen() {
     }, [])
   );
 
-  const [mapStyle, setMapStyle] = useState<MapStyleType>('default');
+  /* Le fond de carte est une préférence de l'appareil et non un état d'écran :
+     le choisir ici le retient, et l'écran de résultats ouvre sur le même. */
+  const { mapStyle } = usePreferences();
+  const setMapStyle = (style: MapStyleType) => setPreference('mapStyle', style);
 
   const compassBearing = useSharedValue(0);
   const [showSearchInAreaBtn, setShowSearchInAreaBtn] = useState(false);

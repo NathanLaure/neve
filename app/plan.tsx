@@ -48,10 +48,16 @@ import ScreenFooter from '@/components/ScreenFooter';
 import { IconButton } from '@/components/IconButton';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
+import { useAuth } from '@/context/AuthContext';
 import { TrainOption } from '@/constants/RandosData';
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
-import { usePlanDraft, resolveEndDate } from '@/context/PlanDraftContext';
-import { addDays, formatDateRangeSummary } from '@/components/plan/DateRangeCalendar';
+import {
+  usePlanDraft,
+  resolveEndDate,
+  computeAutoReturnDate,
+  computeHikeDays,
+} from '@/context/PlanDraftContext';
+import { formatDateRangeSummary } from '@/components/plan/DateRangeCalendar';
 import { SELECTABLE_TIMES } from '@/components/plan/TimePickerSheet';
 import PassengersEditor from '@/components/plan/PassengersEditor';
 import PassengersBottomSheet from '@/components/plan/PassengersBottomSheet';
@@ -84,13 +90,6 @@ const TIME_MODES: { value: TimeMode; label: string }[] = [
 const DEFAULT_RETURN_TIME = '16:00';
 /** On ne propose pas de retour au-delà : les dessertes franciliennes se raréfient. */
 const LATEST_RETURN_TIME_MINUTES = 21 * 60;
-
-/**
- * Heures de marche au-delà desquelles la rando déborde sur un jour de plus.
- * Sert à pré-remplir la date de retour : 402 des 431 randos franciliennes tiennent
- * sous ce seuil et repartent donc le jour même.
- */
-const HIKING_HOURS_PER_DAY = 8;
 
 // Durées fixes, pas de ressort : un fondu net plutôt qu'un rebond sur des
 // sections qui apparaissent, disparaissent ou poussent leurs voisines au fil du
@@ -242,7 +241,8 @@ export default function PlanScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const { addAdventure, userLocationName, userLocation, hikes } = useAdventure();
+  const { addAdventure, deviceLocationName, deviceLocation, hikes } = useAdventure();
+  const { profile } = useAuth();
 
   const rando = hikes.find((r) => r.id === randoId);
 
@@ -325,15 +325,22 @@ export default function PlanScreen() {
     bodyScrollRef.current?.scrollTo({ y: 0, animated: false });
   }, [openSection, phase]);
 
-  // Position GPS, proposée par défaut. Dérivée plutôt que stockée pour qu'elle
-  // suive le capteur quand la localisation se précise après le premier rendu.
+  /*
+   * Position de l'appareil, proposée par défaut comme point de départ. Dérivée
+   * plutôt que stockée pour qu'elle suive le capteur quand la localisation se
+   * précise après le premier rendu.
+   *
+   * `deviceLocation` et non `userLocation` : ce dernier porte le centre de la
+   * recherche, que chercher un lieu déplace. On serait parti de Clichy pour
+   * avoir cherché une randonnée à Clichy.
+   */
   const gpsDeparture: DeparturePoint = useMemo(
     () => ({
-      name: userLocationName,
-      latitude: userLocation.latitude,
-      longitude: userLocation.longitude,
+      name: deviceLocationName,
+      latitude: deviceLocation.latitude,
+      longitude: deviceLocation.longitude,
     }),
-    [userLocationName, userLocation.latitude, userLocation.longitude]
+    [deviceLocationName, deviceLocation.latitude, deviceLocation.longitude]
   );
 
   // Adresse saisie à la main, qui l'emporte sur le GPS tant qu'elle est posée.
@@ -346,7 +353,22 @@ export default function PlanScreen() {
   const [returnPoint, setReturnPoint] = useState<DeparturePoint | null>(null);
   const arrivalPoint = returnPoint ?? departurePoint;
 
-  const [passengers, setPassengers] = useState<Passenger[]>(createDefaultPassengers);
+  /*
+   * Randonneurs de l'aventure. Tant que l'utilisateur n'a touché à rien, la liste
+   * n'est pas stockée mais dérivée du profil : le randonneur « Vous » part avec
+   * les abonnements déclarés à l'inscription, y compris quand le profil arrive
+   * après le premier rendu — ce qu'un état figé au montage aurait manqué. Sa
+   * première modification prend la main et ne se fait plus écraser.
+   */
+  const ownPassesKey = (profile?.transportPasses ?? []).join(',');
+  const defaultPassengers = useMemo(
+    () => createDefaultPassengers(profile?.transportPasses),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- la clé sérialisée
+    // tient lieu du tableau, recréé à chaque chargement du profil.
+    [ownPassesKey]
+  );
+  const [editedPassengers, setPassengers] = useState<Passenger[] | null>(null);
+  const passengers = editedPassengers ?? defaultPassengers;
 
   // Sens de parcours. Sur une traversée (gare de fin ≠ gare de début), l'inverser
   // fait viser la gare de fin à l'aller et repartir de la gare de début au retour.
@@ -394,13 +416,13 @@ export default function PlanScreen() {
   const [retryToken, setRetryToken] = useState(0);
 
   // Nombre de jours de marche, d'où découle la date de retour pré-remplie.
-  const hikeDays = Math.max(1, Math.ceil((rando?.durationHours ?? 0) / HIKING_HOURS_PER_DAY));
+  const hikeDays = computeHikeDays(rando?.durationHours);
 
   // Retour auto : départ + (jours de marche - 1). Une sortie à la journée revient
   // le soir même, une rando de 3 jours deux jours plus tard.
   const autoReturnDate = useMemo(
-    () => (startDate ? addDays(startDate, hikeDays - 1) : null),
-    [startDate, hikeDays]
+    () => computeAutoReturnDate(startDate, rando?.durationHours),
+    [startDate, rando?.durationHours]
   );
 
   const effectiveEndDate = resolveEndDate(draft, autoReturnDate);

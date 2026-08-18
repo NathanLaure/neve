@@ -57,6 +57,16 @@ export interface RandoData {
   ratingAvg?: number | null;
   /** Nombre d'avis derrière la moyenne (`hikes.rating_count`). */
   ratingCount?: number | null;
+  /**
+   * Grandeurs brutes, doublons numériques de `distance` et `elevation` qui sont
+   * des libellés d'affichage (« 8,4 km », « +150m / -80m »). Le tri des
+   * résultats a besoin de comparer, pas d'afficher : reparser ces chaînes
+   * reviendrait à défaire à l'arrivée ce que la mise en forme a fait au départ.
+   */
+  distanceKm?: number;
+  elevationGainM?: number;
+  /** Date d'ajout au catalogue (`hikes.created_at`), pour le tri « Nouveautés ». */
+  createdAt?: string;
   /** False when only lightweight list data has been fetched (e.g. gpxTrace/description not loaded yet). */
   hasFullDetail?: boolean;
 }

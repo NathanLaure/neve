@@ -59,6 +59,7 @@ import ToggleRow from '@/components/ToggleRow';
 import WeatherIcon, { WeatherIconType } from '@/components/WeatherIcon';
 import ExplorerMap, { MapStyleType, ExplorerMapRef } from '@/components/ExplorerMap';
 import RandoDetailSkeleton from '@/components/RandoDetailSkeleton';
+import { isNavigoAccessible } from '@/services/transitService';
 import Toast from 'react-native-toast-message';
 
 /* eslint-disable @typescript-eslint/no-require-imports */
@@ -616,8 +617,11 @@ export default function RandoDetailScreen() {
               </Pressable>
             )}
 
-            {/* Navigo Sticker */}
-            {rando.trainType?.toLowerCase().includes('navigo') ? (
+            {/* Navigo Sticker — la gare de départ appartient-elle au réseau
+                francilien ? Le champ `trainType` qui décidait ici ne vient
+                d'aucune colonne : il retombait toujours sur « Transilien / RER »
+                et n'a donc jamais laissé passer le badge. */}
+            {isNavigoAccessible(rando.startStationCoords) ? (
               <Tag
                 statut="Success"
                 size="md"

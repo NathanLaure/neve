@@ -202,36 +202,23 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({
 
           const directionStr = leg.direction || `Direction ${leg.toName}`;
 
-          const defaultStopsMap: Record<string, string[]> = {
-            '14': ['Madeleine', 'Pyramides', 'Châtelet', 'Gare de Lyon', 'Bercy'],
-            '13': [
-              'Liège',
-              'Place de Clichy',
-              'La Fourche',
-              'Guy Môquet',
-              'Porte de Saint-Ouen',
-            ],
-            '1': [
-              'Concorde',
-              'Tuileries',
-              'Palais Royal - Louvre',
-              'Louvre - Rivoli',
-              'Châtelet',
-            ],
-            '4': ['St-Germain-des-Prés', 'Odéon', 'Saint-Michel', 'Cité', 'Châtelet'],
-          };
-
-          const fallbackStops = defaultStopsMap[leg.lineName || ''] || [
-            `${leg.fromName} (+1)`,
-            `${leg.fromName} (+2)`,
-            `${leg.fromName} (+3)`,
-          ];
-
-          const intermediateStops =
-            leg.intermediateStops && leg.intermediateStops.length > 0
-              ? leg.intermediateStops
-              : fallbackStops;
-          const stopsCount = leg.intermediateStopsCount || intermediateStops.length;
+          /*
+           * Uniquement les arrêts que le calculateur a réellement renvoyés.
+           *
+           * Une table d'arrêts codés en dur tenait lieu de repli — la ligne 14
+           * affichait « Madeleine, Pyramides, Châtelet… » quel que soit le
+           * trajet, et les autres lignes des « (+1) / (+2) / (+3) ». C'étaient
+           * des données de maquette : elles annonçaient des arrêts par lesquels
+           * le train ne passait pas, sur un écran qui sert à prendre un train.
+           *
+           * Navitia ne détaille pas toujours les dessertes (`stop_date_times`
+           * absent sur certaines sections) : mieux vaut alors ne rien afficher
+           * que d'inventer un parcours.
+           */
+          const intermediateStops = leg.intermediateStops ?? [];
+          // Le compte annoncé par le calculateur fait foi ; à défaut, ce qu'on a
+          // vraiment reçu. Jamais la longueur d'une liste reconstituée.
+          const stopsCount = leg.intermediateStopsCount ?? intermediateStops.length;
           const legDisruptions = disruptionsForLeg(leg, disruptions);
 
           return (
@@ -303,18 +290,25 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({
 
                   <LegDisruptions disruptions={legDisruptions} />
 
-                  {/* Synthèse ou Accordéon des arrêts */}
+                  {/* Synthèse ou Accordéon des arrêts. Le compte peut être connu
+                      sans que le détail le soit : on ne rend la ligne pressable
+                      que s'il y a vraiment une desserte à déplier. */}
                   {stopsCount > 0 && (
                     <Pressable
-                      onPress={() => toggleLegStops(idx)}
-                      android_ripple={{
-                        color: theme.ripple,
-                        borderless: true,
-                      }}
+                      onPress={intermediateStops.length > 0 ? () => toggleLegStops(idx) : undefined}
+                      disabled={intermediateStops.length === 0}
+                      android_ripple={
+                        intermediateStops.length > 0
+                          ? { color: theme.ripple, borderless: true }
+                          : undefined
+                      }
                       style={styles.stopsToggleButton}>
                       <Text style={[styles.stopsSummaryText, { color: theme.textMuted }]}>
-                        {stopsCount} arrêt{stopsCount > 1 ? 's' : ''} (
-                        {leg.durationMinutes || 10} min)
+                        {stopsCount} arrêt{stopsCount > 1 ? 's' : ''}
+                        {/* La durée n'est affichée que si le calculateur l'a
+                            donnée : un « 10 min » de repli s'affichait jusqu'ici
+                            sur des trajets d'une tout autre longueur. */}
+                        {leg.durationMinutes ? ` (${leg.durationMinutes} min)` : ''}
                       </Text>
                     </Pressable>
                   )}

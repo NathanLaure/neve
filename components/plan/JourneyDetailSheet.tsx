@@ -146,7 +146,7 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
                     ]}>
                     <Check size={12} color={theme.statusTextSuccess} />
                     <Text style={[styles.priceText, { color: theme.statusTextSuccess }]}>
-                      Inclus Navigo
+                      Pass' Navigo
                     </Text>
                   </View>
                 ) : option.priceEstimate !== undefined ? (

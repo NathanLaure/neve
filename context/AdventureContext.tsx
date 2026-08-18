@@ -17,6 +17,7 @@ import { supabase } from '@/utils/supabase';
 import { findNearestStation } from '@/services/transitService';
 import { formatStationLabel } from '@/utils/stationLabel';
 import { useAuth } from '@/context/AuthContext';
+import { getPreferences } from '@/utils/preferences';
 
 export interface PlannedAdventure {
   id: string;
@@ -33,6 +34,12 @@ export interface PlannedAdventure {
    */
   returnStationName?: string;
   isReversed?: boolean;
+  /**
+   * Aller simple : aucun trajet retour n'a été choisi. `returnTrain` porte alors
+   * une copie de l'aller, le modèle en exigeant un — c'est ce drapeau, et lui
+   * seul, qui permet de ne pas la prendre pour un vrai retour.
+   */
+  isOneWay?: boolean;
   isBooked: boolean;
   passengersCount?: string;
   passengers?: any[];
@@ -52,14 +59,41 @@ export interface PlannedAdventure {
   };
 }
 
+/**
+ * L'aventure est-elle un aller simple ?
+ *
+ * Le drapeau `isOneWay` fait foi, mais il n'existe que depuis la colonne
+ * `is_one_way` : les aventures enregistrées avant portent `false` sans que cela
+ * veuille dire qu'un retour a été choisi. Elles se reconnaissent à leurs deux
+ * trajets identiques — le résumé recopiait l'aller faute de retour, et un vrai
+ * aller-retour n'a jamais deux fois le même identifiant d'itinéraire.
+ */
+export function isOneWayAdventure(adventure: PlannedAdventure): boolean {
+  if (adventure.isOneWay) return true;
+  const outwardId = adventure.outwardTrain?.id;
+  return !!outwardId && outwardId === adventure.returnTrain?.id;
+}
+
 interface Coordinates {
   latitude: number;
   longitude: number;
 }
 
 interface AdventureContextType {
+  /**
+   * Centre de la recherche. C'est la position de l'appareil au démarrage, mais
+   * chercher un lieu la déplace : « des randonnées autour de Clichy » y écrit
+   * Clichy. Ne pas s'en servir pour dire d'où part le voyageur.
+   */
   userLocation: Coordinates;
   userLocationName: string;
+  /**
+   * Position réelle de l'appareil, que seule la géolocalisation met à jour —
+   * une recherche de lieu ne la touche pas. C'est le point de départ par défaut
+   * d'un trajet : on cherche une randonnée à Clichy, on n'en part pas.
+   */
+  deviceLocation: Coordinates;
+  deviceLocationName: string;
   isLocating: boolean;
   plannedAdventures: PlannedAdventure[];
   isLoadingAdventures: boolean;
@@ -73,7 +107,7 @@ interface AdventureContextType {
   toggleAdventureBooked: (id: string) => void;
   refreshAdventures: () => Promise<void>;
   setUserLocationManually: (coords: Coordinates, name: string) => void;
-  refreshUserLocation: () => Promise<void>;
+  refreshUserLocation: (requestPermission?: boolean) => Promise<void>;
   /** `fromLocation` overrides the user's tracked position — used to preview a place before committing to it. */
   getTransitInfo: (
     rando: RandoData,
@@ -200,6 +234,11 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const { user } = useAuth();
   const [userLocation, setUserLocation] = useState<Coordinates>(DEFAULT_COORDS);
   const [userLocationName, setUserLocationName] = useState<string>(DEFAULT_LOCATION_NAME);
+  /* Doublon volontaire de la position au démarrage : `userLocation` suit ensuite
+     le lieu recherché, celle-ci reste celle de l'appareil. */
+  const [deviceLocation, setDeviceLocation] = useState<Coordinates>(DEFAULT_COORDS);
+  const [deviceLocationName, setDeviceLocationName] =
+    useState<string>(DEFAULT_LOCATION_NAME);
   const [isLocating, setIsLocating] = useState<boolean>(false);
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
   const [isLoadingAdventures, setIsLoadingAdventures] = useState<boolean>(true);
@@ -380,13 +419,16 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     routeType: row.route_type || row.routeType || 'boucle',
     ratingAvg: row.rating_avg ?? row.ratingAvg ?? null,
     ratingCount: row.rating_count ?? row.ratingCount ?? null,
+    distanceKm,
+    elevationGainM: gain,
+    createdAt: row.created_at ?? row.createdAt ?? undefined,
   };
 }
 
   // Lightweight columns only: full geometry/description are fetched on-demand
   // via loadHikeDetail when a hike's detail page is actually opened.
   const HIKES_LIST_COLUMNS =
-    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, rating_avg, rating_count, start_lat, start_lng, location_name, cover_image_url, gallery_urls, start_station_name, start_station_lat, start_station_lng, end_station_name, end_station_lat, end_station_lng';
+    'id, title, distance_km, elevation_gain_m, elevation_loss_m, duration_minutes, difficulty, route_type, rating_avg, rating_count, created_at, start_lat, start_lng, location_name, cover_image_url, gallery_urls, start_station_name, start_station_lat, start_station_lng, end_station_name, end_station_lat, end_station_lng';
 
   const loadHikes = async (area?: { latitude: number; longitude: number; radiusKm: number }) => {
     // Sans zone explicite (ex: pull-to-refresh) : on recharge la même zone qu'avant,
@@ -814,13 +856,23 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     [hikes, updateOfflineHikeIds]
   );
 
-  const refreshUserLocation = async () => {
+  const refreshUserLocation = async (requestPermission: boolean = true) => {
     setIsLocating(true);
     try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
+      let isGranted = false;
+      if (requestPermission) {
+        const { status } = await Location.requestForegroundPermissionsAsync();
+        isGranted = status === 'granted';
+      } else {
+        const { status } = await Location.getForegroundPermissionsAsync();
+        isGranted = status === 'granted';
+      }
+
+      if (!isGranted) {
         setUserLocation(DEFAULT_COORDS);
         setUserLocationName(DEFAULT_LOCATION_NAME);
+        setDeviceLocation(DEFAULT_COORDS);
+        setDeviceLocationName(DEFAULT_LOCATION_NAME);
         setIsLocating(false);
         return;
       }
@@ -834,21 +886,29 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         longitude: location.coords.longitude,
       };
       setUserLocation(coords);
+      // Seul endroit qui écrit la position de l'appareil : elle vient du GPS et
+      // de rien d'autre, contrairement au centre de recherche.
+      setDeviceLocation(coords);
 
       // Le géocodage inverse ne sert qu'à mettre un nom lisible sur les coordonnées.
       // Il passe par un backend Play Services qui expire régulièrement, d'où son
       // propre catch : perdre le libellé ne doit jamais coûter la position elle-même.
       try {
         const geocode = await Location.reverseGeocodeAsync(coords);
-        setUserLocationName(formatUserLocationLabel(geocode?.[0]));
+        const label = formatUserLocationLabel(geocode?.[0]);
+        setUserLocationName(label);
+        setDeviceLocationName(label);
       } catch (error) {
         console.warn('Reverse geocoding failed, keeping the GPS position unnamed:', error);
         setUserLocationName('Ma Position');
+        setDeviceLocationName('Ma Position');
       }
     } catch (error) {
       console.warn('Could not retrieve user location, fallback to Paris:', error);
       setUserLocation(DEFAULT_COORDS);
       setUserLocationName(DEFAULT_LOCATION_NAME);
+      setDeviceLocation(DEFAULT_COORDS);
+      setDeviceLocationName(DEFAULT_LOCATION_NAME);
     } finally {
       setIsLocating(false);
       // Se déclenche sur les 3 issues possibles (accordé, refusé, erreur) : le point unique
@@ -857,12 +917,13 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     }
   };
 
-  // On attend la réponse du GPS avant de charger la moindre rando — pas de Paris par
-  // défaut pendant l'attente. Si la position échoue vraiment, refreshUserLocation
-  // retombe elle-même sur Paris, et c'est cette valeur qui sera alors chargée.
+  // Au démarrage, on interroge l'état existant de la permission sans déclencher de pop-up système.
+  // Si la permission est déjà accordée (utilisateur de retour), on récupère la position.
+  // Si la permission n'est pas encore accordée (premier lancement), on bascule discrètement sur
+  // la position par défaut sans interrompre le splash ni l'onboarding.
   useEffect(() => {
     Promise.resolve().then(() => {
-      refreshUserLocation();
+      refreshUserLocation(false);
     });
   }, []);
 
@@ -870,7 +931,12 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   // et recharge si elle change ensuite au point de sortir de la zone déjà couverte.
   useEffect(() => {
     if (!hasResolvedLocationOnce) return;
-    ensureHikesRadius(userLocation, DEFAULT_RADIUS_KM);
+    /* Lu au moment d'agir plutôt qu'abonné : la réponse du GPS est bien plus
+       lente que la relecture des préférences sur le disque, donc la valeur est
+       posée quand on arrive ici. Et un changement de rayon ne doit pas relancer
+       un chargement dans le dos de l'utilisateur : il vaudra à la prochaine
+       ouverture. */
+    ensureHikesRadius(userLocation, getPreferences().searchRadiusKm);
   }, [userLocation, hasResolvedLocationOnce, ensureHikesRadius]);
 
   const setUserLocationManually = (coords: Coordinates, name: string) => {
@@ -890,6 +956,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       departureStationName: row.departure_station_name,
       returnStationName: row.return_station_name ?? undefined,
       isReversed: Boolean(row.is_reversed),
+      isOneWay: Boolean(row.is_one_way),
       isBooked: Boolean(row.is_booked),
       passengersCount: row.passengers_count ?? undefined,
       passengers: row.passengers ?? undefined,
@@ -911,6 +978,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       departure_station_name: adv.departureStationName,
       return_station_name: adv.returnStationName ?? null,
       is_reversed: adv.isReversed ?? false,
+      is_one_way: adv.isOneWay ?? false,
       is_booked: adv.isBooked ?? false,
       passengers_count: adv.passengersCount ?? null,
       passengers: adv.passengers ?? null,
@@ -1096,6 +1164,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         if (updates.returnStationName !== undefined)
           rowUpdates.return_station_name = updates.returnStationName;
         if (updates.isReversed !== undefined) rowUpdates.is_reversed = updates.isReversed;
+        if (updates.isOneWay !== undefined) rowUpdates.is_one_way = updates.isOneWay;
         if (updates.passengersCount !== undefined)
           rowUpdates.passengers_count = updates.passengersCount;
         if (updates.passengers !== undefined) rowUpdates.passengers = updates.passengers;
@@ -1386,6 +1455,8 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       value={{
         userLocation,
         userLocationName,
+        deviceLocation,
+        deviceLocationName,
         isLocating,
         plannedAdventures,
         isLoadingAdventures,

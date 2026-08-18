@@ -16,14 +16,17 @@ import {
   ChevronUp,
   ChevronDown,
   ExternalLink,
+  Plus,
 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
-import { useAdventure } from '@/context/AdventureContext';
+import { useAdventure, isOneWayAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS } from '@/constants/RandosData';
 import { buildTrainlineSearchUrl, openBookingProvider } from '@/services/bookingService';
+import { fromTrainOption } from '@/services/transitService';
+import { usePlanDraft } from '@/context/PlanDraftContext';
 
 export default function RecapScreen() {
   const { adventureId } = useLocalSearchParams();
@@ -35,6 +38,7 @@ export default function RecapScreen() {
   const scrollBottomClearance = useScreenFooterPadding() + 112;
 
   const { plannedAdventures, updateAdventure, hikes, loadHikeDetail } = useAdventure();
+  const { restoreForReturn } = usePlanDraft();
   const [isRedirecting, setIsRedirecting] = useState(false);
   const [redirectProvider, setRedirectProvider] = useState<'trainline' | 'sncf' | 'idf'>(
     'trainline'
@@ -136,6 +140,41 @@ export default function RecapScreen() {
   const handleBuyLater = () => {
     // Go to "Aventures" tab
     router.replace('/(tabs)/adventures');
+  };
+
+  /**
+   * Ajout d'un retour à une aventure déjà enregistrée.
+   *
+   * L'aller retenu est réinjecté dans le brouillon, puis le calendrier s'ouvre
+   * pour dater le retour — proposer des horaires avant que la date soit choisie
+   * reviendrait à décider du jour à la place de l'utilisateur. La modale
+   * enchaîne ensuite sur les trajets. L'aventure est corrigée à l'arrivée sur le
+   * résumé, pas dupliquée : son identifiant repart avec le brouillon.
+   */
+  const handleAddReturn = () => {
+    if (!adventure || !rando) return;
+
+    restoreForReturn({
+      startDate: adventure.outwardDate,
+      endDate: null,
+      outwardJourney: fromTrainOption(adventure.outwardTrain),
+      outwardIsRealtime: adventure.outwardTrain.isRealtime ?? false,
+      savedAdventureId: adventure.id,
+    });
+
+    router.push({
+      pathname: '/plan/dates',
+      params: {
+        next: 'return',
+        randoId: adventure.randoId,
+        outwardId: adventure.outwardTrain.id,
+        departureName: adventure.departureStationName,
+        returnName: adventure.returnStationName ?? adventure.departureStationName,
+        passengersCount: adventure.passengersCount,
+        passengers: JSON.stringify(adventure.passengers ?? []),
+        isReversed: String(adventure.isReversed ?? false),
+      },
+    });
   };
 
   const toggleExpandStep = (stepIdx: number) => {
@@ -452,7 +491,36 @@ export default function RecapScreen() {
                 </View>
               </View>
 
-              {/* STEP 3: TRAIN BACK */}
+              {/* STEP 3: TRAIN BACK — en aller simple, il n'y en a pas : la fiche
+                  propose de l'ajouter plutôt que d'afficher la copie de l'aller
+                  que `returnTrain` porte alors. */}
+              {isOneWayAdventure(adventure) ? (
+                <View style={styles.timelineItem}>
+                  <View style={styles.timelineLineWrapper}>
+                    <View style={[styles.timelineNode, { backgroundColor: theme.border }]} />
+                  </View>
+                  <View
+                    style={[
+                      styles.timelineCard,
+                      { backgroundColor: theme.card, borderColor: theme.border },
+                    ]}>
+                    <Text style={[styles.timelineStepLabel, { color: theme.textMuted }]}>
+                      ALLER SIMPLE
+                    </Text>
+                    <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
+                      Aucun trajet retour planifié
+                    </Text>
+                    <Pressable
+                      onPress={handleAddReturn}
+                      style={[styles.addReturnBtn, { backgroundColor: theme.tint }]}>
+                      <Plus size={16} color={theme.buttonTextOnBrand} />
+                      <Text style={[styles.addReturnText, { color: theme.buttonTextOnBrand }]}>
+                        Ajouter un trajet retour
+                      </Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ) : (
               <View style={styles.timelineItem}>
                 <View style={styles.timelineLineWrapper}>
                   <View style={[styles.timelineNode, { backgroundColor: theme.secondary }]} />
@@ -516,6 +584,7 @@ export default function RecapScreen() {
                   )}
                 </View>
               </View>
+              )}
             </View>
 
             <View style={{ height: scrollBottomClearance }} />
@@ -789,6 +858,21 @@ const styles = StyleSheet.create({
     fontFamily: 'Satoshi',
     fontSize: 12,
     fontWeight: '700',
+  },
+  /* Plein et en couleur de marque, à la différence des « Modifier ce trajet » :
+     ce n'est pas une retouche, c'est l'étape qui manque au voyage. */
+  addReturnBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 12,
+  },
+  addReturnText: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 14,
   },
   editInlineBtn: {
     alignItems: 'center',

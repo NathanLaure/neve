@@ -130,12 +130,14 @@ export const BuyTicketsSheet = forwardRef<BaseBottomSheetModalRef, BuyTicketsShe
     const networkFrom = networkLegs[0]?.fromName;
     const networkTo = networkLegs[networkLegs.length - 1]?.toName;
 
-    // Détermine les randonneurs avec/sans Navigo
-    const navigoHikers = passengers.filter((p) => p.discountPass === 'navigo');
+    /* Détermine les randonneurs avec/sans Navigo. Seul cet abonnement dispense
+       d'un titre sur le réseau francilien ; les cartes SNCF, qui réduisent sans
+       couvrir, restent sans effet ici et un randonneur peut cumuler les deux. */
+    const navigoHikers = passengers.filter((p) => p.passes.includes('navigo'));
     const hasNavigoHikers = navigoHikers.length > 0;
     const allNavigo =
-      passengers.length > 0 && passengers.every((p) => p.discountPass === 'navigo');
-    const nonNavigoHikers = passengers.filter((p) => p.discountPass !== 'navigo');
+      passengers.length > 0 && passengers.every((p) => p.passes.includes('navigo'));
+    const nonNavigoHikers = passengers.filter((p) => !p.passes.includes('navigo'));
     const nonNavigoCount =
       nonNavigoHikers.length > 0
         ? nonNavigoHikers.length

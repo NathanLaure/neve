@@ -19,20 +19,16 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { Button } from '@/components/Button';
 import ScreenFooter from '@/components/ScreenFooter';
 import { useAdventure } from '@/context/AdventureContext';
-import { usePlanDraft, TripType } from '@/context/PlanDraftContext';
+import { usePlanDraft, TripType, computeAutoReturnDate, computeHikeDays } from '@/context/PlanDraftContext';
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import AutoReturnInfoSheet from '@/components/plan/AutoReturnInfoSheet';
 import TimePickerSheet from '@/components/plan/TimePickerSheet';
 import { IconButton } from '@/components/IconButton';
 import DateRangeCalendar, {
   DateRangeCalendarHeader,
-  addDays,
   fromISODate,
   toISODate,
 } from '@/components/plan/DateRangeCalendar';
-
-/** Doit rester aligné sur la valeur utilisée par l'écran de planification. */
-const HIKING_HOURS_PER_DAY = 8;
 
 // Durée fixe, pas de ressort : un fondu net plutôt qu'un rebond sur le bandeau
 // qui apparaît ou disparaît selon la date de retour posée.
@@ -112,9 +108,17 @@ export default function PlanDatesScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const params = useLocalSearchParams<{ randoId?: string }>();
+  /*
+   * `next: 'return'` : le calendrier est ouvert pour dater un retour qu'on
+   * ajoute à un voyage déjà planifié. Tous les autres paramètres reçus sont
+   * repassés tels quels à l'écran suivant — ce sont ceux dont il a besoin pour
+   * viser le bon lieu, que cette modale ne fait que traverser.
+   */
+  const params = useLocalSearchParams<{ randoId?: string; next?: string }>();
+  const isAddingReturn = params.next === 'return';
+
   const { hikes } = useAdventure();
-  const { draft, commitDates, horizon } = usePlanDraft();
+  const { draft, commitDates, addReturnTrip, horizon } = usePlanDraft();
 
   const autoReturnSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const timeSheetRef = useRef<BaseBottomSheetModalRef>(null);
@@ -125,7 +129,7 @@ export default function PlanDatesScreen() {
   );
 
   // Nombre de jours de marche, d'où découle la date de retour pré-remplie.
-  const hikeDays = Math.max(1, Math.ceil((rando?.durationHours ?? 0) / HIKING_HOURS_PER_DAY));
+  const hikeDays = computeHikeDays(rando?.durationHours);
 
   /*
    * Le brouillon partagé n'est touché qu'à la validation. Refermer la modale sans
@@ -133,18 +137,29 @@ export default function PlanDatesScreen() {
    * exactement où ils étaient.
    */
   const [startDate, setStartDate] = useState<string | null>(draft.startDate);
-  const [endDate, setEndDate] = useState<string | null>(draft.endDate);
-  const [tripType, setTripType] = useState<TripType>(draft.tripType);
-  const [hasCustomReturn, setHasCustomReturn] = useState(draft.hasCustomReturn);
+  /* En mode « ajouter un retour », on repart de zéro côté retour : la date que
+     porte le brouillon est celle de l'aller, recopiée à l'enregistrement d'un
+     aller simple. La reprendre proposerait un retour le jour du départ. */
+  const [endDate, setEndDate] = useState<string | null>(isAddingReturn ? null : draft.endDate);
+  // Ajouter un retour, c'est déjà avoir répondu à la question du type de trajet.
+  const [tripType, setTripType] = useState<TripType>(
+    isAddingReturn ? 'round' : draft.tripType
+  );
+  const [hasCustomReturn, setHasCustomReturn] = useState(
+    isAddingReturn ? false : draft.hasCustomReturn
+  );
   const [outwardTime, setOutwardTime] = useState(draft.outwardTime);
-  // Un départ vient d'être posé, la prochaine tape désigne donc le retour.
-  const [isPickingReturn, setIsPickingReturn] = useState(false);
+  /* Un départ vient d'être posé, la prochaine tape désigne donc le retour.
+     En mode « ajouter un retour », le départ est déjà fixé de longue date : la
+     toute première tape vise le retour, sans quoi elle déplacerait le départ et
+     enverrait replanifier l'aller pour rien. */
+  const [isPickingReturn, setIsPickingReturn] = useState(isAddingReturn);
 
   const today = useMemo(() => toISODate(new Date()), []);
 
   const autoReturnDate = useMemo(
-    () => (startDate ? addDays(startDate, hikeDays - 1) : null),
-    [startDate, hikeDays]
+    () => computeAutoReturnDate(startDate, rando?.durationHours),
+    [startDate, rando?.durationHours]
   );
   const effectiveEndDate = tripType === 'oneway' ? null : (endDate ?? autoReturnDate);
 
@@ -162,7 +177,9 @@ export default function PlanDatesScreen() {
     if (startDate && tripType === 'round' && isPickingReturn && date > startDate) {
       setEndDate(date);
       setHasCustomReturn(true);
-      setIsPickingReturn(false);
+      /* En mode « ajouter un retour », on reste sur le retour : corriger sa date
+         d'une seconde tape ne doit pas se mettre à déplacer le départ. */
+      setIsPickingReturn(isAddingReturn);
       return;
     }
     setStartDate(date);
@@ -173,6 +190,47 @@ export default function PlanDatesScreen() {
 
   const handleValidate = () => {
     if (!startDate) return;
+
+    if (isAddingReturn) {
+      /* Le jour du départ a bougé : l'aller retenu portait les horaires de
+         l'ancienne date, il ne veut plus rien dire. `commitDates` l'efface — ce
+         qui est ici la bonne réponse — et le parcours reprend au choix de
+         l'aller, qui enchaînera de lui-même sur le retour puisqu'on est passé en
+         aller-retour. */
+      const departureMoved = startDate !== draft.startDate;
+
+      if (departureMoved) {
+        commitDates({ startDate, endDate, tripType, hasCustomReturn, outwardTime });
+        router.replace({
+          pathname: '/plan/outward',
+          params: {
+            ...params,
+            next: undefined,
+            outwardDate: startDate,
+            outwardTime,
+            returnDate: effectiveEndDate ?? undefined,
+          },
+        });
+        return;
+      }
+
+      /* Départ inchangé : `addReturnTrip` et non `commitDates`, celui-ci
+         effacerait l'aller alors qu'on ne vient dater que le retour. `replace`
+         retire le calendrier de la pile — revenir en arrière depuis les
+         résultats doit ramener au récapitulatif. */
+      addReturnTrip(effectiveEndDate);
+      router.replace({
+        pathname: '/plan/return',
+        params: {
+          ...params,
+          next: undefined,
+          outwardDate: startDate,
+          returnDate: effectiveEndDate ?? undefined,
+        },
+      });
+      return;
+    }
+
     commitDates({ startDate, endDate, tripType, hasCustomReturn, outwardTime });
     router.back();
   };
@@ -206,7 +264,9 @@ export default function PlanDatesScreen() {
       <View
         style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top }]}>
         <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Quand partir à l’aventure ?</Text>
+          <Text style={[styles.title, { color: theme.text }]}>
+            {isAddingReturn ? 'Quand rentres-tu ?' : 'Quand partir à l’aventure ?'}
+          </Text>
             <IconButton
               variant="circle"
               icon={<X size={20} color={theme.buttonIconColor} />}
@@ -216,27 +276,31 @@ export default function PlanDatesScreen() {
         </View>
 
         <View style={styles.fixedTop}>
-          <View style={[styles.segmented, { borderColor: theme.border }]}>
-            {(
-              [
-                { value: 'round', label: 'Aller / Retour' },
-                { value: 'oneway', label: 'Aller simple' },
-              ] as { value: TripType; label: string }[]
-            ).map((item) => (
-              <SegmentedItem
-                key={item.value}
-                label={item.label}
-                isSelected={tripType === item.value}
-                theme={theme}
-                onPress={() => {
-                  setTripType(item.value);
-                  setEndDate(null);
-                  setHasCustomReturn(false);
-                  setIsPickingReturn(false);
-                }}
-              />
-            ))}
-          </View>
+          {/* Le choix aller simple / aller-retour n'a plus lieu d'être quand on
+              vient précisément ajouter un retour. */}
+          {!isAddingReturn && (
+            <View style={[styles.segmented, { borderColor: theme.border }]}>
+              {(
+                [
+                  { value: 'round', label: 'Aller / Retour' },
+                  { value: 'oneway', label: 'Aller simple' },
+                ] as { value: TripType; label: string }[]
+              ).map((item) => (
+                <SegmentedItem
+                  key={item.value}
+                  label={item.label}
+                  isSelected={tripType === item.value}
+                  theme={theme}
+                  onPress={() => {
+                    setTripType(item.value);
+                    setEndDate(null);
+                    setHasCustomReturn(false);
+                    setIsPickingReturn(false);
+                  }}
+                />
+              ))}
+            </View>
+          )}
 
           {/* Épinglée : dans l'ancienne version elle défilait avec la grille et on
               perdait de vue à quel jour correspond chaque colonne. */}
@@ -259,6 +323,7 @@ export default function PlanDatesScreen() {
         </ScrollView>
 
         <ScreenFooter variant="inline" surface="card">
+
           {/* Uniquement sur les randos qui débordent d'une journée : sur une
               sortie à la journée, un retour le soir même est évident et le
               bandeau n'apprendrait rien. */}

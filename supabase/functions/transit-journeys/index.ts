@@ -147,7 +147,8 @@ function buildCacheKey(
   to: Coords,
   date: string,
   time: string,
-  direction: string
+  direction: string,
+  excludedModes: string[]
 ): string {
   const r = (n: number) => n.toFixed(3);
   const [hourStr, minuteStr] = time.split(':');
@@ -158,7 +159,42 @@ function buildCacheKey(
     `${hourStr}:${bucketMinute}`,
     `${r(from.lat)},${r(from.lng)}`,
     `${r(to.lat)},${r(to.lng)}`,
+    /* Les modes écartés font partie de l'identité du résultat : sans eux dans la
+       clé, une recherche « sans bus » se verrait servir les itinéraires avec bus
+       déjà en cache, et réciproquement. Triés pour que l'ordre de décochage ne
+       produise pas deux entrées pour la même demande. */
+    excludedModes.length > 0 ? `no:${[...excludedModes].sort().join(',')}` : 'all',
   ].join('|');
+}
+
+/**
+ * Traduit nos modes vers les identifiants de mode physique Navitia, seuls
+ * acceptés par `forbidden_uris[]`.
+ *
+ * `train` couvre à lui seul plusieurs modes physiques — Transilien, TER et
+ * Intercités ne sont pas la même chose pour Navitia : les exclure suppose de
+ * tous les nommer. Un identifiant inconnu de la couverture est ignoré sans
+ * erreur, ce qui rend la liste large sans risque.
+ */
+const NAVITIA_PHYSICAL_MODES: Record<string, string[]> = {
+  bus: ['physical_mode:Bus'],
+  metro: ['physical_mode:Metro'],
+  tram: ['physical_mode:Tramway'],
+  rer: ['physical_mode:RapidTransit'],
+  train: [
+    'physical_mode:LocalTrain',
+    'physical_mode:LongDistanceTrain',
+    'physical_mode:Train',
+    'physical_mode:RailShuttle',
+  ],
+};
+
+/** Ne retient que les modes connus, pour ne pas relayer n'importe quoi à PRIM. */
+function normalizeExcludedModes(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(
+    (mode): mode is string => typeof mode === 'string' && mode in NAVITIA_PHYSICAL_MODES
+  );
 }
 
 function isValidCoords(c: unknown): c is Coords {
@@ -220,12 +256,30 @@ async function getProductionHorizon(
 
   try {
     const response = await fetch(PRIM_COVERAGE_URL, { headers: { apiKey } });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      // Journalisé et non avalé : sans cette borne, le calendrier retombe sur
+      // un repli et laisse choisir des dates que PRIM ne dessert pas.
+      console.error(
+        'PRIM coverage responded with',
+        response.status,
+        (await response.text()).slice(0, 300)
+      );
+      return null;
+    }
 
     const body = await response.json();
-    // Navitia renvoie `YYYYMMDD` sur les dates de production.
-    const raw: string | undefined = body?.regions?.[0]?.end_production_date;
-    if (!raw || !/^\d{8}$/.test(raw)) return null;
+    /* Navitia renvoie `YYYYMMDD`. Le marketplace PRIM enveloppe parfois la
+       réponse : on accepte les deux formes plutôt que de perdre la borne sur un
+       niveau d'imbriquation. */
+    const region = body?.regions?.[0] ?? body?.context?.regions?.[0] ?? body?.[0];
+    const raw: string | undefined = region?.end_production_date;
+    if (!raw || !/^\d{8}$/.test(raw)) {
+      console.error(
+        'PRIM coverage has no usable end_production_date:',
+        JSON.stringify(body).slice(0, 300)
+      );
+      return null;
+    }
 
     const endProductionDate = `${raw.slice(0, 4)}-${raw.slice(4, 6)}-${raw.slice(6, 8)}`;
     await supabase
@@ -664,6 +718,11 @@ Deno.serve(async (req) => {
   }
 
   const { mode, from, to, date, time, direction, timeMode } = body ?? {};
+  /* Modes que l'utilisateur a décochés. Ils partent chez Navitia plutôt que de
+     servir à trier la réponse : filtrer après coup vide la liste dès que tous
+     les itinéraires proposés empruntent le mode écarté, là où un vrai recalcul
+     en trouve d'autres. */
+  const excludedModes = normalizeExcludedModes(body?.excludedModes);
 
   const supabase = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -699,7 +758,7 @@ Deno.serve(async (req) => {
   // après ». Navitia gère nativement les deux via datetime_represents.
   const represents = timeMode === 'arrival' ? 'arrival' : 'departure';
 
-  const cacheKey = buildCacheKey(from, to, date, time, `${dir}:${represents}`);
+  const cacheKey = buildCacheKey(from, to, date, time, `${dir}:${represents}`, excludedModes);
   const freshSince = new Date(Date.now() - CACHE_TTL_HOURS * 3600 * 1000).toISOString();
 
   const { data: cached } = await supabase
@@ -727,6 +786,13 @@ Deno.serve(async (req) => {
     timeframe_duration: String(TIMEFRAME_SECONDS),
     min_nb_journeys: String(MIN_JOURNEYS),
     max_nb_journeys: String(MAX_JOURNEYS),
+  });
+
+  /* `append` et non `set` : `forbidden_uris[]` se répète, une occurrence par
+     mode physique interdit. Navitia recalcule alors des trajets qui les évitent
+     au lieu de nous laisser écarter ce qu'il a déjà proposé. */
+  excludedModes.forEach((mode) => {
+    NAVITIA_PHYSICAL_MODES[mode].forEach((uri) => params.append('forbidden_uris[]', uri));
   });
 
   let options: TransitOption[];

@@ -15,7 +15,7 @@ import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useAdventure, PlannedAdventure } from '@/context/AdventureContext';
+import { useAdventure, PlannedAdventure, isOneWayAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS, RandoData } from '@/constants/RandosData';
 import { toISODate } from '@/components/plan/DateRangeCalendar';
 import Skeleton from '@/components/Skeleton';
@@ -254,13 +254,12 @@ export default function MyAdventuresScreen() {
     const adventure = plannedAdventures.find((item) => item.id === id);
     if (!adventure) return;
 
+    const isOneWay = isOneWayAdventure(adventure);
+
     commitDates({
       startDate: adventure.outwardDate,
       endDate: adventure.returnDate,
-      // Un aller simple s'enregistre en recopiant l'aller dans le retour : c'est
-      // à cela qu'on le reconnaît, et non aux dates — une sortie à la journée a
-      // elle aussi ses deux dates identiques.
-      tripType: adventure.returnTrain.id === adventure.outwardTrain.id ? 'oneway' : 'round',
+      tripType: isOneWay ? 'oneway' : 'round',
       hasCustomReturn: true,
       outwardTime: adventure.outwardTrain.time,
     });
@@ -268,10 +267,15 @@ export default function MyAdventuresScreen() {
       fromTrainOption(adventure.outwardTrain),
       adventure.outwardTrain.isRealtime ?? false
     );
-    selectReturnJourney(
-      fromTrainOption(adventure.returnTrain),
-      adventure.returnTrain.isRealtime ?? false
-    );
+    /* Sur un aller simple, `returnTrain` n'est que l'aller recopié : le
+       restaurer ferait passer le résumé pour un aller-retour complet et
+       masquerait la proposition d'ajouter un vrai retour. */
+    if (!isOneWay) {
+      selectReturnJourney(
+        fromTrainOption(adventure.returnTrain),
+        adventure.returnTrain.isRealtime ?? false
+      );
+    }
     // Le résumé corrige cette aventure au lieu d'en déposer une seconde à chaque
     // essai d'enregistrement.
     setSavedAdventureId(adventure.id);
@@ -361,6 +365,7 @@ export default function MyAdventuresScreen() {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
               styles.listContent,
+              totalVisible === 0 && styles.listContentEmpty,
               { paddingBottom: 40 + tabBarHeight },
             ]}
             refreshControl={
@@ -420,7 +425,7 @@ export default function MyAdventuresScreen() {
             </View>
             {totalVisible === 0 ? (
               <View style={styles.emptyContainer}>
-                <View style={[styles.emptyIconWrapper, { backgroundColor: theme.greenBadge }]}>
+                <View style={[styles.emptyIconWrapper, { backgroundColor: theme.card }]}>
                   {activeTab === 'past' ? (
                     <Clock size={40} color={theme.tint} />
                   ) : (
@@ -601,6 +606,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 4,
   },
+  listContentEmpty: {
+    flexGrow: 1,
+  },
   sectionBlock: {
     marginBottom: 8,
   },
@@ -621,11 +629,12 @@ const styles = StyleSheet.create({
     height: 1,
   },
   emptyContainer: {
+    flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingTop: 60,
-    paddingHorizontal: 24,
+    paddingHorizontal: 40,
     gap: 12,
+    marginBottom: 100,
   },
   emptyIconWrapper: {
     width: 80,
@@ -637,15 +646,14 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     fontFamily: 'BricolageGrotesque',
-    fontWeight: '600',
-    fontSize: 18,
+    fontSize: 24,
+    fontWeight: '800',
   },
   emptySub: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 13,
+    fontSize: 16,
     textAlign: 'center',
-    lineHeight: 20,
-    paddingHorizontal: 16,
+    lineHeight: 24,
     marginBottom: 12,
   },
   exploreBtn: {

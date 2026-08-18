@@ -64,6 +64,15 @@ export type PlanDates = Pick<
   'startDate' | 'endDate' | 'tripType' | 'hasCustomReturn' | 'outwardTime'
 >;
 
+/** Ce qu'une aventure enregistrée rend au brouillon pour lui ajouter un retour. */
+export interface RestoredPlan {
+  startDate: string;
+  endDate: string | null;
+  outwardJourney: TransitOption;
+  outwardIsRealtime: boolean;
+  savedAdventureId: string;
+}
+
 interface PlanDraftContextValue {
   draft: PlanDraft;
   /** Enregistre un choix de dates et le marque comme confirmé. */
@@ -76,6 +85,23 @@ interface PlanDraftContextValue {
   selectOutwardJourney: (journey: TransitOption, isRealtime: boolean) => void;
   /** Retient l'itinéraire de retour choisi. */
   selectReturnJourney: (journey: TransitOption, isRealtime: boolean) => void;
+  /**
+   * Transforme un aller simple en aller-retour depuis le récapitulatif, sans
+   * repasser par le calendrier.
+   *
+   * Contrairement à `commitDates`, l'aller déjà retenu est conservé : on ajoute
+   * un retour à un voyage construit, on ne recommence pas la planification.
+   */
+  addReturnTrip: (endDate: string | null) => void;
+  /**
+   * Repart d'une aventure déjà enregistrée pour lui ajouter un retour, sans
+   * refaire le parcours depuis le début.
+   *
+   * L'aller est réinjecté tel qu'il a été retenu, et l'identifiant de l'aventure
+   * suit : le résumé corrigera la fiche existante au lieu d'en déposer une
+   * seconde.
+   */
+  restoreForReturn: (restored: RestoredPlan) => void;
   /** Note l'aventure enregistrée, pour que le résumé la corrige au lieu d'en créer une autre. */
   setSavedAdventureId: (id: string) => void;
   /**
@@ -158,6 +184,38 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
     setDraft((current) => ({ ...current, returnJourney: journey, returnIsRealtime: isRealtime }));
   }, []);
 
+  const restoreForReturn = useCallback((restored: RestoredPlan) => {
+    setDraft((current) => ({
+      ...current,
+      startDate: restored.startDate,
+      endDate: restored.endDate,
+      tripType: 'round',
+      datesValidated: true,
+      hasCustomReturn: false,
+      outwardTime: restored.outwardJourney.departureTime || current.outwardTime,
+      outwardJourney: restored.outwardJourney,
+      outwardIsRealtime: restored.outwardIsRealtime,
+      // Le retour est précisément ce qu'on part chercher.
+      returnJourney: null,
+      // L'aventure existe déjà : le résumé devra la corriger, pas en créer une
+      // seconde à côté.
+      savedAdventureId: restored.savedAdventureId,
+    }));
+  }, []);
+
+  const addReturnTrip = useCallback((endDate: string | null) => {
+    setDraft((current) => ({
+      ...current,
+      tripType: 'round',
+      /* La date reçue l'emporte : elle sort du calendrier qu'on vient de faire
+         remplir. Celle déjà dans le brouillon est un reliquat de l'aller simple
+         — sur ce type de voyage, la date de retour recopie celle du départ. */
+      endDate: endDate ?? current.endDate,
+      // Le retour vient d'être daté à la main, il ne doit plus être recalculé.
+      hasCustomReturn: endDate != null,
+    }));
+  }, []);
+
   const setSavedAdventureId = useCallback((savedAdventureId: string) => {
     setDraft((current) => ({ ...current, savedAdventureId }));
   }, []);
@@ -176,6 +234,8 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       commitDates,
       selectOutwardJourney,
       selectReturnJourney,
+      addReturnTrip,
+      restoreForReturn,
       setSavedAdventureId,
       setOutwardTime,
       resetDraft,
@@ -186,6 +246,8 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       commitDates,
       selectOutwardJourney,
       selectReturnJourney,
+      addReturnTrip,
+      restoreForReturn,
       setSavedAdventureId,
       setOutwardTime,
       resetDraft,
@@ -210,4 +272,30 @@ export function usePlanDraft(): PlanDraftContextValue {
  */
 export function resolveEndDate(draft: PlanDraft, autoReturnDate: string | null): string | null {
   return draft.tripType === 'oneway' ? null : (draft.endDate ?? autoReturnDate);
+}
+
+/**
+ * Heures de marche au-delà desquelles la rando déborde sur un jour de plus.
+ * Sert à pré-remplir la date de retour : 402 des 431 randos franciliennes tiennent
+ * sous ce seuil et repartent donc le jour même.
+ */
+const HIKING_HOURS_PER_DAY = 8;
+
+/** Nombre de jours de marche qu'appelle une rando, jamais moins d'un. */
+export function computeHikeDays(durationHours?: number): number {
+  return Math.max(1, Math.ceil((durationHours ?? 0) / HIKING_HOURS_PER_DAY));
+}
+
+/**
+ * Retour proposé d'office : le départ décalé de la durée de la rando.
+ *
+ * Sert de repli partout où une date de retour est attendue sans que
+ * l'utilisateur en ait posé une — repasser en aller-retour depuis un aller
+ * simple, notamment, laisse `endDate` vide.
+ */
+export function computeAutoReturnDate(
+  startDate: string | null,
+  durationHours?: number
+): string | null {
+  return startDate ? addDays(startDate, computeHikeDays(durationHours) - 1) : null;
 }

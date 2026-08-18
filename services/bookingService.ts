@@ -120,3 +120,18 @@ export function splitBookableLegs(option: TransitOption | null): BookableLegs {
 
   return { network, mainLine };
 }
+
+/**
+ * Le trajet est-il couvert de bout en bout par un pass Navigo ?
+ *
+ * Le pass couvre le réseau francilien sans supplément, mais s'arrête aux trains
+ * grandes lignes : dès qu'un tronçon relève de la section `mainLine`, il reste
+ * un billet à acheter et annoncer « Inclus Navigo » serait faux.
+ *
+ * Un itinéraire entièrement à pied ne coûte rien à personne : il n'est pas
+ * « inclus » dans un abonnement, il est simplement hors sujet.
+ */
+export function isFullyCoveredByNavigo(option: TransitOption | null): boolean {
+  const { network, mainLine } = splitBookableLegs(option);
+  return mainLine.length === 0 && network.length > 0;
+}
