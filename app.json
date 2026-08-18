@@ -3,6 +3,15 @@
     "name": "Névé Rando",
     "slug": "neve",
     "version": "1.0.0",
+    "runtimeVersion": {
+      "policy": "fingerprint"
+    },
+    "updates": {
+      "requestHeaders": {
+        "expo-channel-name": "production"
+      },
+      "url": "https://u.expo.dev/edc1c6fe-220f-4a4f-bcc1-124a1fbc7132"
+    },
     "scheme": "neve",
     "platforms": [
       "ios",
@@ -35,7 +44,9 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Névé accède à vos photos pour définir votre portrait de profil."
+          "photosPermission": "Névé accède à vos photos pour définir votre portrait de profil.",
+          "microphonePermission": false,
+          "cameraPermission": false
         }
       ]
     ],
@@ -67,10 +78,18 @@
         "monochromeImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#FFF7F2"
       },
-      "package": "com.anonymous.neve",
+      "package": "fr.neverando.app",
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
+      ],
+      "blockedPermissions": [
+        "android.permission.SYSTEM_ALERT_WINDOW"
       ]
+    },
+    "extra": {
+      "eas": {
+        "projectId": "edc1c6fe-220f-4a4f-bcc1-124a1fbc7132"
+      }
     }
   }
 }
