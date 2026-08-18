@@ -48,6 +48,18 @@ export function useColorScheme(): 'light' | 'dark' {
 }
 
 /**
+ * Réglage d'affichage choisi par l'utilisateur, `null` valant « suivre le
+ * système ».
+ *
+ * Même abonnement que `useColorScheme`, mais renvoie la préférence et non le
+ * thème effectif : c'est ce dont a besoin l'écran qui affiche le réglage, à qui
+ * `getThemeOverride()` seul ne dirait rien des changements.
+ */
+export function useThemeOverride(): 'light' | 'dark' | null {
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}
+
+/**
  * Sets a manual theme override and triggers live UI updates across all components,
  * while saving the preference permanently in AsyncStorage.
  * Pass null to restore system theme alignment.

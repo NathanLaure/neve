@@ -41,59 +41,9 @@ export const IconButton = forwardRef<View, IconButtonProps>(
     const theme = Colors[colorScheme];
     const [isPressed, setIsPressed] = useState(false);
 
-    const Component = animated ? AnimatedPressable : Pressable;
-
-    // Build default variant styles
-    const getVariantStyle = () => {
-      if (disabled) {
-        return [
-          variant === 'circle' ? styles.circleButton : variant === 'square' ? styles.squareButton : styles.plainButton,
-          {
-            backgroundColor: variant === 'plain' ? 'transparent' : theme.buttonDisabled || '#222222',
-            borderColor: 'transparent',
-            opacity: 0.6,
-          },
-        ];
-      }
-
-      switch (variant) {
-        case 'circle':
-          return [
-            styles.circleButton,
-            {
-              backgroundColor: theme.card,
-              shadowColor: '#000',
-              opacity: 1,
-            },
-          ];
-        case 'square':
-          return [
-            styles.squareButton,
-            {
-              backgroundColor: theme.card,
-              borderColor: theme.border,
-              opacity: 1,
-            },
-          ];
-        case 'plain':
-        default:
-          return [
-            styles.plainButton,
-            {
-              opacity: 1,
-            },
-          ];
-      }
-    };
-
     /**
      * Couleur d'icône par défaut sur les variants pleins, pour contraster avec le
      * fond du bouton.
-     *
-     * Une couleur passée explicitement l'emporte : c'est ce qui permet de
-     * réutiliser le même bouton sur un fond clair (écran de planification) comme
-     * sur un fond sombre. Auparavant `color` n'était respecté qu'en présence d'un
-     * `fill`, donc toujours écrasé en pratique.
      */
     const renderIcon = () => {
       if (!icon) return null;
@@ -108,38 +58,106 @@ export const IconButton = forwardRef<View, IconButtonProps>(
       return icon;
     };
 
-    return (
-      <Component
-        ref={ref as any}
-        disabled={disabled}
-        onPress={onPress}
-        android_ripple={
-          disabled
-            ? undefined
-            : {
-                color: theme.ripple,
-                borderless: false,
-                foreground: true,
-              }
-        }
-        onPressIn={() => setIsPressed(true)}
-        onPressOut={() => setIsPressed(false)}
+    const badge = badgeCount > 0 ? (
+      <View
+        pointerEvents="none"
         style={[
-          getVariantStyle(),
-          style,
-          { overflow: 'hidden' as const },
-          isPressed && !animated && Platform.OS === 'ios' && styles.pressed,
-        ]}
-        {...pressableProps}>
-        <View style={styles.contentWrapper}>
-          {renderIcon()}
-          {badgeCount > 0 && (
-            <View style={[styles.badgeContainer, { backgroundColor: theme.primary }]}>
-              <Text style={styles.badgeText}>{badgeCount}</Text>
-            </View>
-          )}
+          styles.badgeContainer,
+          {
+            backgroundColor: theme.primary,
+            borderColor: theme.background,
+          },
+        ]}>
+        <Text style={styles.badgeText}>{badgeCount}</Text>
+      </View>
+    ) : null;
+
+    // Variante `plain` : bouton plat et compact
+    if (variant === 'plain') {
+      const PlainComponent = animated ? AnimatedPressable : Pressable;
+      return (
+        <View style={[styles.plainWrapper, style]}>
+          <PlainComponent
+            ref={ref as any}
+            accessibilityRole="button"
+            disabled={disabled}
+            onPress={onPress}
+            android_ripple={
+              disabled
+                ? undefined
+                : {
+                    color: theme.ripple,
+                    borderless: false,
+                    foreground: true,
+                  }
+            }
+            onPressIn={() => setIsPressed(true)}
+            onPressOut={() => setIsPressed(false)}
+            style={[
+              styles.plainButton,
+              { opacity: disabled ? 0.6 : 1 },
+              isPressed && !animated && Platform.OS === 'ios' && styles.pressed,
+            ]}
+            {...pressableProps}>
+            {renderIcon()}
+          </PlainComponent>
+          {badge}
         </View>
-      </Component>
+      );
+    }
+
+    // Variantes `circle` et `square` : architecture bi-couche
+    // Conteneur externe -> porte le fond, le rayon, l'ombre et le badge (non clippé)
+    // Pressable interne -> porte le découpage overflow: 'hidden' pour confiner le ripple Android
+    const ContainerComponent = animated ? Animated.View : View;
+    const isCircle = variant === 'circle';
+
+    const containerStyle = [
+      isCircle ? styles.circleContainer : styles.squareContainer,
+      {
+        backgroundColor: disabled
+          ? theme.buttonDisabled || '#222222'
+          : theme.card,
+        borderColor: isCircle ? 'transparent' : theme.border,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: colorScheme === 'dark' ? 0.35 : 0.08,
+        shadowRadius: isCircle ? 6 : 4,
+        elevation: isCircle ? 3 : 2,
+        opacity: disabled ? 0.6 : 1,
+      },
+      style,
+    ];
+
+    const innerStyle = [
+      styles.innerPressable,
+      { borderRadius: isCircle ? 100 : 12 },
+      isPressed && !animated && Platform.OS === 'ios' && styles.pressed,
+    ];
+
+    return (
+      <ContainerComponent ref={ref as any} style={containerStyle}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={disabled}
+          onPress={onPress}
+          android_ripple={
+            disabled
+              ? undefined
+              : {
+                  color: theme.ripple,
+                  borderless: false,
+                  foreground: true,
+                }
+          }
+          onPressIn={() => setIsPressed(true)}
+          onPressOut={() => setIsPressed(false)}
+          style={innerStyle}
+          {...pressableProps}>
+          {renderIcon()}
+        </Pressable>
+        {badge}
+      </ContainerComponent>
     );
   }
 );
@@ -147,6 +165,9 @@ export const IconButton = forwardRef<View, IconButtonProps>(
 IconButton.displayName = 'IconButton';
 
 const styles = StyleSheet.create({
+  plainWrapper: {
+    position: 'relative',
+  },
   plainButton: {
     alignItems: 'center',
     justifyContent: 'center',
@@ -154,44 +175,44 @@ const styles = StyleSheet.create({
     borderRadius: 100,
     overflow: 'hidden',
   },
-  circleButton: {
+  circleContainer: {
     width: 40,
     height: 40,
     borderRadius: 100,
-    alignItems: 'center',
-    justifyContent: 'center',
-    overflow: 'hidden',
+    position: 'relative',
   },
-  squareButton: {
+  squareContainer: {
     width: 48,
     height: 48,
     borderRadius: 12,
     borderWidth: 1,
+    position: 'relative',
+  },
+  innerPressable: {
+    width: '100%',
+    height: '100%',
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
   },
-  contentWrapper: {
-    position: 'relative',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   badgeContainer: {
     position: 'absolute',
-    top: -8,
-    right: -8,
-    minWidth: 16,
-    height: 16,
-    borderRadius: 8,
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: 3,
+    paddingHorizontal: 4,
+    borderWidth: 1.5,
+    zIndex: 10,
   },
   badgeText: {
     color: '#FFFFFF',
     fontFamily: 'Satoshi-Bold',
-    fontSize: 9,
-    lineHeight: 10,
+    fontSize: 10,
+    lineHeight: 12,
     textAlign: 'center',
   },
   pressed: {

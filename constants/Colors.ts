@@ -5,6 +5,7 @@ export default {
   light: {
     text: '#292929', // neutral-900
     background: '#EFEFEF', // neutral-50
+    transparent: 'rgba(255, 255, 255, 0)',
     tint: tintColorLight,
     tabIconDefault: '#7C7C7C', // neutral-400
     tabIconSelected: tintColorLight,
@@ -62,6 +63,7 @@ export default {
   dark: {
     text: '#EFEFEF', // neutral-50
     background: '#111111', // neutral-900
+    transparent: 'rgba(0, 0, 0, 0)',
     tint: tintColorDark,
     tabIconDefault: '#989898', // neutral-300
     tabIconSelected: tintColorDark,

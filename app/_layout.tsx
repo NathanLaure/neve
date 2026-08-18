@@ -184,6 +184,30 @@ export default function RootLayout() {
                         animation: 'default',
                       }}
                     />
+                    {/* Pages ouvertes depuis le profil. Déclarées ici et non
+                        laissées à la découverte automatique : sans cela, l'en-tête
+                        natif s'affiche le temps que l'écran pose ses propres
+                        options, et on voit passer une barre grise. */}
+                    {[
+                      'auth/callback',
+                      'notifications',
+                      'share-profile',
+                      'settings/general',
+                      'settings/profile-info',
+                      'settings/home-address',
+                      'settings/communication',
+                      'settings/appearance',
+                      'settings/app',
+                      'settings/search',
+                      'settings/permissions',
+                      'settings/offline-hikes',
+                      'settings/transport-passes',
+                      'settings/support',
+                      'settings/neve-plus',
+                      'settings/legal',
+                    ].map((name) => (
+                      <Stack.Screen key={name} name={name} options={{ headerShown: false }} />
+                    ))}
                   </Stack>
                   <Toast
                     config={toastConfig}

@@ -5,8 +5,24 @@ import { Check } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 
+/* Figma 657:38550 : bordure fine au repos, épaissie en couleur de marque une
+   fois l'item sélectionné. */
+const BORDER_IDLE = 1;
+const BORDER_SELECTED = 1.5;
+const PADDING_VERTICAL = 12;
+/* Hauteur de ligne du libellé, imposée plutôt que laissée aux métriques de la
+   police : les fichiers Medium et Bold de Bricolage Grotesque ne mesurent pas
+   pareil, et la ligne changerait de hauteur à la sélection. */
+const LABEL_LINE_HEIGHT = 24;
+
 export interface ChoiceChipProps {
   label: string;
+  /**
+   * Précision affichée sous le libellé, en corps de texte atténué. Pour les
+   * listes où le seul intitulé ne suffit pas à décider (ce qu'un abonnement
+   * couvre, ce qu'une option de tri change).
+   */
+  description?: string;
   selected?: boolean;
   onPress?: () => void;
   /** Contenu optionnel placé avant le libellé (icône, pastille de ligne…). */
@@ -41,6 +57,7 @@ export interface ChoiceChipProps {
  */
 export default function ChoiceChip({
   label,
+  description,
   selected = false,
   onPress,
   leading,
@@ -53,6 +70,8 @@ export default function ChoiceChip({
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
+  const borderWidth = selected ? BORDER_SELECTED : BORDER_IDLE;
+
   /*
    * Tableau de styles calculé en amont et passé tel quel, plutôt que la forme
    * `style={({ pressed }) => [...]}` : celle-ci était purement et simplement
@@ -64,7 +83,13 @@ export default function ChoiceChip({
     {
       backgroundColor: theme.card,
       borderColor: selected ? theme.primary : theme.borderStrong || theme.border || '#989898',
-      borderWidth: selected ? 1.5 : 1,
+      borderWidth,
+      /* Le supplément de bordure de l'état sélectionné est repris sur le
+         remplissage. Les dimensions se comptent bordure comprise en React
+         Native : sans cette reprise, cocher un item le ferait grandir et
+         pousserait toute la liste sous le doigt. Invisible tant que la hauteur
+         minimale l'emporte, déterminant dès qu'une description l'a dépassée. */
+      paddingVertical: PADDING_VERTICAL - (borderWidth - BORDER_IDLE),
       opacity: disabled ? 0.4 : 1,
       overflow: 'hidden' as const,
     },
@@ -127,9 +152,24 @@ export default function ChoiceChip({
       }}
       style={chipStyle}>
       {leading ? <View style={styles.adornment}>{leading}</View> : null}
-      <Text style={[styles.label, { color: theme.text, fontWeight: selected ? '700' : '500' }]}>
-        {label}
-      </Text>
+      <View style={styles.labelGroup}>
+        <Text
+          style={[
+            styles.label,
+            {
+              color: theme.text,
+              /* La graisse passe par la famille et non par `fontWeight` : les
+                 variantes de Bricolage Grotesque sont des fichiers distincts,
+                 que le moteur ne dérive pas d'une police déjà chargée. */
+              fontFamily: selected ? 'BricolageGrotesque-Bold' : 'BricolageGrotesque-Medium',
+            },
+          ]}>
+          {label}
+        </Text>
+        {description ? (
+          <Text style={[styles.description, { color: theme.textMuted }]}>{description}</Text>
+        ) : null}
+      </View>
       {trailingContent ? <View style={styles.adornment}>{trailingContent}</View> : null}
     </Pressable>
   );
@@ -145,14 +185,29 @@ const styles = StyleSheet.create({
     gap: 12,
     minHeight: 56,
     paddingHorizontal: 16,
-    borderRadius: 12,
+    /* Sans description, la hauteur minimale l'emporte et le rendu est inchangé ;
+       avec, c'est ce remplissage qui laisse le chip grandir proprement. */
+    paddingVertical: 12,
+    borderRadius: 16,
     width: '100%',
   },
-  // Bricolage Grotesque : la police de titrage, pas celle du corps de texte.
-  label: {
+  // Seul le bloc de texte se comprime, les encarts latéraux gardent leur taille.
+  labelGroup: {
     flex: 1,
-    fontFamily: 'BricolageGrotesque-Medium',
+    gap: 2,
+  },
+  /* Bricolage Grotesque : la police de titrage, pas celle du corps de texte.
+     La famille est surchargée au rendu selon l'état sélectionné ; la hauteur de
+     ligne, elle, reste fixe pour que ce passage en gras ne décale rien. */
+  label: {
     fontSize: 16,
+    lineHeight: LABEL_LINE_HEIGHT,
+  },
+  // Satoshi : la précision relève du corps de texte, pas du titrage.
+  description: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    lineHeight: 16,
   },
   // Encarts latéraux : ils gardent leur taille, seul le libellé se comprime.
   adornment: {

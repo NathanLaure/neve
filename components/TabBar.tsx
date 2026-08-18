@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { View, StyleSheet, Pressable, Animated, Platform } from 'react-native';
+import { View, StyleSheet, Pressable, Animated, Platform, Image } from 'react-native';
 import Reanimated, { useAnimatedStyle } from 'react-native-reanimated';
 import { Search, Heart, Compass, UserRound } from 'lucide-react-native';
 import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
@@ -7,6 +7,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import { useImmersiveProgress } from '@/context/MapImmersiveContext';
+import { useAuth } from '@/context/AuthContext';
 
 /** Hauteur de la rangée d'onglets, hors barre système. */
 const TAB_BAR_BASE_HEIGHT = 56;
@@ -22,6 +23,7 @@ function TabItem({
   isFocused,
   label,
   IconComponent,
+  avatarUrl,
   activeColor,
   inactiveColor,
   onPress,
@@ -30,6 +32,7 @@ function TabItem({
   isFocused: boolean;
   label: string;
   IconComponent: any;
+  avatarUrl?: string | null;
   activeColor: string;
   inactiveColor: string;
   onPress: () => void;
@@ -70,20 +73,39 @@ function TabItem({
       }}
       style={styles.tabItem}>
       <View style={styles.iconContainer}>
-        {/* Inactive Icon */}
-        <Animated.View style={{ position: 'absolute', opacity: inactiveOpacity }}>
-          <IconComponent size={24} color={inactiveColor} strokeWidth={1.8} />
-        </Animated.View>
-        {/* Active Icon */}
-        <Animated.View style={{ position: 'absolute', opacity: activeOpacity }}>
-          <IconComponent size={24} color={activeColor} strokeWidth={2.2} />
-        </Animated.View>
+        {avatarUrl ? (
+          <View
+            style={[
+              styles.avatarContainer,
+              {
+                borderColor: isFocused ? activeColor : 'transparent',
+                borderWidth: isFocused ? 1.5 : 0,
+              },
+            ]}>
+            <Image
+              source={{ uri: avatarUrl }}
+              style={styles.avatarImage}
+            />
+          </View>
+        ) : (
+          <>
+            {/* Inactive Icon */}
+            <Animated.View style={{ position: 'absolute', opacity: inactiveOpacity }}>
+              <IconComponent size={24} color={inactiveColor} strokeWidth={1.8} />
+            </Animated.View>
+            {/* Active Icon */}
+            <Animated.View style={{ position: 'absolute', opacity: activeOpacity }}>
+              <IconComponent size={24} color={activeColor} strokeWidth={2.2} />
+            </Animated.View>
+          </>
+        )}
       </View>
       <Animated.Text
         style={[
           styles.tabLabel,
           {
             color: textColor,
+            fontFamily: isFocused ? 'Satoshi-Bold' : 'Satoshi-Medium',
           },
         ]}>
         {label}
@@ -134,6 +156,8 @@ export default function TabBar({ state, descriptors, navigation }: any) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { searchQuery } = useAdventure();
+  const { profile, user } = useAuth();
+  const avatarUrl = profile?.avatarUrl || user?.user_metadata?.avatar_url;
 
   const bottomPadding = useTabBarBottomPadding();
   const barHeight = TAB_BAR_BASE_HEIGHT + bottomPadding;
@@ -209,6 +233,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
             isFocused={isFocused}
             label={label}
             IconComponent={IconComponent}
+            avatarUrl={route.name === 'profile' ? avatarUrl : undefined}
             activeColor={theme.tint}
             inactiveColor={theme.tabIconDefault}
             onPress={onPress}
@@ -244,6 +269,19 @@ const styles = StyleSheet.create({
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  avatarContainer: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  avatarImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 12,
   },
   tabLabel: {
     fontSize: 11,

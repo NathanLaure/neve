@@ -105,7 +105,7 @@ export function Select({
             backgroundColor: 'transparent',
             borderColor,
             borderWidth: 1.5,
-            borderRadius: 12,
+            borderRadius: 24,
             overflow: 'hidden' as const,
           },
         ]}>

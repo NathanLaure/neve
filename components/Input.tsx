@@ -142,7 +142,7 @@ export const Input = forwardRef<TextInput, InputProps>(
             {
               backgroundColor: containerBackground,
               borderColor,
-              borderWidth: isFocused || isSuccess ? 2 : 1.5,
+              borderWidth: isFocused || isSuccess ? 1.5 : 1.5,
             },
           ]}>
           {label && variant === 'outlined' ? (
@@ -215,7 +215,7 @@ export const Input = forwardRef<TextInput, InputProps>(
             </Pressable>
           ) : null}
 
-          {rightIcon && !isPassword && (!onClear || !hasValue) ? (
+          {rightIcon && !isPassword ? (
             <View style={styles.rightIconWrapper}>{rightIcon}</View>
           ) : null}
         </View>
@@ -260,7 +260,6 @@ const styles = StyleSheet.create({
   floatingLabelText: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 12,
-    lineHeight: 14,
   },
   iconWrapper: {
     marginRight: 10,

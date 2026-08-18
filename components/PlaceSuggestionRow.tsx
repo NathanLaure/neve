@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { Building2, Home, MapPin, MountainSnow, RotateCcw, TreePine, Waves } from 'lucide-react-native';
+import { Building2, Home, MapPin, MountainSnow, RotateCcw, TrainFront, TreePine, Waves } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 
 /**
@@ -11,7 +11,15 @@ import Colors from '@/constants/Colors';
  * présentation, sans quoi la même adresse s'afficherait de deux façons.
  */
 
-export type PlaceKind = 'nearby' | 'water' | 'mountain' | 'forest' | 'village' | 'city' | 'recent';
+export type PlaceKind =
+  | 'nearby'
+  | 'water'
+  | 'mountain'
+  | 'forest'
+  | 'village'
+  | 'city'
+  | 'station'
+  | 'recent';
 
 // Icône + couleur par nature de lieu. Les fonds discrets reprennent les jetons de
 // statut du design system pour rester dans la palette dans les deux thèmes.
@@ -49,6 +57,13 @@ export const PLACE_KINDS: Record<
     light: { fg: '#525252', bg: '#FFFFFF' },
     dark: { fg: '#BDBDBD', bg: '#111111' },
   },
+  // Gares et stations : la couleur de marque, parce que c'est le point d'entrée
+  // du réseau et le cœur de ce que l'app fait chercher.
+  station: {
+    icon: TrainFront,
+    light: { fg: '#EB490B', bg: '#FDEFE9' },
+    dark: { fg: '#FA6415', bg: '#2A1206' },
+  },
   recent: {
     icon: RotateCcw,
     light: { fg: '#525252', bg: '#FFFFFF' },
@@ -70,6 +85,10 @@ const deaccent = (value: string) =>
 // « bois » sur Boissy, « mer » sur Merville.
 const words = (...list: string[]) =>
   new RegExp(`(^|[\\s'’\\-])(${list.join('|')})([\\s'’\\-]|$)`);
+
+/* Un POI Mapbox peut être une gare comme une boulangerie : seul son intitulé
+   permet de trancher. */
+const TRANSIT_NAME = words('gare', 'gares', 'station', 'metro', 'rer', 'tramway', 'halte');
 
 const WATER_NAME = words(
   'mer', 'mers', 'plage', 'plages', 'lac', 'lacs', 'etang', 'etangs', 'bains',
@@ -109,6 +128,11 @@ const NOTABLE_PLACES: Record<string, PlaceKind> = {
 export function getPlaceKind(name: string, dept: string, placeType?: string): PlaceKind {
   const n = deaccent(name);
   const d = deaccent(dept);
+
+  /* Testé avant tout le reste : une gare porte le nom de sa commune, et
+     « Gare de Fontainebleau-Avon » repartirait en forêt sur la règle du nom. */
+  if (placeType === 'station') return 'station';
+  if (placeType === 'poi' && TRANSIT_NAME.test(n)) return 'station';
 
   for (const [key, kind] of Object.entries(NOTABLE_PLACES)) {
     if (n.includes(key)) return kind;

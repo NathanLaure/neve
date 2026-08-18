@@ -31,6 +31,12 @@
         {
           "RNMapboxMapsImpl": "mapbox"
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Névé accède à vos photos pour définir votre portrait de profil."
+        }
       ]
     ],
     "experiments": {

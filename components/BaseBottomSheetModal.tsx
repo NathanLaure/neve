@@ -72,6 +72,13 @@ export interface BaseBottomSheetModalProps {
   showCloseButton?: boolean;
   onClose?: () => void;
   enablePanDownToClose?: boolean;
+  /**
+   * Feuille bloquante : ni glissement vers le bas, ni appui sur le fond, ni
+   * retour système ne la referment — seules ses propres actions le peuvent.
+   * Pour les impasses où fermer laisserait l'utilisateur devant un écran qui
+   * n'a rien à lui montrer.
+   */
+  blocking?: boolean;
   /** Actif par défaut : la hauteur s'adapte automatiquement au contenu */
   enableDynamicSizing?: boolean;
   backdropOpacity?: number;
@@ -84,7 +91,7 @@ export interface BaseBottomSheetModalProps {
   /** Action du bouton principal */
   onPrimaryPress?: () => void;
   /** Variante du bouton principal ('primary' par défaut) */
-  primaryButtonVariant?: 'primary' | 'secondary' | 'tertiary' | 'text' | 'outlined';
+  primaryButtonVariant?: 'primary' | 'secondary' | 'tertiary' | 'text' | 'transparent' | 'outlined';
   /** Désactivation du bouton principal */
   primaryButtonDisabled?: boolean;
   /** Libellé du bouton secondaire du pied de page (ex: "Tout effacer") */
@@ -92,7 +99,7 @@ export interface BaseBottomSheetModalProps {
   /** Action du bouton secondaire */
   onSecondaryPress?: () => void;
   /** Variante du bouton secondaire ('text' par défaut) */
-  secondaryButtonVariant?: 'primary' | 'secondary' | 'tertiary' | 'text' | 'outlined';
+  secondaryButtonVariant?: 'primary' | 'secondary' | 'tertiary' | 'text' | 'transparent' | 'outlined';
   /** Désactivation du bouton secondaire */
   secondaryButtonDisabled?: boolean;
   /**
@@ -150,6 +157,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
     showCloseButton = true,
     onClose,
     enablePanDownToClose = true,
+    blocking = false,
     enableDynamicSizing = true, // 👈 Redimensionnement dynamique actif par défaut
     backdropOpacity = 0.35,
     contentContainerStyle,
@@ -221,11 +229,13 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
   useEffect(() => {
     if (!isOpen) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      modalRef.current?.dismiss();
+      // En mode bloquant, le geste est consommé sans refermer : le retour ne
+      // doit pas être la porte de sortie que les autres voies interdisent.
+      if (!blocking) modalRef.current?.dismiss();
       return true;
     });
     return () => subscription.remove();
-  }, [isOpen]);
+  }, [isOpen, blocking]);
 
   const renderBackdrop = useCallback(
     (props: any) => (
@@ -234,10 +244,10 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
         disappearsOnIndex={-1}
         appearsOnIndex={0}
         opacity={backdropOpacity}
-        pressBehavior="close"
+        pressBehavior={blocking ? 'none' : 'close'}
       />
     ),
-    [backdropOpacity]
+    [backdropOpacity, blocking]
   );
 
   // L'en-tête s'affiche si `showHeader` est explicitement vrai, ou s'il n'est pas
@@ -419,7 +429,7 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
       ref={modalRef}
       animatedIndex={animatedIndex}
       snapPoints={memoizedSnapPoints}
-      enablePanDownToClose={enablePanDownToClose}
+      enablePanDownToClose={blocking ? false : enablePanDownToClose}
       enableDynamicSizing={isDynamicSizing}
       stackBehavior={stackBehavior}
       topInset={effectiveTopInset}
@@ -600,8 +610,8 @@ const styles = StyleSheet.create({
     lineHeight: 26,
   },
   subtitle: {
-    fontFamily: 'Satoshi-Regular',
-    fontSize: 13,
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
     lineHeight: 18,
   },
   closeButtonCircle: {

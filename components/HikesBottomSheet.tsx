@@ -28,6 +28,7 @@ import Animated, {
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import RandoCard from '@/components/RandoCard';
+import FilterChip from '@/components/FilterChip';
 import RandoCardSkeleton from '@/components/RandoCardSkeleton';
 import Skeleton from '@/components/Skeleton';
 import { type RandoData } from '@/constants/RandosData';
@@ -67,6 +68,12 @@ interface HikesBottomSheetProps {
    * au-dessus de l'écran. Les points d'accroche se mesurent depuis ce bord.
    */
   bottomInset?: number;
+  /** Résumé des abonnements retenus, affiché sur la première puce (« Pass Navigo +1 »). */
+  fareZonesLabel?: string;
+  /** Critère de tri courant, affiché sur la seconde puce. */
+  sortLabel?: string;
+  onOpenFareZones?: () => void;
+  onOpenSort?: () => void;
 }
 
 const AnimatedFlatList = Animated.createAnimatedComponent(BottomSheetFlatList);
@@ -90,6 +97,10 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
     initialIndex = 0,
     expandedTopOffset = 0,
     bottomInset = 0,
+    fareZonesLabel,
+    sortLabel,
+    onOpenFareZones,
+    onOpenSort,
   },
   ref
 ) => {
@@ -330,13 +341,38 @@ const HikesBottomSheetRender: React.ForwardRefRenderFunction<
         scrollEventThrottle={16}
         ListHeaderComponent={
           <Animated.View style={resultsTitleStyle}>
-            {/* Results Title */}
+            {/* Décompte à gauche, réglages de la liste à droite (Figma 49:2449).
+                Le libellé est court — « 34 résultats » et non « 34 randonnées
+                trouvées » — pour laisser la place aux deux puces sur la ligne. */}
             {isLoadingHikes ? (
-              <Skeleton width={180} height={20} borderRadius={6} />
+              <View style={styles.resultsHeader}>
+                <Skeleton width={90} height={20} borderRadius={6} />
+              </View>
             ) : (
-              <Text style={[styles.resultsTitle, { color: theme.text }]}>
-                {`${filteredHikes.length} randonnée${filteredHikes.length > 1 ? 's' : ''} trouvées`}
-              </Text>
+              <View style={styles.resultsHeader}>
+                <Text style={[styles.resultsTitle, { color: theme.textMuted }]}>
+                  {`${filteredHikes.length} résultat${filteredHikes.length > 1 ? 's' : ''}`}
+                </Text>
+
+                <View style={styles.resultsChips}>
+                  {onOpenFareZones && (
+                    <FilterChip
+                      size="compact"
+                      label={fareZonesLabel ?? 'Zones tarifaires'}
+                      accessibilityLabel={`Zones tarifaires : ${fareZonesLabel ?? 'aucune'}`}
+                      onPress={onOpenFareZones}
+                    />
+                  )}
+                  {onOpenSort && (
+                    <FilterChip
+                      size="compact"
+                      label={sortLabel ?? 'Trier'}
+                      accessibilityLabel={`Trier par : ${sortLabel ?? 'pertinence'}`}
+                      onPress={onOpenSort}
+                    />
+                  )}
+                </View>
+              </View>
             )}
           </Animated.View>
         }
@@ -420,12 +456,28 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     width: '100%',
   },
+  /* Le retrait horizontal passe sur la ligne entière : les puces doivent
+     s'aligner sur le bord droit des cartes, pas sur celui de la feuille. */
+  resultsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 12,
+    paddingHorizontal: 24,
+    minHeight: 23,
+  },
   resultsTitle: {
     fontFamily: 'Satoshi-Medium',
     fontSize: 14,
-    marginTop: 0,
-    marginBottom: 12,
-    paddingHorizontal: 24,
+    lineHeight: 20,
+    flexShrink: 1,
+  },
+  resultsChips: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flexShrink: 0,
   },
   listContent: {
     paddingBottom: 40,

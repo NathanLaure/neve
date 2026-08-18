@@ -11,10 +11,11 @@ import {
 } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
-import { Star, Route, Heart, Train, Clock, TrendingUp, Download } from 'lucide-react-native';
+import { Star, Route, Heart, Train, Clock, TrendingUp, Download, CheckCircle2 } from 'lucide-react-native';
 import Tag from '@/components/Tag';
 
 import Colors from '@/constants/Colors';
+import { isNavigoAccessible } from '@/services/transitService';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IconButton } from '@/components/IconButton';
 import { useAdventure } from '@/context/AdventureContext';
@@ -90,6 +91,10 @@ function RandoCard({
 }: RandoCardProps) {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
+
+  /* Le pass couvre tout le réseau francilien : la randonnée est concernée dès
+     lors que sa gare de départ en fait partie. */
+  const navigoAccessible = isNavigoAccessible(startStationCoords);
   const { width: windowWidth } = useWindowDimensions();
   const screenWidth = windowWidth > 0 ? windowWidth : Dimensions.get('window').width;
 
@@ -654,6 +659,17 @@ function RandoCard({
             style={styles.favoriteButton}
           />
 
+          {/* Pass Navigo — posé en bas à gauche de l'image, à la hauteur de la
+              vignette de carte qui lui fait face (Figma 148:1851). */}
+          {navigoAccessible && (
+            <Tag
+              text="Pass Navigo"
+              statut="Success"
+              icon={<CheckCircle2 size={14} color={theme.statusTextSuccess} />}
+              style={styles.navigoOverlay}
+            />
+          )}
+
           {/* Mini Map Preview Overlay */}
           <View
             style={[
@@ -812,6 +828,11 @@ const styles = StyleSheet.create({
     top: 8,
     right: 8,
     padding: 6,
+  },
+  navigoOverlay: {
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
   },
   miniMapContainer: {
     position: 'absolute',
