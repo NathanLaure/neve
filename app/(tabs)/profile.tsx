@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Animated,
   Image,
@@ -36,6 +36,8 @@ import { useTabBarHeight } from '@/components/TabBar';
 import { IconButton } from '@/components/IconButton';
 import ProfileMenuRow from '@/components/profile/ProfileMenuRow';
 import ProfileStatTile from '@/components/profile/ProfileStatTile';
+import SignOutSheet from '@/components/profile/SignOutSheet';
+import type { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { toISODate } from '@/components/plan/DateRangeCalendar';
 import { calculateCo2Impact, estimateLegsDistanceKm } from '@/services/transitService';
 import { buildAdventureNotifications } from '@/utils/notifications';
@@ -94,7 +96,17 @@ export default function ProfileScreen() {
     extrapolate: 'clamp',
   });
 
+  /*
+   * La déconnexion passe par une confirmation : sa ligne voisine des rubriques
+   * anodines du sommaire, où un appui de trop coupait la session sans prévenir.
+   */
+  const signOutSheetRef = useRef<BaseBottomSheetModalRef>(null);
+
   const handleSignOut = async () => {
+    // Refermée d'abord : la feuille vit dans un portail à la racine, elle
+    // survivrait au changement d'écran et resterait posée sur la page de
+    // connexion.
+    signOutSheetRef.current?.dismiss();
     await signOut();
     router.replace('/(auth)/register');
   };
@@ -335,11 +347,17 @@ export default function ProfileScreen() {
               Icon={LogOut}
               trailing="none"
               flush
-              onPress={handleSignOut}
+              onPress={() => signOutSheetRef.current?.present()}
             />
           </View>
         </Animated.ScrollView>
       </SafeAreaView>
+
+      <SignOutSheet
+        ref={signOutSheetRef}
+        onConfirm={handleSignOut}
+        onCancel={() => signOutSheetRef.current?.dismiss()}
+      />
     </Animated.View>
   );
 }

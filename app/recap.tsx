@@ -1,63 +1,109 @@
-import React, { useState } from 'react';
-import {
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  Pressable,
-  ActivityIndicator,
-} from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import {
-  ChevronLeft,
-  CheckCircle2,
-  AlertTriangle,
-  Info,
-  ChevronUp,
-  ChevronDown,
-  ExternalLink,
-  Plus,
-} from 'lucide-react-native';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Share, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, EllipsisVertical, Plus, Share2 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { IconButton } from '@/components/IconButton';
+import { Button } from '@/components/Button';
 import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
+import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import {
+  formatAdventureRange,
+  formatDayMonth,
+  formatFullDate,
+  toISODate,
+} from '@/components/plan/DateRangeCalendar';
+import AdventureJourneyCard from '@/components/plan/AdventureJourneyCard';
+import AdventureHikeCard from '@/components/plan/AdventureHikeCard';
+import AdventureStepConnector, {
+  AdventureTimelineCaption,
+} from '@/components/plan/AdventureStepConnector';
+import AdventureActionsSheet from '@/components/plan/AdventureActionsSheet';
+import BuyTicketsSheet from '@/components/plan/BuyTicketsSheet';
+import JourneyDetailSheet from '@/components/plan/JourneyDetailSheet';
 import { useAdventure, isOneWayAdventure } from '@/context/AdventureContext';
-import { MOCK_RANDOS } from '@/constants/RandosData';
-import { buildTrainlineSearchUrl, openBookingProvider } from '@/services/bookingService';
-import { fromTrainOption } from '@/services/transitService';
 import { usePlanDraft } from '@/context/PlanDraftContext';
+import { MOCK_RANDOS } from '@/constants/RandosData';
+import {
+  BookingProvider,
+  buildTrainlineSearchUrl,
+  isFullyCoveredByNavigo,
+  openBookingProvider,
+} from '@/services/bookingService';
+import {
+  buildAdventureEdit,
+  buildAdventurePlanParams,
+  suggestReturnTime,
+} from '@/services/adventureEditing';
+import { buildAdventureShare } from '@/services/adventureSharing';
+import { fromTrainOption, toTrainOption } from '@/services/transitService';
+import {
+  allPassengersHave,
+  createDefaultPassengers,
+  formatPassengerCount,
+  normalizePassengers,
+} from '@/types/passenger';
+import { showToast } from '@/utils/toast';
 
+/**
+ * Fiche d'une aventure enregistrée.
+ *
+ * Même récit que le résumé de planification, et volontairement la même mise en
+ * page : c'est le même voyage, il ne doit pas changer d'allure une fois rangé
+ * dans « Aventures ». Ce qui change est la source — l'aventure en base et non le
+ * brouillon — et les issues : rien à enregistrer ici, seulement des billets à
+ * prendre s'ils ne l'ont pas été, et des trajets à corriger.
+ */
 export default function RecapScreen() {
-  const { adventureId } = useLocalSearchParams();
+  const { adventureId } = useLocalSearchParams<{ adventureId?: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  // Le footer est en `position: absolute` : il ne prend aucune place dans le flux.
-  // Ce cale-pied suit son padding bas, plus la hauteur de ses boutons.
-  const scrollBottomClearance = useScreenFooterPadding() + 112;
 
   const { plannedAdventures, updateAdventure, hikes, loadHikeDetail } = useAdventure();
-  const { restoreForReturn } = usePlanDraft();
-  const [isRedirecting, setIsRedirecting] = useState(false);
-  const [redirectProvider, setRedirectProvider] = useState<'trainline' | 'sncf' | 'idf'>(
-    'trainline'
-  );
+  const { draft, restoreForEdit, restoreForReturn, resetDraft } = usePlanDraft();
 
-  // Expanded details state for timeline steps
-  const [expandedStep, setExpandedStep] = useState<number | null>(null);
+  const buySheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const journeyDetailSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  // Une seule feuille de détail pour les deux trajets, comme sur les écrans de
+  // choix : c'est le trajet dont on vient d'ouvrir le détail qui la remplit.
+  const [detailedPhase, setDetailedPhase] = useState<'outward' | 'return'>('outward');
 
-  // Find the adventure
-  const adventure = plannedAdventures.find((adv) => adv.id === adventureId);
-  const rando = React.useMemo(() => {
+  const adventure = plannedAdventures.find((item) => item.id === adventureId) ?? null;
+
+  /*
+   * Randonnée de l'aventure, avec deux replis : le jeu d'essai, puis l'instantané
+   * enregistré avec l'aventure. Une sortie passée doit rester lisible même si son
+   * sentier a disparu du catalogue.
+   */
+  const rando = useMemo(() => {
     if (!adventure) return null;
-    const found = hikes.find((r) => r.id === adventure.randoId) || MOCK_RANDOS.find((r) => r.id === adventure.randoId);
+
+    const found =
+      hikes.find((item) => item.id === adventure.randoId) ||
+      MOCK_RANDOS.find((item) => item.id === adventure.randoId);
     if (found) return found;
+
     if (adventure.hikeSnapshot) {
       return {
         id: adventure.randoId,
         title: adventure.hikeSnapshot.title,
-        imageUrl: adventure.hikeSnapshot.imageUrl || 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
+        imageUrl:
+          adventure.hikeSnapshot.imageUrl ||
+          'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=80',
         startStation: adventure.hikeSnapshot.startStation,
         startStationCoords: { latitude: 0, longitude: 0 },
         endStation: adventure.hikeSnapshot.endStation || adventure.hikeSnapshot.startStation,
@@ -77,82 +123,223 @@ export default function RecapScreen() {
         description: '',
       } as any;
     }
+
     return null;
   }, [adventure, hikes]);
 
   React.useEffect(() => {
-    if (adventure && !hikes.some((h) => h.id === adventure.randoId)) {
+    if (adventure && !hikes.some((item) => item.id === adventure.randoId)) {
       loadHikeDetail(adventure.randoId);
     }
   }, [adventure, hikes, loadHikeDetail]);
 
-  if (!adventure || !rando) {
-    return (
-      <View style={[styles.centered, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>Réservation introuvable</Text>
-        <Pressable onPress={() => router.replace('/')}>
-          <View style={[styles.backBtn, { backgroundColor: theme.tint }]}>
-            <Text style={styles.backBtnText}>{"Retourner à l'Explorer"}</Text>
-          </View>
-        </Pressable>
-      </View>
-    );
-  }
+  const isOneWay = adventure ? isOneWayAdventure(adventure) : false;
 
-  const isIDF = rando.trainType.toLowerCase().includes('transilien');
+  /* Les trajets enregistrés relus comme des itinéraires : c'est la forme qu'attendent
+     les cartes et la feuille de détail, partagées avec le parcours de planification. */
+  const outwardJourney = useMemo(
+    () => (adventure ? fromTrainOption(adventure.outwardTrain) : null),
+    [adventure]
+  );
+  const returnJourney = useMemo(
+    () => (adventure && !isOneWay ? fromTrainOption(adventure.returnTrain) : null),
+    [adventure, isOneWay]
+  );
 
-  // Build the Trainline search link
-  const handleOpenTrainline = async () => {
-    setRedirectProvider('trainline');
-    setIsRedirecting(true);
+  const outwardDate = adventure?.outwardDate ?? null;
+  const returnDate = adventure && !isOneWay ? adventure.returnDate : null;
 
-    const trainlineUrl = buildTrainlineSearchUrl({
-      originName: adventure.departureStationName,
-      destinationName: rando.startStation,
-      outwardDate: adventure.outwardDate,
-      outwardTime: adventure.outwardTrain.time,
-      returnDate: adventure.returnDate,
-      returnTime: adventure.returnTrain.time,
+  const isReversed = adventure?.isReversed ?? false;
+
+  // Gares du sentier, dans le sens de parcours retenu — mêmes règles que les
+  // écrans aller et retour, dont cette fiche n'est que la relecture.
+  const arrivalStationName = isReversed ? (rando?.endStation ?? '') : (rando?.startStation ?? '');
+  const departBackStationName = isReversed
+    ? (rando?.startStation ?? '')
+    : (rando?.endStation ?? rando?.startStation ?? '');
+
+  const departureName = adventure?.departureStationName || 'Votre position';
+  const returnName = adventure?.returnStationName || departureName;
+
+  const passengers = useMemo(
+    () => normalizePassengers(adventure?.passengers) ?? createDefaultPassengers(),
+    [adventure?.passengers]
+  );
+
+  const isPastAdventure = adventure
+    ? (adventure.returnDate || adventure.outwardDate) < toISODate(new Date())
+    : false;
+
+  /*
+   * Correction revenue d'un écran de choix.
+   *
+   * Elle s'applique ici, à l'écran qui possède la fiche : le brouillon porte
+   * l'itinéraire retenu et l'identifiant de cette aventure, il ne manque que de
+   * l'écrire. Sans ça, corriger un trajet depuis cette page n'aurait laissé
+   * aucune trace — c'est le résumé qui enregistrait, et on ne repasse plus par lui.
+   *
+   * Revenir sans avoir rien choisi ne déclenche rien : `buildAdventureEdit`
+   * réinjecte les trajets existants, la comparaison les retrouve identiques. Et
+   * l'écriture rend la comparaison vraie, l'effet ne se rejoue pas.
+   */
+  React.useEffect(() => {
+    const { savedAdventureId, outwardJourney: nextOutward, returnJourney: nextReturn } = draft;
+    if (!adventure || savedAdventureId !== adventure.id || !nextOutward) return;
+
+    const nextIsOneWay = !nextReturn;
+    const nextOutwardDate = draft.startDate ?? adventure.outwardDate;
+    const nextReturnDate = nextIsOneWay
+      ? nextOutwardDate
+      : (draft.endDate ?? adventure.returnDate);
+
+    const unchanged =
+      adventure.outwardTrain.id === nextOutward.id &&
+      adventure.returnTrain.id === (nextReturn ?? nextOutward).id &&
+      adventure.outwardDate === nextOutwardDate &&
+      adventure.returnDate === nextReturnDate &&
+      (adventure.isOneWay ?? false) === nextIsOneWay;
+
+    if (unchanged) return;
+
+    updateAdventure(adventure.id, {
+      outwardDate: nextOutwardDate,
+      returnDate: nextReturnDate,
+      outwardTrain: toTrainOption(nextOutward, draft.outwardIsRealtime),
+      // En aller simple, `returnTrain` recopie l'aller : le modèle en exige un,
+      // c'est `isOneWay` qui dit qu'il n'a jamais été planifié.
+      returnTrain: toTrainOption(
+        nextReturn ?? nextOutward,
+        nextReturn ? draft.returnIsRealtime : draft.outwardIsRealtime
+      ),
+      isOneWay: nextIsOneWay,
     });
 
-    // Mark as booked in our local state
-    updateAdventure(adventure.id, { isBooked: true });
+    const returnWasAdded = (adventure.isOneWay ?? false) && !nextIsOneWay;
+    showToast.success(
+      returnWasAdded ? 'Retour ajouté' : 'Aventure mise à jour',
+      returnWasAdded
+        ? 'Ton voyage est désormais un aller-retour.'
+        : 'Ta fiche a été corrigée.'
+    );
+  }, [adventure, draft, updateAdventure]);
 
-    setTimeout(async () => {
-      await openBookingProvider('trainline', trainlineUrl);
-      setIsRedirecting(false);
-    }, 1200); // Small delay to show redirect screen
-  };
+  const handleShare = useCallback(async () => {
+    if (!adventure || !rando) return;
 
-  const handleOpenIDF = async (provider: 'sncf' | 'idf') => {
-    setRedirectProvider(provider);
-    setIsRedirecting(true);
+    const share = buildAdventureShare(adventure, {
+      hikeTitle: rando.title,
+      isPast: isPastAdventure,
+    });
+    // Le jeton est enregistré avant l'envoi, sans quoi un second partage de la
+    // même aventure pointerait vers une autre adresse.
+    if (share.isNewToken) updateAdventure(adventure.id, { shareToken: share.shareToken });
 
-    // Mark as booked in our local state
-    updateAdventure(adventure.id, { isBooked: true });
+    try {
+      await Share.share({ title: share.title, message: share.message, url: share.url });
+    } catch (error) {
+      console.warn('Partage impossible :', error);
+    }
+  }, [adventure, isPastAdventure, rando, updateAdventure]);
 
-    setTimeout(async () => {
-      await openBookingProvider(provider === 'sncf' ? 'sncf' : 'idfm');
-      setIsRedirecting(false);
-    }, 1200);
-  };
+  const handleOpenProvider = useCallback(
+    async (provider: BookingProvider) => {
+      if (!adventure) return;
 
-  const handleBuyLater = () => {
-    // Go to "Aventures" tab
-    router.replace('/(tabs)/adventures');
-  };
+      const url =
+        provider === 'trainline' && outwardDate
+          ? buildTrainlineSearchUrl({
+              originName: departureName,
+              destinationName: arrivalStationName,
+              outwardDate,
+              outwardTime: outwardJourney?.departureTime ?? '08:00',
+              returnDate,
+              returnTime: returnJourney?.departureTime ?? null,
+            })
+          : undefined;
+
+      const opened = await openBookingProvider(provider, url);
+      // Le distributeur ne nous dit pas si l'achat a abouti : on note seulement
+      // que la démarche est engagée, l'utilisateur reste maître de l'état depuis
+      // la feuille d'options.
+      if (opened) updateAdventure(adventure.id, { isBooked: true });
+    },
+    [
+      adventure,
+      arrivalStationName,
+      departureName,
+      outwardDate,
+      outwardJourney,
+      returnDate,
+      returnJourney,
+      updateAdventure,
+    ]
+  );
+
+  const handleBuyDone = useCallback(
+    (allHaveNavigo?: boolean) => {
+      buySheetRef.current?.dismiss();
+      if (allHaveNavigo && adventure) updateAdventure(adventure.id, { isBooked: true });
+      showToast.success(
+        'Aventure prête !',
+        allHaveNavigo
+          ? 'Pass Navigo validé pour tous les randonneurs.'
+          : 'Tes billets et trajets sont enregistrés.'
+      );
+    },
+    [adventure, updateAdventure]
+  );
+
+  const handleOpenDetails = useCallback((phase: 'outward' | 'return') => {
+    setDetailedPhase(phase);
+    journeyDetailSheetRef.current?.present();
+  }, []);
+
+  /*
+   * Correction d'un trajet.
+   *
+   * Toujours en poussant : aucun écran de choix ne se trouve sous cette fiche,
+   * contrairement au résumé atteint au bout du parcours de planification. Le
+   * brouillon est posé au passage, et le résumé qui sortira de la correction
+   * mettra cette aventure à jour plutôt que d'en déposer une seconde.
+   */
+  const handleModify = useCallback(
+    (phase: 'outward' | 'return') => {
+      journeyDetailSheetRef.current?.dismiss();
+      if (!adventure) return;
+
+      const planParams = buildAdventurePlanParams(adventure);
+      restoreForEdit(buildAdventureEdit(adventure));
+
+      if (phase === 'outward') {
+        router.push({
+          pathname: '/plan/outward',
+          params: { ...planParams, editOnly: 'outward' },
+        });
+      } else {
+        router.push({
+          pathname: '/plan/return',
+          params: {
+            ...planParams,
+            outwardId: adventure.outwardTrain.id,
+            editOnly: 'return',
+          },
+        });
+      }
+    },
+    [adventure, restoreForEdit, router]
+  );
 
   /**
-   * Ajout d'un retour à une aventure déjà enregistrée.
+   * Ajout d'un retour à une aventure en aller simple.
    *
    * L'aller retenu est réinjecté dans le brouillon, puis le calendrier s'ouvre
    * pour dater le retour — proposer des horaires avant que la date soit choisie
-   * reviendrait à décider du jour à la place de l'utilisateur. La modale
-   * enchaîne ensuite sur les trajets. L'aventure est corrigée à l'arrivée sur le
-   * résumé, pas dupliquée : son identifiant repart avec le brouillon.
+   * reviendrait à décider du jour à la place de l'utilisateur. La modale enchaîne
+   * ensuite sur les trajets. L'aventure est corrigée à l'arrivée sur le résumé,
+   * pas dupliquée : son identifiant repart avec le brouillon.
    */
-  const handleAddReturn = () => {
-    if (!adventure || !rando) return;
+  const handleAddReturn = useCallback(() => {
+    if (!adventure) return;
 
     restoreForReturn({
       startDate: adventure.outwardDate,
@@ -162,793 +349,336 @@ export default function RecapScreen() {
       savedAdventureId: adventure.id,
     });
 
+    /* `editOnly` traverse le calendrier, qui relaie ses paramètres : l'écran de
+       choix ne doit pas rester dans la pile derrière le résumé, sans quoi le
+       retour arrière y ramènerait au lieu de rendre la main à cette fiche. */
     router.push({
       pathname: '/plan/dates',
       params: {
+        ...buildAdventurePlanParams(adventure),
         next: 'return',
-        randoId: adventure.randoId,
+        editOnly: 'return',
         outwardId: adventure.outwardTrain.id,
-        departureName: adventure.departureStationName,
-        returnName: adventure.returnStationName ?? adventure.departureStationName,
-        passengersCount: adventure.passengersCount,
-        passengers: JSON.stringify(adventure.passengers ?? []),
-        isReversed: String(adventure.isReversed ?? false),
+        /* En aller simple, `returnTrain` recopie l'aller : le `returnTime` des
+           paramètres vaut l'heure du départ du matin. On lui substitue la fin
+           estimée de la marche, seule heure de retour qui ait un sens. */
+        returnTime: suggestReturnTime(adventure.outwardTrain.arrivalTime, rando?.durationHours),
       },
     });
-  };
+  }, [adventure, restoreForReturn, router]);
 
-  const toggleExpandStep = (stepIdx: number) => {
-    setExpandedStep(expandedStep === stepIdx ? null : stepIdx);
-  };
+  /**
+   * Repartir sur ce sentier.
+   *
+   * Seule issue d'une sortie passée : ses trajets ne se corrigent plus, mais rien
+   * n'empêche d'y retourner. Le brouillon est remis à neuf — sans quoi son
+   * `savedAdventureId` ferait écraser l'aventure passée par la nouvelle, au lieu
+   * d'en déposer une seconde.
+   */
+  const handleReplan = useCallback(() => {
+    if (!rando) return;
+    resetDraft();
+    router.push(`/plan?randoId=${rando.id}`);
+  }, [rando, resetDraft, router]);
 
-  // Date labels
-  const formatDate = (isoStr: string) => {
-    const d = new Date(isoStr);
-    return d.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-  };
+  /*
+   * En-tête repliable, sur le patron du résumé : le grand titre défile avec le
+   * contenu et cède sa place à une version compacte, posée entre les boutons de
+   * la barre fixe.
+   *
+   * La hauteur du bloc est mesurée et non codée en dur : elle dépend de la
+   * longueur du nom de commune et de la taille de police système.
+   */
+  const scrollY = useSharedValue(0);
+  const titleBlockHeight = useSharedValue(0);
+
+  const headerScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  /** 0 = titre entièrement visible, 1 = entièrement sorti par le haut. */
+  const collapse = useDerivedValue(() => {
+    if (titleBlockHeight.value <= 0) return 0;
+    return Math.min(1, Math.max(0, scrollY.value / titleBlockHeight.value));
+  });
+
+  // Relais et non fondu croisé : le grand titre s'efface sur la première moitié
+  // de la course, le compact n'arrive que sur la seconde — sinon deux titres à
+  // demi transparents se superposent à mi-chemin.
+  const bigTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0, 0.45], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  const compactTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: 8 * (1 - collapse.value) }],
+  }));
+
+  /*
+   * Le pied de page flotte au-dessus du contenu : la liste réserve elle-même la
+   * place du bouton d'achat, plus de quoi laisser respirer la légende de fin.
+   *
+   * `useScreenFooterPadding` comptabilise déjà la barre système : il reste donc
+   * la seule source d'inset, y compris sans bouton — la dernière ligne butait
+   * sinon contre le bord bas de l'écran.
+   */
+  const footerPadding = useScreenFooterPadding();
+  /* Une sortie passée n'a plus de billet à prendre, seulement un sentier où
+     retourner : les deux issues s'excluent et occupent la même place. */
+  const showBuyButton = !!adventure && !adventure.isBooked && !isPastAdventure;
+  const showFooter = showBuyButton || isPastAdventure;
+  const scrollBottomClearance = footerPadding + (showFooter ? 48 + 12 + 40 : 40);
+
+  if (!adventure || !rando || !outwardJourney || !outwardDate) {
+    return (
+      <View style={[styles.screen, styles.loadingScreen, { backgroundColor: theme.background }]}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color={theme.tint} />
+      </View>
+    );
+  }
+
+  // « Votre aventure à Montmin » : la commune du sentier situe mieux la sortie
+  // que son titre, déjà repris par la carte au centre de la frise.
+  const placeName = rando.location?.split(',')[0]?.trim() || arrivalStationName || rando.title;
+
+  const isReturnDetail = detailedPhase === 'return';
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          headerTitle: 'Récapitulatif de Voyage',
-          headerTintColor: theme.text,
-          headerStyle: { backgroundColor: theme.card },
-          headerLeft: () => (
-            <Pressable onPress={handleBuyLater} style={styles.headerBack}>
-              <ChevronLeft size={20} color={theme.text} />
-            </Pressable>
-          ),
-        }}
-      />
+      <Stack.Screen options={{ headerShown: false }} />
 
-      {isRedirecting ? (
-        <View style={[styles.loadingOverlay, { backgroundColor: theme.background }]}>
-          <ActivityIndicator size="large" color={theme.tint} />
-          <Text style={[styles.loadingText, { color: theme.text }]}>
-            Connexion sécurisée à{' '}
-            {redirectProvider === 'trainline'
-              ? 'Trainline'
-              : redirectProvider === 'sncf'
-                ? 'SNCF Connect'
-                : 'IDF Mobilités'}
-            ...
-          </Text>
-          <Text style={[styles.loadingSubText, { color: theme.textMuted }]}>
-            {redirectProvider === 'trainline'
-              ? `Nous préparons votre recherche de ${adventure.departureStationName} vers ${rando.startStation} pour le ${formatDate(adventure.outwardDate)}.`
-              : `Redirection vers le site pour l'achat de vos billets.`}
-          </Text>
+      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+        {/* Barre fixe : elle ne défile jamais et reste opaque jusqu'au bord haut,
+            c'est elle qui masque le titre qui remonte. */}
+        <View
+          style={[
+            styles.header,
+            { paddingTop: insets.top + 8, backgroundColor: theme.background },
+          ]}>
+          {/* Pastille claire dans les deux thèmes — même règle que tous les
+              retours de l'app. Le partage et les options, eux, suivent le thème. */}
+          <IconButton
+            variant="circle"
+            icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+            style={{ backgroundColor: Colors.light.buttonBgIcon }}
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace('/(tabs)/adventures')
+            }
+          />
+
+          <View style={styles.headerCenter} pointerEvents="none">
+            <Animated.Text
+              numberOfLines={1}
+              style={[styles.compactTitle, { color: theme.text }, compactTitleStyle]}>
+              Votre aventure à {placeName}
+            </Animated.Text>
+          </View>
+
+          <IconButton
+            variant="circle"
+            icon={<Share2 size={20} color={theme.buttonIconColor} />}
+            style={{ backgroundColor: theme.buttonBgIcon }}
+            onPress={handleShare}
+          />
+
+          <IconButton
+            variant="circle"
+            icon={<EllipsisVertical size={20} color={theme.buttonIconColor} />}
+            style={{ backgroundColor: theme.buttonBgIcon }}
+            onPress={() => actionsSheetRef.current?.present()}
+          />
         </View>
-      ) : (
-        <View style={[styles.mainContainer, { backgroundColor: theme.background }]}>
-          <ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-            {/* Status Card */}
-            <View
-              style={[
-                styles.statusCard,
-                {
-                  backgroundColor: adventure.isBooked ? theme.greenBadge : theme.orangeBadge,
-                  borderColor: adventure.isBooked ? theme.tint : theme.warning,
-                },
-              ]}>
-              {adventure.isBooked ? (
-                <CheckCircle2 size={22} color={theme.tint} />
-              ) : (
-                <AlertTriangle size={22} color={theme.warning} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text
-                  style={[
-                    styles.statusTitle,
-                    { color: adventure.isBooked ? theme.text : '#D35400' },
-                  ]}>
-                  {adventure.isBooked
-                    ? 'Train Réservé • Prêt à Partir !'
-                    : 'Action Requise : Réserver le Train'}
-                </Text>
-                <Text style={[styles.statusSub, { color: theme.textMuted }]}>
-                  {adventure.isBooked
-                    ? "Vos billets sont réservés. N'oubliez pas votre équipement !"
-                    : 'Le trajet est planifié mais les billets ne sont pas encore achetés.'}
-                </Text>
-              </View>
-            </View>
 
-            {/* Transilien Warning Card */}
-            {isIDF && (
-              <View
-                style={[
-                  styles.infoCard,
-                  {
-                    backgroundColor: theme.blueBadge,
-                    borderColor: theme.secondary,
-                  },
-                ]}>
-                <Info size={22} color={theme.secondary} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.infoCardTitle, { color: theme.text }]}>
-                    Ticket Île-de-France (Navigo)
-                  </Text>
-                  <Text style={[styles.infoCardSub, { color: theme.textMuted }]}>
-                    Les trajets Transilien nécessitent un chargement sur Passe Navigo. Ouvrez SNCF
-                    Connect ou IDF Mobilités pour acheter et charger vos titres.
-                  </Text>
-                </View>
-              </View>
-            )}
+        <Animated.ScrollView
+          onScroll={headerScrollHandler}
+          scrollEventThrottle={16}
+          contentContainerStyle={[styles.content, { paddingBottom: scrollBottomClearance }]}
+          showsVerticalScrollIndicator={false}>
+          <Animated.View
+            style={[styles.titleBlock, bigTitleStyle]}
+            onLayout={(event) => {
+              const height = event.nativeEvent.layout.height;
+              if (height > 0) titleBlockHeight.value = height;
+            }}>
+            <Text style={[styles.title, { color: theme.text }]}>Votre aventure à {placeName}</Text>
+            <Text style={[styles.subtitle, { color: theme.textMuted }]}>
+              {formatAdventureRange(outwardDate, returnDate)}
+            </Text>
+          </Animated.View>
 
-            {/* Dynamic Voyage Map */}
-            <View
-              style={[
-                styles.mapSection,
-                { backgroundColor: theme.card, borderColor: theme.border },
-              ]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                {"Carte de l'itinéraire"}
-              </Text>
-              <View style={[styles.journeyMap, { backgroundColor: theme.greenBadge }]}>
-                {/* stylized dynamic trail rendering */}
-                <View style={styles.topoGrid}>
-                  <View
-                    style={[
-                      styles.topoLine,
-                      {
-                        borderStyle: 'solid',
-                        borderColor: theme.border,
-                        width: '100%',
-                        top: '40%',
-                      },
-                    ]}
-                  />
-                  <View
-                    style={[
-                      styles.topoLine,
-                      {
-                        borderStyle: 'solid',
-                        borderColor: theme.border,
-                        width: '100%',
-                        top: '70%',
-                      },
-                    ]}
-                  />
-                </View>
+          <AdventureTimelineCaption label="C'est le début de l'aventure !" />
 
-                {/* Train Line */}
-                <View
-                  style={[
-                    styles.mapLine,
-                    {
-                      borderColor: theme.secondary,
-                      borderWidth: 2,
-                      borderStyle: 'dashed',
-                      width: '50%',
-                      top: '55%',
-                      left: '10%',
-                      transform: [{ rotate: '-15deg' }],
-                    },
-                  ]}
-                />
+          <AdventureJourneyCard
+            phase="outward"
+            dateLabel={formatFullDate(outwardDate)}
+            option={outwardJourney}
+            originName={departureName}
+            destinationName={arrivalStationName}
+            onPressDetails={() => handleOpenDetails('outward')}
+            onModify={isPastAdventure ? undefined : () => handleModify('outward')}
+          />
 
-                {/* Walk Loop Trace */}
-                <View style={[styles.walkLoop, { borderColor: theme.tint }]} />
+          <AdventureStepConnector label={formatDayMonth(outwardDate)} />
 
-                {/* Markers */}
-                <View style={[styles.marker, { left: '10%', top: '55%' }]}>
-                  <View style={[styles.markerDot, { backgroundColor: theme.secondary }]} />
-                  <Text style={[styles.markerLabel, { color: theme.text }]}>
-                    {adventure.departureStationName.replace('Paris ', '')}
-                  </Text>
-                </View>
-                <View style={[styles.marker, { left: '60%', top: '40%' }]}>
-                  <View style={[styles.markerDot, { backgroundColor: theme.tint }]} />
-                  <Text style={[styles.markerLabel, { color: theme.text }]}>
-                    {rando.startStation.replace('Gare de ', '')}
-                  </Text>
-                </View>
-              </View>
-            </View>
+          <AdventureHikeCard
+            title={rando.title}
+            imageUrl={rando.imageUrl}
+            location={rando.location}
+            distance={rando.distance}
+            durationHours={rando.durationHours}
+            rating={rando.ratingAvg}
+            onPress={() => router.push(`/rando/${rando.id}`)}
+          />
 
-            {/* Timeline Steps (Dates -> Train Aller -> Rando -> Train Retour) */}
-            <View style={styles.timelineContainer}>
-              <Text
-                style={[
-                  styles.sectionTitle,
-                  { color: theme.text, marginLeft: 16, marginBottom: 12 },
-                ]}>
-                Déroulé du voyage
-              </Text>
+          {returnJourney && returnDate && (
+            <>
+              <AdventureStepConnector label={formatDayMonth(returnDate)} />
 
-              {/* STEP 1: TRAIN GO */}
-              <View style={styles.timelineItem}>
-                <View style={styles.timelineLineWrapper}>
-                  <View style={[styles.timelineNode, { backgroundColor: theme.secondary }]} />
-                  <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
-                </View>
-                <View
-                  style={[
-                    styles.timelineCard,
-                    { backgroundColor: theme.card, borderColor: theme.border },
-                  ]}>
-                  <Pressable onPress={() => toggleExpandStep(1)} style={styles.timelineCardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineStepLabel, { color: theme.textMuted }]}>
-                        TRAIN ALLER • {formatDate(adventure.outwardDate)}
-                      </Text>
-                      <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
-                        {adventure.outwardTrain.time} : {adventure.departureStationName} →{' '}
-                        {rando.startStation}
-                      </Text>
-                    </View>
-                    {expandedStep === 1 ? (
-                      <ChevronUp size={16} color={theme.textMuted} />
-                    ) : (
-                      <ChevronDown size={16} color={theme.textMuted} />
-                    )}
-                  </Pressable>
+              <AdventureJourneyCard
+                phase="return"
+                dateLabel={formatFullDate(returnDate)}
+                option={returnJourney}
+                originName={departBackStationName}
+                destinationName={returnName}
+                onPressDetails={() => handleOpenDetails('return')}
+                onModify={isPastAdventure ? undefined : () => handleModify('return')}
+              />
+            </>
+          )}
 
-                  {expandedStep === 1 && (
-                    <View style={styles.timelineCardDetails}>
-                      <View style={[styles.detailRow, { borderTopColor: theme.border }]}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Type de Train :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.outwardTrain.type} ({adventure.outwardTrain.trainNumber})
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Durée du trajet :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.outwardTrain.duration}
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Tarif estimé :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.outwardTrain.price.toFixed(2)}€
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => router.push(`/plan?randoId=${rando.id}`)}
-                        style={[styles.editInlineBtn, { borderColor: theme.border }]}>
-                        <Text style={[styles.editInlineText, { color: theme.tint }]}>
-                          Modifier ce trajet
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              </View>
+          {/* Aller simple : le retour n'a pas été planifié, mais rien n'oblige à
+              refaire le parcours pour l'ajouter. L'aventure déjà construite est
+              conservée, seul le trajet retour reste à choisir. */}
+          {!returnJourney && !isPastAdventure && (
+            <Button
+              title="Ajouter un trajet retour"
+              variant="outlined"
+              icon={<Plus size={18} color={theme.text} />}
+              style={[styles.addReturnButton, { borderColor: theme.borderStrong || theme.border }]}
+              textStyle={{ color: theme.text }}
+              onPress={handleAddReturn}
+            />
+          )}
 
-              {/* STEP 2: THE RANDO */}
-              <View style={styles.timelineItem}>
-                <View style={styles.timelineLineWrapper}>
-                  <View style={[styles.timelineNode, { backgroundColor: theme.tint }]} />
-                  <View style={[styles.timelineLine, { backgroundColor: theme.border }]} />
-                </View>
-                <View
-                  style={[
-                    styles.timelineCard,
-                    { backgroundColor: theme.card, borderColor: theme.border },
-                  ]}>
-                  <Pressable onPress={() => toggleExpandStep(2)} style={styles.timelineCardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineStepLabel, { color: theme.textMuted }]}>
-                        RANDONNÉE • {rando.distance} ({rando.durationHours}h)
-                      </Text>
-                      <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
-                        {rando.title}
-                      </Text>
-                    </View>
-                    {expandedStep === 2 ? (
-                      <ChevronUp size={16} color={theme.textMuted} />
-                    ) : (
-                      <ChevronDown size={16} color={theme.textMuted} />
-                    )}
-                  </Pressable>
+          <AdventureTimelineCaption
+            label="Fin de l'aventure... avant la prochaine."
+            arrow="above"
+          />
+        </Animated.ScrollView>
 
-                  {expandedStep === 2 && (
-                    <View style={styles.timelineCardDetails}>
-                      <View style={[styles.detailRow, { borderTopColor: theme.border }]}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Difficulté :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {rando.difficulty}
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Dénivelé :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {rando.elevation}
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Météo prévue :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {rando.weatherIcon} {rando.weatherTemp}
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => router.push(`/rando/${rando.id}`)}
-                        style={[styles.editInlineBtn, { borderColor: theme.border }]}>
-                        <Text style={[styles.editInlineText, { color: theme.tint }]}>
-                          Voir la fiche rando
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              </View>
-
-              {/* STEP 3: TRAIN BACK — en aller simple, il n'y en a pas : la fiche
-                  propose de l'ajouter plutôt que d'afficher la copie de l'aller
-                  que `returnTrain` porte alors. */}
-              {isOneWayAdventure(adventure) ? (
-                <View style={styles.timelineItem}>
-                  <View style={styles.timelineLineWrapper}>
-                    <View style={[styles.timelineNode, { backgroundColor: theme.border }]} />
-                  </View>
-                  <View
-                    style={[
-                      styles.timelineCard,
-                      { backgroundColor: theme.card, borderColor: theme.border },
-                    ]}>
-                    <Text style={[styles.timelineStepLabel, { color: theme.textMuted }]}>
-                      ALLER SIMPLE
-                    </Text>
-                    <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
-                      Aucun trajet retour planifié
-                    </Text>
-                    <Pressable
-                      onPress={handleAddReturn}
-                      style={[styles.addReturnBtn, { backgroundColor: theme.tint }]}>
-                      <Plus size={16} color={theme.buttonTextOnBrand} />
-                      <Text style={[styles.addReturnText, { color: theme.buttonTextOnBrand }]}>
-                        Ajouter un trajet retour
-                      </Text>
-                    </Pressable>
-                  </View>
-                </View>
-              ) : (
-              <View style={styles.timelineItem}>
-                <View style={styles.timelineLineWrapper}>
-                  <View style={[styles.timelineNode, { backgroundColor: theme.secondary }]} />
-                </View>
-                <View
-                  style={[
-                    styles.timelineCard,
-                    { backgroundColor: theme.card, borderColor: theme.border },
-                  ]}>
-                  <Pressable onPress={() => toggleExpandStep(3)} style={styles.timelineCardHeader}>
-                    <View style={{ flex: 1 }}>
-                      <Text style={[styles.timelineStepLabel, { color: theme.textMuted }]}>
-                        TRAIN RETOUR • {formatDate(adventure.returnDate)}
-                      </Text>
-                      <Text style={[styles.timelineStepTitle, { color: theme.text }]}>
-                        {adventure.returnTrain.time} : {rando.endStation} →{' '}
-                        {adventure.returnStationName ?? adventure.departureStationName}
-                      </Text>
-                    </View>
-                    {expandedStep === 3 ? (
-                      <ChevronUp size={16} color={theme.textMuted} />
-                    ) : (
-                      <ChevronDown size={16} color={theme.textMuted} />
-                    )}
-                  </Pressable>
-
-                  {expandedStep === 3 && (
-                    <View style={styles.timelineCardDetails}>
-                      <View style={[styles.detailRow, { borderTopColor: theme.border }]}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Type de Train :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.returnTrain.type} ({adventure.returnTrain.trainNumber})
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Durée du trajet :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.returnTrain.duration}
-                        </Text>
-                      </View>
-                      <View style={styles.detailRow}>
-                        <Text style={[styles.detailLabel, { color: theme.textMuted }]}>
-                          Tarif estimé :
-                        </Text>
-                        <Text style={[styles.detailVal, { color: theme.text }]}>
-                          {adventure.returnTrain.price.toFixed(2)}€
-                        </Text>
-                      </View>
-                      <Pressable
-                        onPress={() => router.push(`/plan?randoId=${rando.id}`)}
-                        style={[styles.editInlineBtn, { borderColor: theme.border }]}>
-                        <Text style={[styles.editInlineText, { color: theme.tint }]}>
-                          Modifier ce trajet
-                        </Text>
-                      </Pressable>
-                    </View>
-                  )}
-                </View>
-              </View>
-              )}
-            </View>
-
-            <View style={{ height: scrollBottomClearance }} />
-          </ScrollView>
-
-          {/* Booking Action Buttons */}
-          <ScreenFooter surface="card">
-            {isIDF ? (
-              <View style={styles.idfButtonsContainer}>
-                <View style={styles.btnRow}>
-                  <Pressable
-                    onPress={() => handleOpenIDF('sncf')}
-                    style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}>
-                    <View style={[styles.bookBtn, { backgroundColor: theme.tint, width: '100%' }]}>
-                      <ExternalLink size={16} color="#FFFFFF" />
-                      <Text style={styles.bookBtnText} numberOfLines={1}>
-                        SNCF Connect
-                      </Text>
-                    </View>
-                  </Pressable>
-                  <Pressable
-                    onPress={() => handleOpenIDF('idf')}
-                    style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.85 : 1 })}>
-                    <View
-                      style={[styles.bookBtn, { backgroundColor: theme.secondary, width: '100%' }]}>
-                      <ExternalLink size={16} color="#FFFFFF" />
-                      <Text style={styles.bookBtnText} numberOfLines={1}>
-                        IDF Mobilités
-                      </Text>
-                    </View>
-                  </Pressable>
-                </View>
-                <Pressable
-                  onPress={handleBuyLater}
-                  style={({ pressed }) => ({ opacity: pressed ? 0.7 : 1, width: '100%' })}>
-                  <View style={[styles.laterBtnVertical, { borderColor: theme.border }]}>
-                    <Text style={[styles.laterBtnText, { color: theme.text }]}>Plus tard</Text>
-                  </View>
-                </Pressable>
-              </View>
+        {/* Une seule issue, et seulement tant qu'elle a un objet : les billets
+            restés à prendre après un « Plus tard » sur le résumé. Une fois la
+            démarche engagée, l'état se reprend depuis la feuille d'options. */}
+        {showFooter && (
+          <ScreenFooter>
+            {showBuyButton ? (
+              <Button
+                title="Acheter les billets"
+                variant="primary"
+                onPress={() => buySheetRef.current?.present()}
+              />
             ) : (
-              <View style={styles.btnRow}>
-                <Pressable
-                  onPress={handleBuyLater}
-                  style={({ pressed }) => ({ flex: 1, opacity: pressed ? 0.7 : 1 })}>
-                  <View style={[styles.laterBtn, { borderColor: theme.border, width: '100%' }]}>
-                    <Text style={[styles.laterBtnText, { color: theme.text }]}>Plus tard</Text>
-                  </View>
-                </Pressable>
-
-                <Pressable
-                  onPress={handleOpenTrainline}
-                  style={({ pressed }) => ({ flex: 2.5, opacity: pressed ? 0.85 : 1 })}>
-                  <View style={[styles.bookBtn, { backgroundColor: theme.tint, width: '100%' }]}>
-                    <ExternalLink size={16} color="#FFFFFF" />
-                    <Text style={styles.bookBtnText}>
-                      {adventure.isBooked ? 'Réserver à nouveau' : 'Réserver (Trainline)'}
-                    </Text>
-                  </View>
-                </Pressable>
-              </View>
+              <Button title="Replanifier cette sortie" variant="primary" onPress={handleReplan} />
             )}
           </ScreenFooter>
-        </View>
-      )}
+        )}
+      </View>
+
+      <BuyTicketsSheet
+        ref={buySheetRef}
+        outwardJourney={outwardJourney}
+        returnJourney={returnJourney}
+        passengers={passengers}
+        passengersCount={formatPassengerCount(passengers)}
+        outwardDateLabel={formatFullDate(outwardDate)}
+        returnDateLabel={returnDate ? formatFullDate(returnDate) : null}
+        onOpenProvider={handleOpenProvider}
+        onDone={handleBuyDone}
+      />
+
+      <AdventureActionsSheet
+        ref={actionsSheetRef}
+        adventure={adventure}
+        hikeTitle={rando.title}
+        isPast={isPastAdventure}
+        /* L'aventure supprimée, il ne reste rien à récapituler : on rend la main
+           à la liste plutôt que de laisser l'écran sur une fiche fantôme. */
+        onDeleted={() => router.replace('/(tabs)/adventures')}
+      />
+
+      {/* Détail pas-à-pas du trajet, la même feuille que pendant le choix. Le
+          bouton d'engagement change seul de rôle : l'itinéraire est déjà retenu,
+          il ne reste qu'à revenir le changer. */}
+      <JourneyDetailSheet
+        ref={journeyDetailSheetRef}
+        option={isReturnDetail ? returnJourney : outwardJourney}
+        departureName={isReturnDetail ? departBackStationName : departureName}
+        destinationName={isReturnDetail ? returnName : arrivalStationName}
+        primaryLabel={isReturnDetail ? 'Modifier le retour' : "Modifier l'aller"}
+        // Sortie passée : la feuille montre le trajet, elle n'engage plus rien.
+        onConfirm={isPastAdventure ? undefined : () => handleModify(detailedPhase)}
+        showNavigoBadge={
+          allPassengersHave(passengers, 'navigo') &&
+          isFullyCoveredByNavigo(isReturnDetail ? returnJourney : outwardJourney)
+        }
+      />
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  centered: {
+  screen: {
     flex: 1,
+  },
+  loadingScreen: {
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
   },
-  errorText: {
-    fontFamily: 'Satoshi',
-    fontSize: 16,
-    fontWeight: '700',
-    marginBottom: 20,
-  },
-  backBtn: {
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingTop: 16,
+    paddingBottom: 8,
   },
-  backBtnText: {
-    fontFamily: 'Satoshi',
-    color: '#FFFFFF',
-    fontWeight: '700',
-  },
-  headerBack: {
-    padding: 8,
-    marginRight: 8,
-  },
-  mainContainer: {
+  headerCenter: {
     flex: 1,
+    minWidth: 0,
   },
-  scrollView: {
-    flex: 1,
-  },
-  statusCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    margin: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-  },
-  statusTitle: {
-    fontFamily: 'BricolageGrotesque',
-    fontSize: 14,
-    fontWeight: '900',
-    marginBottom: 2,
-  },
-  statusSub: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  infoCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: 16,
-    marginHorizontal: 16,
-    marginBottom: 16,
-    borderRadius: 16,
-    borderWidth: 1,
-    gap: 12,
-  },
-  infoCardTitle: {
-    fontFamily: 'BricolageGrotesque',
-    fontSize: 14,
-    fontWeight: '900',
-    marginBottom: 2,
-  },
-  infoCardSub: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
-    lineHeight: 16,
-  },
-  mapSection: {
-    marginHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 16,
-    marginBottom: 20,
-  },
-  sectionTitle: {
-    fontFamily: 'BricolageGrotesque',
-    fontSize: 15,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-    marginBottom: 12,
-  },
-  journeyMap: {
-    height: 160,
-    borderRadius: 14,
-    overflow: 'hidden',
-    position: 'relative',
-  },
-  topoGrid: {
-    ...StyleSheet.absoluteFill,
-    opacity: 0.25,
-  },
-  topoLine: {
-    position: 'absolute',
-    borderTopWidth: 1,
-  },
-  mapLine: {
-    position: 'absolute',
-  },
-  walkLoop: {
-    position: 'absolute',
-    width: 60,
-    height: 40,
-    borderRadius: 20,
-    borderWidth: 2,
-    borderStyle: 'solid',
-    left: '50%',
-    top: '30%',
-  },
-  marker: {
-    position: 'absolute',
-    alignItems: 'center',
-    gap: 4,
-  },
-  markerDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    borderWidth: 1.5,
-    borderColor: '#FFFFFF',
-  },
-  markerLabel: {
-    fontFamily: 'Satoshi',
-    fontSize: 8,
-    fontWeight: '800',
-    backgroundColor: 'rgba(255,255,255,0.85)',
-    paddingHorizontal: 4,
-    borderRadius: 4,
-  },
-  timelineContainer: {
-    marginBottom: 20,
-  },
-  timelineItem: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-  },
-  timelineLineWrapper: {
-    alignItems: 'center',
-    marginRight: 12,
-    width: 24,
-  },
-  timelineNode: {
-    width: 16,
-    height: 16,
-    borderRadius: 8,
-    borderWidth: 3,
-    borderColor: '#FFFFFF',
-    marginTop: 18,
-    zIndex: 2,
-  },
-  timelineLine: {
-    width: 2,
-    flex: 1,
-    marginTop: 4,
-    zIndex: 1,
-  },
-  timelineCard: {
-    flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
-    marginBottom: 12,
-  },
-  timelineCardHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  timelineStepLabel: {
-    fontFamily: 'Satoshi',
-    fontSize: 9,
-    fontWeight: '700',
-    letterSpacing: 0.6,
-  },
-  timelineStepTitle: {
-    fontFamily: 'BricolageGrotesque',
-    fontSize: 14,
-    fontWeight: '800',
-    marginTop: 4,
-  },
-  timelineCardDetails: {
-    marginTop: 10,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    paddingVertical: 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-  },
-  detailLabel: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  detailVal: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  /* Plein et en couleur de marque, à la différence des « Modifier ce trajet » :
-     ce n'est pas une retouche, c'est l'étape qui manque au voyage. */
-  addReturnBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginTop: 12,
-  },
-  addReturnText: {
+  compactTitle: {
     fontFamily: 'Satoshi-Bold',
-    fontSize: 14,
-  },
-  editInlineBtn: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    marginTop: 10,
-  },
-  editInlineText: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
-    fontWeight: '800',
-  },
-  btnRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  laterBtn: {
-    flex: 1,
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    paddingVertical: 14,
-  },
-  laterBtnText: {
-    fontFamily: 'Satoshi',
     fontSize: 15,
-    fontWeight: '800',
-  },
-  laterBtnVertical: {
-    borderWidth: 1.5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    paddingVertical: 12,
-    marginTop: 10,
-    width: '100%',
-  },
-  idfButtonsContainer: {
-    width: '100%',
-  },
-  bookBtn: {
-    flex: 2.5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    borderRadius: 14,
-    paddingVertical: 14,
-    backgroundColor: '#1F5F3E',
-  },
-  bookBtnText: {
-    fontFamily: 'Satoshi',
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800',
-  },
-  loadingOverlay: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 30,
-    gap: 12,
-  },
-  loadingText: {
-    fontFamily: 'BricolageGrotesque',
-    fontSize: 16,
-    fontWeight: '800',
-    marginTop: 10,
-  },
-  loadingSubText: {
-    fontFamily: 'Satoshi',
-    fontSize: 12,
+    lineHeight: 20,
     textAlign: 'center',
-    lineHeight: 18,
+  },
+  titleBlock: {
+    // Le bloc porte lui-même l'écart qui le sépare de la frise : sorti de
+    // l'écran, il emporte cet espace avec lui.
+    marginBottom: 4,
+  },
+  title: {
+    fontFamily: 'BricolageGrotesque',
+    fontSize: 32,
+    fontWeight: '500',
+    letterSpacing: -0.5,
+  },
+  subtitle: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 16,
+    lineHeight: 20,
+  },
+  content: {
+    paddingHorizontal: 24,
+    paddingTop: 8,
+    gap: 12,
+  },
+  /* Posé dans la frise, à l'emplacement qu'occuperait la carte du retour :
+     l'aventure se lit toujours de haut en bas, avec une étape en attente. */
+  addReturnButton: {
+    marginTop: 16,
   },
 });

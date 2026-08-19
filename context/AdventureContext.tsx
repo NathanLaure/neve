@@ -18,6 +18,7 @@ import { findNearestStation } from '@/services/transitService';
 import { formatStationLabel } from '@/utils/stationLabel';
 import { useAuth } from '@/context/AuthContext';
 import { getPreferences } from '@/utils/preferences';
+import { DIFFICULTIES, isDifficultyFilterActive } from '@/constants/Filters';
 
 export interface PlannedAdventure {
   id: string;
@@ -279,7 +280,7 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
 
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([]);
+  const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([...DIFFICULTIES]);
   const [maxTrainDuration, setMaxTrainDuration] = useState<number | null>(null);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
   const [maxElevation, setMaxElevation] = useState<number | null>(null);
@@ -1295,7 +1296,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
   const clearAllFilters = useCallback(() => {
     setSearchQuery('');
-    setSelectedDifficulties([]);
+    setSelectedDifficulties([...DIFFICULTIES]);
     setMaxTrainDuration(null);
     setMaxDistance(null);
     setMaxElevation(null);
@@ -1307,7 +1308,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
   const activeFiltersCount = useMemo(
     () =>
-      selectedDifficulties.length +
+      (isDifficultyFilterActive(selectedDifficulties) ? selectedDifficulties.length : 0) +
       (maxTrainDuration !== null ? 1 : 0) +
       (maxDistance !== null ? 1 : 0) +
       (maxElevation !== null ? 1 : 0) +
@@ -1363,7 +1364,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       }
 
       // 2. Difficulty
-      if (selectedDifficulties.length > 0) {
+      if (isDifficultyFilterActive(selectedDifficulties)) {
         const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const hasMatch = selectedDifficulties.some((d) => {
           const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');

@@ -18,6 +18,7 @@ import { useAdventure, calculateDistanceKm, type RandoData } from '@/context/Adv
 import FiltersForm from '@/components/FiltersForm';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { useScrollFade } from '@/components/ScrollFade';
+import { DIFFICULTIES, isDifficultyFilterActive } from '@/constants/Filters';
 
 export interface FiltersBottomSheetRef {
   present: () => void;
@@ -66,7 +67,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   } = useAdventure();
 
   // Local state initialized on present
-  const [localDifficulties, setLocalDifficulties] = useState<string[]>([]);
+  const [localDifficulties, setLocalDifficulties] = useState<string[]>([...DIFFICULTIES]);
   const [trainRange, setTrainRange] = useState<[number, number]>([0, 180]);
   const [distanceRange, setDistanceRange] = useState<[number, number]>([0, 34]);
   const [elevationRange, setElevationRange] = useState<[number, number]>([0, 4500]);
@@ -111,7 +112,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   };
 
   const handleReset = () => {
-    setLocalDifficulties([]);
+    setLocalDifficulties([...DIFFICULTIES]);
     setTrainRange([0, 180]);
     setDistanceRange([0, 34]);
     setElevationRange([0, 4500]);
@@ -183,7 +184,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
       }
 
       // 2. Difficulty
-      if (localDifficulties.length > 0) {
+      if (isDifficultyFilterActive(localDifficulties)) {
         const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const hasMatch = localDifficulties.some((d) => {
           const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -294,7 +295,7 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
       backdropOpacity={0.5}
       scrollableBody
       footerShadow={hasMore}
-      secondaryButtonTitle="Tout effacer"
+      secondaryButtonTitle="Réinitialiser"
       onSecondaryPress={handleReset}
       primaryButtonTitle={getResultsButtonTitle()}
       onPrimaryPress={handleApply}>

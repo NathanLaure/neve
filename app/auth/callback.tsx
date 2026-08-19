@@ -359,7 +359,7 @@ export default function AuthCallbackScreen() {
   const handleContinue = async () => {
     try {
       await setAccountOnboardingStep('notifications');
-    } catch {}
+    } catch { }
     router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
   };
 

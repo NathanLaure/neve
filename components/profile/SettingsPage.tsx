@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, useRouter } from 'expo-router';
-import { ChevronLeft } from 'lucide-react-native';
+import { ArrowLeft } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -70,11 +70,14 @@ export default function SettingsPage({
             le titre en dessous — pas côte à côte. */}
         <View style={styles.header}>
           <View style={styles.headerActions}>
-            {/* Gabarit par défaut du bouton rond, celui de la fiche randonnée :
-                40×40, fond `card`, icône en 20. Rien à surcharger. */}
+            {/* Gabarit du bouton retour, celui de la fiche randonnée : 40×40,
+                flèche en 20, et pastille claire dans les deux thèmes —
+                `Colors.light` et non `theme`, comme tous les retours de l'app.
+                Un seul en-tête pour les seize écrans de réglages. */}
             <IconButton
               variant="circle"
-              icon={<ChevronLeft size={20} color={theme.text} />}
+              icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+              style={{ backgroundColor: Colors.light.buttonBgIcon }}
               onPress={() => router.back()}
               accessibilityLabel="Revenir en arrière"
             />

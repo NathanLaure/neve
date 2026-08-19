@@ -5,7 +5,7 @@ import Animated, {
   useAnimatedScrollHandler,
   useSharedValue,
 } from 'react-native-reanimated';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter, Stack } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import Skeleton from '@/components/Skeleton';
@@ -91,15 +91,33 @@ export default function OutwardPlanScreen() {
     passengersCount?: string;
     passengers?: string;
     isReversed?: string;
+    /**
+     * `outward` : on ne vient corriger que l'aller d'un voyage déjà complet. Le
+     * choix du retour est alors sauté, et celui déjà retenu conservé.
+     */
+    editOnly?: string;
   }>();
 
-  const { hikes, deviceLocationName, deviceLocation } = useAdventure();
+  const navigation = useNavigation();
+  const isOutwardEditOnly = params.editOnly === 'outward';
+
+  const { hikes, deviceLocationName, deviceLocation, loadHikeDetail } = useAdventure();
   const { draft, setOutwardTime, selectOutwardJourney } = usePlanDraft();
 
   const rando = useMemo(
     () => hikes.find((r) => r.id === params.randoId) ?? hikes[0],
     [hikes, params.randoId]
   );
+
+  /* La randonnée n'est pas toujours dans le magasin : cet écran s'ouvre aussi
+     depuis une aventure enregistrée, en sautant l'explorateur qui l'y aurait
+     chargée. Sans ce rattrapage, `rando` reste indéfini et l'écran s'affiche
+     sans itinéraire ni résultats. */
+  useEffect(() => {
+    if (params.randoId && !hikes.some((item) => item.id === params.randoId)) {
+      loadHikeDetail(params.randoId);
+    }
+  }, [hikes, loadHikeDetail, params.randoId]);
 
   // Sens de parcours, éditable ici via la feuille d'options (Figma : bouton
   // d'inversion des gares A/B de la carte d'itinéraire).
@@ -309,30 +327,46 @@ export default function OutwardPlanScreen() {
     journeyDetailSheetRef.current?.dismiss();
     // L'itinéraire retenu passe par le brouillon partagé et non par l'URL : il
     // porte tous ses tronçons, que le résumé affiche en détail (PlanDraftContext).
-    selectOutwardJourney(option, isRealSource(source));
+    selectOutwardJourney(option, isRealSource(source), { keepReturn: isOutwardEditOnly });
     const arrivalPoint = returnPoint ?? departurePoint;
+
+    const summaryParams = {
+      randoId: rando?.id,
+      departureName: departurePoint.name,
+      // Coordonnées transmises pour que « Ajouter un retour » depuis le
+      // résumé reparte du lieu réellement choisi, et non du GPS.
+      departureLat: String(departurePoint.latitude),
+      departureLng: String(departurePoint.longitude),
+      returnName: arrivalPoint.name,
+      returnLat: String(arrivalPoint.latitude),
+      returnLng: String(arrivalPoint.longitude),
+      outwardDate,
+      passengers: JSON.stringify(passengers),
+      isReversed: String(isReversed),
+    };
+
+    /* Correction du seul aller : le retour est déjà choisi et le reste.
+       L'écran de choix ne doit rien laisser derrière lui — une correction n'est
+       pas une étape de parcours, et le retour arrière doit ramener là d'où l'on
+       est parti, pas dans le formulaire qu'on vient de quitter.
+       D'où `back` quand l'écran qui possède la fiche attend juste en dessous —
+       le résumé ou le récapitulatif, tous deux capables d'appliquer la correction
+       et de l'annoncer. `replace` sinon : ouvert depuis la feuille d'options
+       d'une carte, il n'y a rien sous cet écran, c'est le résumé qui prend le
+       relais. */
+    if (isOutwardEditOnly) {
+      const routes = (navigation.getState()?.routes ?? []) as { name?: string }[];
+      const parentName = routes[routes.length - 2]?.name;
+      if (parentName === 'plan/summary' || parentName === 'recap') router.back();
+      else router.replace({ pathname: '/plan/summary', params: summaryParams });
+      return;
+    }
 
     /* Aller simple : il n'y a pas de retour à choisir, l'étape suivante est le
        récapitulatif. Le résumé sait déjà se passer d'un trajet retour — il n'en
        affiche pas la section et reprend l'aller pour l'estimation. */
     if (draft.tripType === 'oneway') {
-      router.push({
-        pathname: '/plan/summary',
-        params: {
-          randoId: rando?.id,
-          departureName: departurePoint.name,
-          // Coordonnées transmises pour que « Ajouter un retour » depuis le
-          // résumé reparte du lieu réellement choisi, et non du GPS.
-          departureLat: String(departurePoint.latitude),
-          departureLng: String(departurePoint.longitude),
-          returnName: arrivalPoint.name,
-          returnLat: String(arrivalPoint.latitude),
-          returnLng: String(arrivalPoint.longitude),
-          outwardDate,
-          passengers: JSON.stringify(passengers),
-          isReversed: String(isReversed),
-        },
-      });
+      router.push({ pathname: '/plan/summary', params: summaryParams });
       return;
     }
 

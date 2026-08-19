@@ -59,6 +59,10 @@ export default function Chip({
     : theme.text;
 
   const hasBadge = badgeCount != null && badgeCount > 0;
+  // Rendered outside the Pressable: the `overflow: hidden` below is what keeps
+  // the Android ripple inside the rounded corners, and it would clip a badge
+  // that deliberately overhangs the chip.
+  const hasCornerBadge = hasBadge && badgePosition === 'chip-corner';
   const chipStyle = [
     styles.container,
     {
@@ -75,7 +79,7 @@ export default function Chip({
     { overflow: 'hidden' as const },
   ];
 
-  return (
+  const chip = (
     <Pressable
       disabled={disabled}
       onPress={onPress}
@@ -118,13 +122,23 @@ export default function Chip({
           <Text style={styles.badgeText}>{badgeCount}</Text>
         </View>
       ) : null}
-      {hasBadge && badgePosition === 'chip-corner' ? (
-        <View style={[styles.chipCornerBadge, { backgroundColor: theme.primary || theme.tint }]}>
-          <Text style={styles.chipCornerBadgeText}>{badgeCount}</Text>
-        </View>
-      ) : null}
       {trailingIcon && <View style={styles.trailingIconWrapper}>{trailingIcon}</View>}
     </Pressable>
+  );
+
+  if (!hasCornerBadge) return chip;
+
+  // The wrapper does not clip, so the badge may overhang the chip. It stays
+  // untouchable so a tap on the overlap still reaches the Pressable underneath.
+  return (
+    <View style={styles.cornerBadgeAnchor}>
+      {chip}
+      <View
+        pointerEvents="none"
+        style={[styles.chipCornerBadge, { backgroundColor: theme.primary || theme.tint }]}>
+        <Text style={styles.chipCornerBadgeText}>{badgeCount}</Text>
+      </View>
+    </View>
   );
 }
 
@@ -165,6 +179,9 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 10,
     textAlign: 'center',
+  },
+  cornerBadgeAnchor: {
+    position: 'relative',
   },
   chipCornerBadge: {
     position: 'absolute',

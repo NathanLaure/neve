@@ -619,6 +619,10 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 100,
+    /* L'ombre par défaut d'`IconButton` se voit sur le fond de la feuille :
+       on la neutralise sur les deux plateformes. */
+    shadowOpacity: 0,
+    elevation: 0,
   },
   /* Centré et non aligné en haut : le contenu d'en-tête est plus haut que la
      croix dès qu'un badge dépasse 32px, et celle-ci décrochait vers le haut. */
@@ -641,6 +645,8 @@ const styles = StyleSheet.create({
     width: 32,
     height: 32,
     borderRadius: 100,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   /* Plus de `marginHorizontal: -24` : le pied de page est rendu par
      `footerComponent`, donc hors du conteneur de contenu et de ses marges. */

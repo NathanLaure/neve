@@ -1,36 +1,39 @@
 import React, { ReactNode } from 'react';
 import { View, StyleSheet, Platform, StyleProp, ViewStyle } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaInsets, initialWindowMetrics } from 'react-native-safe-area-context';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
-
-// Espace conservé entre les boutons et la barre système. En edge-to-edge celle-ci
-// est transparente : sans ce dégagement, les boutons de l'app viennent se coller
-// aux boutons Android.
-const SAFE_AREA_GAP = 16;
-// Plancher pour les appareils qui ne remontent aucun inset bas (Android ancien,
-// iPhone sans encoche) : l'inset seul y vaudrait 0 et le footer toucherait le bord.
-const MIN_BOTTOM_PADDING = 34;
 
 export const FOOTER_HORIZONTAL_PADDING = 20;
 export const FOOTER_TOP_PADDING = 12;
 export const FOOTER_GAP = 12;
 
-/**
- * Padding bas résolu du footer. Exporté à part pour que les écrans à footer
- * `floating` puissent réserver la même hauteur dans leur `contentContainerStyle`
- * sans redupliquer le calcul.
- */
+/** Hauteur de base de la rangée de boutons (hors barre système), alignée sur la TabBar. */
+export const FOOTER_BASE_HEIGHT = 80;
+
+/** Rembourrage bas du footer, aligné sur la barre système du téléphone (identique à la TabBar). */
 export function useScreenFooterPadding() {
   const insets = useSafeAreaInsets();
-  return Math.max(insets.bottom + SAFE_AREA_GAP, MIN_BOTTOM_PADDING);
+  const rawBottom = insets.bottom || initialWindowMetrics?.insets.bottom || 0;
+  const effectiveBottomInset = rawBottom > 0 ? rawBottom : Platform.OS === 'android' ? 48 : 24;
+
+  return Platform.OS === 'ios'
+    ? (insets.bottom > 0 ? insets.bottom + 12 : 24)
+    : effectiveBottomInset + 16;
+}
+
+/**
+ * Hauteur totale occupée par le footer flottant, barre système comprise (identique à useTabBarHeight).
+ */
+export function useScreenFooterHeight() {
+  return FOOTER_BASE_HEIGHT + useScreenFooterPadding();
 }
 
 export type ScreenFooterProps = {
   children: ReactNode;
   /**
    * `floating` épingle le footer par-dessus le contenu et ajoute bordure et ombre ;
-   * `inline` le laisse dans le flux, sans séparateur.
+   * `inline` le laisse dans le flux, sans séparateur, pour les pages à contenu dynamique.
    */
   variant?: 'floating' | 'inline';
   /** Surface peinte par le footer. `transparent` laisse voir l'écran dessous. */
@@ -48,7 +51,8 @@ export default function ScreenFooter({
   style,
 }: ScreenFooterProps) {
   const theme = Colors[useColorScheme() ?? 'light'];
-  const paddingBottom = useScreenFooterPadding();
+  const bottomPadding = useScreenFooterPadding();
+  const isFloating = variant === 'floating';
 
   // La bordure suit la surface : un séparateur clair sur `background`, plus marqué
   // sur `card` qui contraste moins avec le corps de page.
@@ -60,9 +64,15 @@ export default function ScreenFooter({
     <View
       style={[
         styles.base,
-        { paddingBottom },
+        isFloating ? styles.floating : styles.inline,
+        {
+          paddingBottom: bottomPadding,
+        },
+        isFloating && {
+          minHeight: FOOTER_BASE_HEIGHT + bottomPadding,
+          borderTopColor,
+        },
         surface !== 'transparent' && { backgroundColor },
-        variant === 'floating' && [styles.floating, { borderTopColor }],
         row && styles.row,
         style,
       ]}>
@@ -83,6 +93,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     borderTopWidth: 1,
+    justifyContent: 'center',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -95,8 +106,13 @@ const styles = StyleSheet.create({
       },
     }),
   },
+  inline: {
+    borderTopWidth: 1,
+    borderTopColor: 'transparent',
+  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
   },
 });

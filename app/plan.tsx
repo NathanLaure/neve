@@ -695,12 +695,14 @@ export default function PlanScreen() {
               styles.actions,
               { paddingTop: insets.top + 8, backgroundColor: theme.background },
             ]}>
-            {/* Même bouton que la fiche rando (IconButton `circle`), seule la
-                couleur change : fond clair sur cet écran, icône sombre. */}
+            {/* Pastille claire dans les deux thèmes, `Colors.light` et non
+                `theme` : le retour se pose sur la carte plein écran, dont le fond
+                ne suit pas le réglage de l'appareil. Les autres boutons d'icône
+                de l'écran gardent `theme.buttonBgIcon`, qui bascule. */}
             <IconButton
               variant="circle"
-              icon={<ArrowLeft size={20} color={theme.buttonIconColor} />}
-              style={{ backgroundColor: theme.buttonBgIcon }}
+              icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+              style={{ backgroundColor: Colors.light.buttonBgIcon }}
               onPress={() => (phase === 'results' ? setPhase('config') : router.back())}
             />
             {/* Titre et résumé se relaient au même endroit : le second est en

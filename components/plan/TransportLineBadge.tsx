@@ -1,6 +1,8 @@
 import React from 'react';
 import { StyleSheet, View, Text, StyleProp, ViewStyle } from 'react-native';
 import { SvgXml } from 'react-native-svg';
+import Colors from '@/constants/Colors';
+import { useColorScheme } from '@/components/useColorScheme';
 
 import {
   BUS_MODE_SVG,
@@ -14,7 +16,7 @@ import {
   TRAM_PICTOS,
 } from '@/constants/idfmSvg';
 
-const WALK_PERSON_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="#666666">
+const WALK_PERSON_SVG = `<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
   <path d="M13.5 5.5c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zM9.8 8.9L7 23h2.1l1.8-8 2.1 2v6h2v-7.5l-2.1-2 .6-3C14.8 12 16.8 13 19 13v-2c-1.9 0-3.5-1-4.3-2.4l-1-1.6c-.4-.6-1-1-1.7-1-.3 0-.5.1-.8.1L6 8.3V13h2V9.6l1.8-.7z"/>
 </svg>`;
 
@@ -53,9 +55,33 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
   hideModeIcon = false,
   style,
 }) => {
+  const colorScheme = useColorScheme() ?? 'light';
+  const theme = Colors[colorScheme];
   const cleanLine = (lineName || '').trim().toLowerCase();
+  const iconPadding = 2;
+  const containerSize = size + iconPadding * 2;
 
-  // 1. RER (ex: 'A', 'B', 'C', 'D', 'E')
+  // Fond blanc adapté : rond pour le métro, carré adouci (7px) pour les autres modes (charte IDFM)
+  const renderModeIcon = (svgXml: string, shape: 'circle' | 'square' = 'square') => {
+    if (hideModeIcon) return null;
+    const borderRadius = shape === 'circle' ? containerSize / 2 : 7;
+    return (
+      <View
+        style={[
+          styles.modeIconContainer,
+          {
+            width: containerSize,
+            height: containerSize,
+            borderRadius,
+            backgroundColor: '#FFFFFF',
+          },
+        ]}>
+        <SvgXml xml={svgXml} width={size} height={size} />
+      </View>
+    );
+  };
+
+  // 1. RER (ex: 'A', 'B', 'C', 'D', 'E') -> Fond carré
   if (mode === 'rer') {
     const lineLetter = cleanLine.replace(/^rer\s*/, '');
     const pictoXml = lineLetter ? RER_PICTOS[lineLetter] : undefined;
@@ -63,7 +89,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     const textColor = getContrastTextColor(bg);
     return (
       <View style={[styles.badgeRow, style]}>
-        {!hideModeIcon && <SvgXml xml={RER_MODE_SVG} width={size} height={size} />}
+        {renderModeIcon(RER_MODE_SVG, 'square')}
         {pictoXml ? (
           <SvgXml xml={pictoXml} width={size} height={size} />
         ) : lineName ? (
@@ -75,7 +101,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     );
   }
 
-  // 2. Metro (ex: '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14')
+  // 2. Metro (ex: '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14') -> Fond rond
   if (mode === 'metro') {
     const lineNum = cleanLine.replace(/^m(étro)?\s*/, '');
     const pictoXml = lineNum ? METRO_PICTOS[lineNum] : undefined;
@@ -83,7 +109,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     const textColor = getContrastTextColor(bg);
     return (
       <View style={[styles.badgeRow, style]}>
-        {!hideModeIcon && <SvgXml xml={METRO_MODE_SVG} width={size} height={size} />}
+        {renderModeIcon(METRO_MODE_SVG, 'circle')}
         {pictoXml ? (
           <SvgXml xml={pictoXml} width={size} height={size} />
         ) : lineName ? (
@@ -95,7 +121,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     );
   }
 
-  // 3. Train / Transilien (ex: 'H', 'J', 'K', 'L', 'N', 'P', 'R', 'U')
+  // 3. Train / Transilien (ex: 'H', 'J', 'K', 'L', 'N', 'P', 'R', 'U') -> Fond carré
   if (mode === 'train') {
     const lineLetter = cleanLine.replace(/^ligne\s*/, '').replace(/^transilien\s*/, '');
     const pictoXml = lineLetter ? SNCF_PICTOS[lineLetter] : undefined;
@@ -103,7 +129,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     const textColor = getContrastTextColor(bg);
     return (
       <View style={[styles.badgeRow, style]}>
-        {!hideModeIcon && <SvgXml xml={TRANSILIEN_MODE_SVG} width={size} height={size} />}
+        {renderModeIcon(TRANSILIEN_MODE_SVG, 'square')}
         {pictoXml ? (
           <SvgXml xml={pictoXml} width={size} height={size} />
         ) : lineName ? (
@@ -115,7 +141,7 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     );
   }
 
-  // 4. Tram (ex: 't1', 't2', 't3a', 't3b', 't4', 't5', 't6', 't7', 't8', 't9', 't10', 't11', 't12', 't13')
+  // 4. Tram (ex: 't1', 't2', 't3a', 't3b', 't4', 't5', 't6', 't7', 't8', 't9', 't10', 't11', 't12', 't13') -> Fond carré
   if (mode === 'tram') {
     const tramKey = cleanLine.startsWith('t') ? cleanLine : `t${cleanLine}`;
     const pictoXml = cleanLine ? TRAM_PICTOS[tramKey] : undefined;
@@ -123,9 +149,20 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     const textColor = getContrastTextColor(bg);
     return (
       <View style={[styles.badgeRow, style]}>
-        {!hideModeIcon && <SvgXml xml={TRAM_MODE_SVG} width={size} height={size} />}
+        {renderModeIcon(TRAM_MODE_SVG, 'square')}
         {pictoXml ? (
-          <SvgXml xml={pictoXml} width={size} height={size} />
+          <View
+            style={[
+              styles.tramPictoBox,
+              {
+                width: containerSize,
+                height: containerSize,
+                borderRadius: 6,
+                backgroundColor: '#FFFFFF',
+              },
+            ]}>
+            <SvgXml xml={pictoXml} width={size} height={size} />
+          </View>
         ) : lineName ? (
           <View style={[styles.textBadge, { backgroundColor: bg }]}>
             <Text style={[styles.badgeText, { color: textColor }]}>{lineName}</Text>
@@ -135,13 +172,13 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
     );
   }
 
-  // 5. Bus
+  // 5. Bus -> Fond carré
   if (mode === 'bus') {
     const bg = lineColor || '#760C6B';
     const textColor = getContrastTextColor(bg);
     return (
       <View style={[styles.badgeRow, style]}>
-        {!hideModeIcon && <SvgXml xml={BUS_MODE_SVG} width={size} height={size} />}
+        {renderModeIcon(BUS_MODE_SVG, 'square')}
         {lineName ? (
           <View style={[styles.textBadge, { backgroundColor: bg }]}>
             <Text style={[styles.badgeText, { color: textColor }]}>{lineName}</Text>
@@ -158,8 +195,12 @@ export const TransportLineBadge: React.FC<TransportLineBadgeProps> = ({
 
   return (
     <View style={[styles.walkBadgeBox, { width: size, height: size }, style]}>
-      <SvgXml xml={WALK_PERSON_SVG} width={size} height={size} />
-      {mins ? <Text style={styles.walkSubscriptText}>{mins}</Text> : null}
+      <SvgXml xml={WALK_PERSON_SVG} width={size} height={size} color={theme.text} />
+      {mins ? (
+        <Text style={[styles.walkSubscriptText, { color: theme.textMuted }]}>
+          {mins}
+        </Text>
+      ) : null}
     </View>
   );
 };
@@ -169,6 +210,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 3,
+  },
+  modeIconContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  tramPictoBox: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
   },
   walkBadgeBox: {
     position: 'relative',
@@ -183,7 +234,6 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     fontSize: 10,
     lineHeight: 11,
-    color: '#444444',
   },
   textBadge: {
     paddingHorizontal: 6,

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Share, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Share, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Extrapolation,
   interpolate,
@@ -9,8 +9,8 @@ import Animated, {
   useSharedValue,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Plus, Share2 } from 'lucide-react-native';
+import { Stack, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { ArrowLeft, EllipsisVertical, Plus, Share2 } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -20,7 +20,13 @@ import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter'
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { useAdventure } from '@/context/AdventureContext';
 import { usePlanDraft } from '@/context/PlanDraftContext';
-import { fromISODate } from '@/components/plan/DateRangeCalendar';
+import { buildAdventureEdit, buildAdventurePlanParams } from '@/services/adventureEditing';
+import {
+  formatAdventureRange,
+  formatDayMonth,
+  formatFullDate,
+  toISODate,
+} from '@/components/plan/DateRangeCalendar';
 import AdventureJourneyCard from '@/components/plan/AdventureJourneyCard';
 import AdventureHikeCard from '@/components/plan/AdventureHikeCard';
 import AdventureStepConnector, {
@@ -28,6 +34,7 @@ import AdventureStepConnector, {
 } from '@/components/plan/AdventureStepConnector';
 import BuyTicketsSheet from '@/components/plan/BuyTicketsSheet';
 import JourneyDetailSheet from '@/components/plan/JourneyDetailSheet';
+import AdventureActionsSheet from '@/components/plan/AdventureActionsSheet';
 import { toTrainOption } from '@/services/transitService';
 import {
   BookingProvider,
@@ -42,44 +49,6 @@ import {
   normalizePassengers,
 } from '@/types/passenger';
 import { showToast } from '@/utils/toast';
-
-/** « 20 mars 2027 » — la date pleine, année comprise : une aventure se planifie loin. */
-function formatFullDate(iso: string): string {
-  return fromISODate(iso).toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
-}
-
-/** « 20/03 » — le repère porté par les traits de la frise. */
-function formatDayMonth(iso: string): string {
-  const [, month, day] = iso.split('-');
-  return `${day}/${month}`;
-}
-
-/**
- * Étendue du séjour en une ligne : « 20-22 mars 2027 ». Le mois et l'année ne se
- * répètent que s'ils changent en cours de route.
- */
-function formatAdventureRange(startDate: string, endDate: string | null): string {
-  if (!endDate || endDate === startDate) return formatFullDate(startDate);
-
-  const start = fromISODate(startDate);
-  const end = fromISODate(endDate);
-
-  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
-    const month = end.toLocaleDateString('fr-FR', { month: 'long' });
-    return `${start.getDate()}-${end.getDate()} ${month} ${end.getFullYear()}`;
-  }
-
-  const startLabel = start.toLocaleDateString('fr-FR', {
-    day: 'numeric',
-    month: 'long',
-    ...(start.getFullYear() === end.getFullYear() ? {} : { year: 'numeric' }),
-  });
-  return `${startLabel} - ${formatFullDate(endDate)}`;
-}
 
 /**
  * Résumé de l'aventure planifiée, dernière étape avant enregistrement
@@ -100,6 +69,7 @@ export default function PlanSummaryScreen() {
   const theme = Colors[colorScheme];
   const buySheetRef = useRef<BaseBottomSheetModalRef>(null);
   const journeyDetailSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
   // Une seule feuille de détail pour les deux trajets, comme sur les écrans de
   // choix : c'est le trajet dont on vient d'ouvrir le détail qui la remplit.
   const [detailedPhase, setDetailedPhase] = useState<'outward' | 'return'>('outward');
@@ -119,10 +89,18 @@ export default function PlanSummaryScreen() {
     isReversed?: string;
   }>();
 
+  const navigation = useNavigation();
+
   const { hikes, addAdventure, updateAdventure, plannedAdventures } = useAdventure();
-  const { draft, setSavedAdventureId } = usePlanDraft();
+  const { draft, setSavedAdventureId, restoreForEdit } = usePlanDraft();
   const { outwardJourney, returnJourney, outwardIsRealtime, returnIsRealtime, savedAdventureId } =
     draft;
+
+  /* Aventure déjà enregistrée que cet écran relit. Elle commande à la fois le
+     bouton « … » de l'en-tête et la façon dont « Modifier » navigue. */
+  const savedAdventure = savedAdventureId
+    ? (plannedAdventures.find((item) => item.id === savedAdventureId) ?? null)
+    : null;
 
   const rando = useMemo(
     () => hikes.find((item) => item.id === params.randoId) ?? hikes[0],
@@ -381,16 +359,96 @@ export default function PlanSummaryScreen() {
   const handleModify = useCallback(
     (phase: 'outward' | 'return') => {
       journeyDetailSheetRef.current?.dismiss();
-      if (phase === 'return') router.back();
-      else router.dismiss(2);
+
+      /* Seul l'écran immédiatement sous ce résumé est consulté, et au moment du
+         geste. Chercher `plan/outward` n'importe où dans la pile se trompait dès
+         qu'un parcours précédent en avait laissé un plus bas : « Modifier
+         l'aller » dépilait alors dans le vide, ou atterrissait sur le retour. */
+      const routes = (navigation.getState()?.routes ?? []) as { name?: string }[];
+      const parentName = routes[routes.length - 2]?.name;
+      const cameFromOutward = parentName === 'plan/outward';
+      const cameFromReturn = parentName === 'plan/return';
+
+      /* Résumé ouvert seul sur une aventure enregistrée : aucun écran de choix
+         sous lui, il n'y a rien à dépiler. On pousse le parcours d'édition, comme
+         la feuille d'options — le résumé qui en sortira corrigera cette aventure
+         au lieu d'en déposer une seconde. */
+      if (!cameFromOutward && !cameFromReturn) {
+        if (!savedAdventure) return;
+
+        const planParams = buildAdventurePlanParams(savedAdventure);
+        restoreForEdit(buildAdventureEdit(savedAdventure));
+
+        if (phase === 'outward') {
+          router.push({
+            pathname: '/plan/outward',
+            params: { ...planParams, editOnly: 'outward' },
+          });
+        } else {
+          router.push({
+            pathname: '/plan/return',
+            params: {
+              ...planParams,
+              outwardId: savedAdventure.outwardTrain.id,
+              editOnly: 'return',
+            },
+          });
+        }
+        return;
+      }
+
+      // Le choix du retour est juste en dessous.
+      if (phase === 'return') {
+        router.back();
+        return;
+      }
+
+      /* Celui de l'aller est deux crans plus bas quand un retour a été choisi
+         par-dessus, immédiatement en dessous sur un aller simple. `dismiss(2)`
+         inconditionnel renvoyait ce dernier cas un écran trop loin. */
+      router.dismiss(cameFromReturn ? 2 : 1);
     },
-    [router]
+    [navigation, restoreForEdit, router, savedAdventure]
   );
 
   const handleOpenDetails = useCallback((phase: 'outward' | 'return') => {
     setDetailedPhase(phase);
     journeyDetailSheetRef.current?.present();
   }, []);
+
+  /*
+   * Une correction d'aventure s'enregistre d'elle-même.
+   *
+   * Rien d'autre ne la retenait : seuls « Acheter », « Plus tard » et « Partager »
+   * appellent `saveAdventure`, si bien qu'un changement d'horaire n'était retenu
+   * qu'en achetant un billet. L'écran affichait alors un voyage que la fiche ne
+   * connaissait pas.
+   *
+   * Ne concerne que les fiches déjà enregistrées, jamais la création : `updateAdventure`
+   * corrige, il ne dépose rien. Et la comparaison évite de réécrire à chaque simple
+   * relecture d'une aventure — elle porte sur ce que `saveAdventure` écrirait,
+   * `returnTrain` recopiant l'aller en aller simple.
+   */
+  useEffect(() => {
+    if (!savedAdventure || !outwardJourney || !outwardDate) return;
+
+    const unchanged =
+      savedAdventure.outwardTrain.id === outwardJourney.id &&
+      savedAdventure.returnTrain.id === (returnJourney ?? outwardJourney).id &&
+      savedAdventure.outwardDate === outwardDate &&
+      savedAdventure.returnDate === (returnDate ?? outwardDate) &&
+      (savedAdventure.isOneWay ?? false) === !returnJourney;
+
+    if (unchanged) return;
+    saveAdventure();
+  }, [
+    outwardDate,
+    outwardJourney,
+    returnDate,
+    returnJourney,
+    saveAdventure,
+    savedAdventure,
+  ]);
 
   /*
    * Ajout d'un retour à un aller simple déjà planifié.
@@ -461,10 +519,15 @@ export default function PlanSummaryScreen() {
    */
   const scrollBottomClearance = useScreenFooterPadding() + 2 * 48 + 12 + 12 + 24;
 
+  /* Écran d'attente, et non page blanche : cet état est transitoire — la
+     randonnée se charge, ou l'aller vient d'être remis en jeu par « Modifier ».
+     Rendre une `View` vide en faisait une impasse muette, impossible à
+     distinguer d'un plantage. */
   if (!rando || !outwardJourney || !outwardDate) {
     return (
-      <View style={[styles.screen, { backgroundColor: theme.background }]}>
+      <View style={[styles.screen, styles.loadingScreen, { backgroundColor: theme.background }]}>
         <Stack.Screen options={{ headerShown: false }} />
+        <ActivityIndicator size="large" color={theme.tint} />
       </View>
     );
   }
@@ -474,6 +537,14 @@ export default function PlanSummaryScreen() {
   const placeName = rando.location?.split(',')[0]?.trim() || arrivalStationName || rando.title;
 
   const isReturnDetail = detailedPhase === 'return';
+
+  /* Les actions contextuelles ne valent que pour une aventure déjà enregistrée :
+     en pleine planification, il n'y a encore rien à annuler ni à partager depuis
+     une fiche. Le bouton « … » ne s'affiche donc qu'au retour sur une fiche
+     existante. */
+  const isPastAdventure = savedAdventure
+    ? (savedAdventure.returnDate || savedAdventure.outwardDate) < toISODate(new Date())
+    : false;
 
   return (
     <>
@@ -487,10 +558,12 @@ export default function PlanSummaryScreen() {
             styles.header,
             { paddingTop: insets.top + 8, backgroundColor: theme.background },
           ]}>
+          {/* Pastille claire dans les deux thèmes — même règle que le retour de
+              la planification. Le partage et les options, eux, suivent le thème. */}
           <IconButton
             variant="circle"
-            icon={<ArrowLeft size={20} color={theme.buttonIconColor} />}
-            style={{ backgroundColor: theme.buttonBgIcon }}
+            icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+            style={{ backgroundColor: Colors.light.buttonBgIcon }}
             onPress={() => router.back()}
           />
 
@@ -508,6 +581,15 @@ export default function PlanSummaryScreen() {
             style={{ backgroundColor: theme.buttonBgIcon }}
             onPress={handleShare}
           />
+
+          {savedAdventure && (
+            <IconButton
+              variant="circle"
+              icon={<EllipsisVertical size={20} color={theme.buttonIconColor} />}
+              style={{ backgroundColor: theme.buttonBgIcon }}
+              onPress={() => actionsSheetRef.current?.present()}
+            />
+          )}
         </View>
 
         <Animated.ScrollView
@@ -610,6 +692,16 @@ export default function PlanSummaryScreen() {
         onDone={handleBuyDone}
       />
 
+      <AdventureActionsSheet
+        ref={actionsSheetRef}
+        adventure={savedAdventure}
+        hikeTitle={rando?.title}
+        isPast={isPastAdventure}
+        /* L'aventure supprimée, la fiche n'a plus d'objet : on rend la main à la
+           liste plutôt que de laisser l'écran sur un résumé fantôme. */
+        onDeleted={() => router.replace('/(tabs)/adventures')}
+      />
+
       {/* Détail pas-à-pas du trajet, la même feuille que pendant le choix. Le
           bouton d'engagement change seul de rôle : l'itinéraire est déjà retenu,
           il ne reste qu'à revenir le changer. */}
@@ -632,6 +724,10 @@ export default function PlanSummaryScreen() {
 const styles = StyleSheet.create({
   screen: {
     flex: 1,
+  },
+  loadingScreen: {
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   header: {
     flexDirection: 'row',

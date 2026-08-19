@@ -20,9 +20,13 @@ export interface JourneyDetailSheetProps {
   departureName?: string;
   destinationName?: string;
   showNavigoBadge?: boolean;
-  /** Libellé du bouton d'engagement : « Choisir cet ALLER » / « … ce RETOUR ». */
-  primaryLabel: string;
-  onConfirm: () => void;
+  /**
+   * Libellé du bouton d'engagement : « Choisir cet ALLER » / « … ce RETOUR ».
+   * Sans `onConfirm`, aucun bouton n'est rendu — la feuille se contente alors de
+   * montrer le trajet, cas d'une aventure passée.
+   */
+  primaryLabel?: string;
+  onConfirm?: () => void;
 }
 
 /**
@@ -97,12 +101,18 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
         footer={
           option ? (
             <View style={styles.footerRow}>
-              <Button
-                title={primaryLabel}
-                variant="primary"
-                onPress={onConfirm}
-                style={styles.footerButton}
-              />
+              {onConfirm ? (
+                <Button
+                  title={primaryLabel}
+                  variant="primary"
+                  onPress={onConfirm}
+                  style={styles.footerButton}
+                />
+              ) : (
+                /* Sans engagement possible, le rappel de durée occupe seul la
+                   ligne : il reste ce que la feuille a à dire. */
+                <View style={styles.footerButton} />
+              )}
               {/* Rappel de ce à quoi l'utilisateur s'engage : durée du trajet et
                   heure à laquelle il arrive. */}
               <View style={styles.footerRecap}>

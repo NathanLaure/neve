@@ -122,16 +122,70 @@ export function splitBookableLegs(option: TransitOption | null): BookableLegs {
 }
 
 /**
- * Le trajet est-il couvert de bout en bout par un pass Navigo ?
+ * Modes physiques Navitia des trains compris dans le pass.
  *
- * Le pass couvre le réseau francilien sans supplément, mais s'arrête aux trains
- * grandes lignes : dès qu'un tronçon relève de la section `mainLine`, il reste
- * un billet à acheter et annoncer « Inclus Navigo » serait faux.
+ * `LocalTrain` est le train régional : les Transiliens, et les TER qui entrent en
+ * Île-de-France. `RailShuttle` couvre les navettes du même réseau.
+ */
+const NAVIGO_COVERED_PHYSICAL_MODES = ['localtrain', 'railshuttle'];
+
+/** Mode physique des trains qui restent à acheter : les grandes lignes. */
+const NAVIGO_EXCLUDED_PHYSICAL_MODES = ['longdistancetrain'];
+
+/**
+ * Marques de trains grandes lignes, pour les réponses où le mode physique manque
+ * et où seul le libellé commercial est renseigné.
+ */
+const MAIN_LINE_BRANDS = [
+  'tgv',
+  'inoui',
+  'ouigo',
+  'intercit',
+  'lyria',
+  'thalys',
+  'eurostar',
+  'nightjet',
+  'renfe',
+  'trenitalia',
+];
+
+/**
+ * Le tronçon est-il compris dans le pass Navigo ?
+ *
+ * `leg.mode` ne suffit pas à répondre : Transilien, TER, Intercités et TGV y
+ * tombent tous dans `train`, alors que le pass couvre les premiers et pas les
+ * seconds. C'est le mode Navitia brut, transporté depuis la fonction edge, qui
+ * les départage.
+ *
+ * Les tronçons enregistrés avant que ce champ existe — aventures déjà en base,
+ * estimations locales de repli — n'en portent pas : ils sont réputés couverts,
+ * toute l'offre desservie par Névé étant francilienne. C'est la même hypothèse
+ * qu'avant, mais réduite aux seuls cas où l'on ne sait pas.
+ */
+export function isNavigoCoveredLeg(leg: TransitLeg): boolean {
+  // Métro, RER, tram, bus : le réseau francilien, couvert sans discussion.
+  if (leg.mode !== 'train') return true;
+
+  const physical = (leg.physicalMode ?? '').toLowerCase().replace(/[^a-z]/g, '');
+  if (physical) {
+    if (NAVIGO_EXCLUDED_PHYSICAL_MODES.includes(physical)) return false;
+    if (NAVIGO_COVERED_PHYSICAL_MODES.includes(physical)) return true;
+  }
+
+  const commercial = (leg.commercialMode ?? '').toLowerCase();
+  if (commercial) return !MAIN_LINE_BRANDS.some((brand) => commercial.includes(brand));
+
+  return true;
+}
+
+/**
+ * Le trajet est-il couvert de bout en bout par un pass Navigo ?
  *
  * Un itinéraire entièrement à pied ne coûte rien à personne : il n'est pas
  * « inclus » dans un abonnement, il est simplement hors sujet.
  */
 export function isFullyCoveredByNavigo(option: TransitOption | null): boolean {
-  const { network, mainLine } = splitBookableLegs(option);
-  return mainLine.length === 0 && network.length > 0;
+  if (!option) return false;
+  const rides = option.legs.filter((leg) => leg.mode !== 'walk');
+  return rides.length > 0 && rides.every(isNavigoCoveredLeg);
 }

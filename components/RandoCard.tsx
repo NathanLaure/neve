@@ -229,87 +229,82 @@ function RandoCard({
 
     const ephemeride = parseEphemeride(date);
 
-    const upcomingItemStyle = [
-      styles.adventureUpcomingPressable,
-      {
-        borderRadius: 20,
-        overflow: 'hidden' as const,
-        backgroundColor: theme.card,
-        borderColor: theme.borderLight,
-        shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
-      },
-    ];
-
+    // Le clip vit sur une View englobante, jamais sur la Pressable : `overflow:
+    // 'hidden'` posé sur la Pressable elle-même vide le clip et fait disparaître
+    // tout son contenu. Le wrapper sert à rogner le ripple Android, peint en
+    // foreground de la Pressable et donc seulement rognable par un ancêtre.
     return (
-      <Pressable
-        onPress={() => onPress?.(id)}
-        onLongPress={
-          onLongPress
-            ? () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                onLongPress(id);
-              }
-            : undefined
-        }
-        delayLongPress={350}
-        android_ripple={{
-          color: theme.ripple,
-          borderless: false,
-          foreground: true,
-        }}
-        style={upcomingItemStyle}>
-        <View style={styles.adventureUpcomingCard}>
-          <View style={styles.adventureUpcomingImageWrapper}>
-            <Image
-              source={{ uri: imageUrl }}
-              style={styles.adventureUpcomingImage}
-              resizeMode="cover"
-            />
-            {ephemeride ? (
-              <View
-                style={[
-                  styles.ephemerideBadge,
-                  {
-                    backgroundColor: theme.card,
-                    borderColor: theme.borderLight,
-                  },
-                ]}>
-                <Text style={[styles.ephemerideMonth, { color: theme.tint }]}>
-                  {ephemeride.month}
-                </Text>
-                <Text style={[styles.ephemerideDay, { color: theme.text }]}>
-                  {ephemeride.day}
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          <View style={styles.adventureUpcomingContent}>
-            <View style={styles.adventureUpcomingTextGroup}>
-              <Text
-                style={[styles.adventureUpcomingTitle, { color: theme.text }]}
-                numberOfLines={2}
-                ellipsizeMode="tail">
-                {title}
-              </Text>
-              <Text
-                style={[styles.adventureUpcomingLocation, { color: theme.textMuted }]}
-                numberOfLines={1}>
-                {displayLocation}
-              </Text>
-            </View>
-            {cleanedDeparture ? (
-              <View style={styles.adventureUpcomingDepartureRow}>
-                <Text style={[styles.adventureUpcomingDepartureText, { color: theme.textMuted }]}>
-                  Départ de{' '}
-                  <Text style={[styles.adventureUpcomingDepartureBold, { color: theme.text }]}>
-                    {cleanedDeparture}
+      <View style={styles.adventureUpcomingClip}>
+        <Pressable
+          onPress={() => onPress?.(id)}
+          onLongPress={
+            onLongPress
+              ? () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                  onLongPress(id);
+                }
+              : undefined
+          }
+          delayLongPress={350}
+          android_ripple={{
+            color: theme.ripple,
+            borderless: false,
+            foreground: true,
+          }}
+          style={styles.adventureUpcomingPressable}>
+          <View style={[styles.adventureUpcomingCard, { backgroundColor: theme.card }]}>
+            <View style={styles.adventureUpcomingImageWrapper}>
+              <Image
+                source={{ uri: imageUrl }}
+                style={styles.adventureUpcomingImage}
+                resizeMode="cover"
+              />
+              {ephemeride ? (
+                <View
+                  style={[
+                    styles.ephemerideBadge,
+                    {
+                      backgroundColor: theme.card,
+                      borderColor: theme.borderLight,
+                    },
+                  ]}>
+                  <Text style={[styles.ephemerideMonth, { color: theme.tint }]}>
+                    {ephemeride.month}
                   </Text>
+                  <Text style={[styles.ephemerideDay, { color: theme.text }]}>
+                    {ephemeride.day}
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.adventureUpcomingContent}>
+              <View style={styles.adventureUpcomingTextGroup}>
+                <Text
+                  style={[styles.adventureUpcomingTitle, { color: theme.text }]}
+                  numberOfLines={2}
+                  ellipsizeMode="tail">
+                  {title}
+                </Text>
+                <Text
+                  style={[styles.adventureUpcomingLocation, { color: theme.textMuted }]}
+                  numberOfLines={1}>
+                  {displayLocation}
                 </Text>
               </View>
-            ) : null}
+              {cleanedDeparture ? (
+                <View style={styles.adventureUpcomingDepartureRow}>
+                  <Text style={[styles.adventureUpcomingDepartureText, { color: theme.textMuted }]}>
+                    Départ de{' '}
+                    <Text style={[styles.adventureUpcomingDepartureBold, { color: theme.text }]}>
+                      {cleanedDeparture}
+                    </Text>
+                  </Text>
+                </View>
+              ) : null}
+            </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
     );
   }
 
@@ -321,100 +316,91 @@ function RandoCard({
     const displayLocation = getHikeLocation();
     const displayDate = date || 'Date passée';
 
-    const pastItemStyle = [
-      styles.adventurePastPressable,
-      {
-        borderRadius: 20,
-        overflow: 'hidden' as const,
-        backgroundColor: theme.card,
-        borderColor: theme.borderLight,
-        shadowColor: colorScheme === 'dark' ? '#000' : '#1A251E',
-      },
-    ];
-
     return (
-      <Pressable
-        onPress={() => onPress?.(id)}
-        onLongPress={
-          onLongPress
-            ? () => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
-                onLongPress(id);
-              }
-            : undefined
-        }
-        delayLongPress={350}
-        android_ripple={{
-          color: theme.ripple,
-          borderless: false,
-          foreground: true,
-        }}
-        style={pastItemStyle}>
-        <View style={styles.adventurePastCard}>
-          <Image
-            source={{ uri: imageUrl }}
-            style={[styles.adventurePastImage, { borderColor: theme.borderLight }]}
-            resizeMode="cover"
-          />
-          <View style={styles.adventurePastContent}>
-            <Text
-              style={[styles.adventurePastTitle, { color: theme.text }]}
-              numberOfLines={1}
-              ellipsizeMode="tail">
-              {title}
-            </Text>
-
-            <View style={styles.adventurePastMetricsRow}>
-              {displayTime ? (
-                <View style={styles.adventurePastMetricItem}>
-                  <Clock size={12} color={theme.textMuted} />
-                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
-                    {displayTime}
-                  </Text>
-                </View>
-              ) : null}
-
-              {displayTime && displayDistance ? (
-                <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
-              ) : null}
-
-              {displayDistance ? (
-                <View style={styles.adventurePastMetricItem}>
-                  <Route size={12} color={theme.textMuted} />
-                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
-                    {displayDistance}
-                  </Text>
-                </View>
-              ) : null}
-
-              {(displayTime || displayDistance) && gainText ? (
-                <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
-              ) : null}
-
-              {gainText ? (
-                <View style={styles.adventurePastMetricItem}>
-                  <TrendingUp size={12} color={theme.textMuted} />
-                  <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
-                    {gainText}
-                  </Text>
-                </View>
-              ) : null}
-            </View>
-
-            <View style={styles.adventurePastSubRow}>
-              <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>
-                {displayDate}
-              </Text>
-              <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>·</Text>
+      <View style={styles.adventurePastClip}>
+        <Pressable
+          onPress={() => onPress?.(id)}
+          onLongPress={
+            onLongPress
+              ? () => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+                  onLongPress(id);
+                }
+              : undefined
+          }
+          delayLongPress={350}
+          android_ripple={{
+            color: theme.ripple,
+            borderless: false,
+            foreground: true,
+          }}
+          style={styles.adventurePastPressable}>
+          <View style={styles.adventurePastCard}>
+            <Image
+              source={{ uri: imageUrl }}
+              style={styles.adventurePastImage}
+              resizeMode="cover"
+            />
+            <View style={styles.adventurePastContent}>
               <Text
-                style={[styles.adventurePastSubText, { color: theme.textMuted, flexShrink: 1 }]}
-                numberOfLines={1}>
-                {displayLocation}
+                style={[styles.adventurePastTitle, { color: theme.text }]}
+                numberOfLines={1}
+                ellipsizeMode="tail">
+                {title}
               </Text>
+
+              <View style={styles.adventurePastMetricsRow}>
+                {displayTime ? (
+                  <View style={styles.adventurePastMetricItem}>
+                    <Clock size={12} color={theme.textMuted} />
+                    <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                      {displayTime}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {displayTime && displayDistance ? (
+                  <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
+                ) : null}
+
+                {displayDistance ? (
+                  <View style={styles.adventurePastMetricItem}>
+                    <Route size={12} color={theme.textMuted} />
+                    <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                      {displayDistance}
+                    </Text>
+                  </View>
+                ) : null}
+
+                {(displayTime || displayDistance) && gainText ? (
+                  <Text style={[styles.adventurePastSeparator, { color: theme.textMuted }]}>·</Text>
+                ) : null}
+
+                {gainText ? (
+                  <View style={styles.adventurePastMetricItem}>
+                    <TrendingUp size={12} color={theme.textMuted} />
+                    <Text style={[styles.adventurePastMetricBold, { color: theme.textMuted }]}>
+                      {gainText}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+
+              <View style={styles.adventurePastSubRow}>
+                <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>
+                  {displayDate}
+                </Text>
+                <Text style={[styles.adventurePastSubText, { color: theme.textMuted }]}>·</Text>
+                <Text
+                  style={[styles.adventurePastSubText, { color: theme.textMuted, flexShrink: 1 }]}
+                  numberOfLines={1}>
+                  {displayLocation}
+                </Text>
+              </View>
             </View>
           </View>
-        </View>
-      </Pressable>
+        </Pressable>
+      </View>
     );
   }
 
@@ -1108,24 +1094,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  adventureUpcomingPressable: {
+  adventureUpcomingClip: {
     width: '100%',
     marginBottom: 12,
-    borderWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.08,
-        shadowRadius: 10,
-      },
-      android: {
-        elevation: 3,
-      },
-    }),
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  adventureUpcomingPressable: {
+    width: '100%',
   },
   adventureUpcomingCard: {
     flexDirection: 'row',
     alignItems: 'stretch',
+    borderRadius: 20,
     minHeight: 126,
     padding: 4,
     paddingRight: 12,
@@ -1215,20 +1196,14 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 18,
   },
-  adventurePastPressable: {
+  adventurePastClip: {
     width: '100%',
     marginBottom: 12,
-    borderWidth: 1,
-    ...Platform.select({
-      ios: {
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.04,
-        shadowRadius: 4,
-      },
-      android: {
-        elevation: 1.5,
-      },
-    }),
+    borderRadius: 20,
+    overflow: 'hidden',
+  },
+  adventurePastPressable: {
+    width: '100%',
   },
   adventurePastCard: {
     flexDirection: 'row',
@@ -1242,7 +1217,6 @@ const styles = StyleSheet.create({
     width: 86,
     height: 86,
     borderRadius: 18,
-    borderWidth: 1,
   },
   adventurePastContent: {
     flex: 1,

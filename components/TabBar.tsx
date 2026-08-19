@@ -10,7 +10,7 @@ import { useImmersiveProgress } from '@/context/MapImmersiveContext';
 import { useAuth } from '@/context/AuthContext';
 
 /** Hauteur de la rangée d'onglets, hors barre système. */
-const TAB_BAR_BASE_HEIGHT = 56;
+const TAB_BAR_BASE_HEIGHT = 80;
 
 const TAB_ICONS = {
   index: Search,
@@ -235,7 +235,7 @@ export default function TabBar({ state, descriptors, navigation }: any) {
             IconComponent={IconComponent}
             avatarUrl={route.name === 'profile' ? avatarUrl : undefined}
             activeColor={theme.tint}
-            inactiveColor={theme.tabIconDefault}
+            inactiveColor={theme.text}
             onPress={onPress}
             onLongPress={onLongPress}
           />
@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     borderTopWidth: 1,
     paddingHorizontal: 8,
-    paddingTop: 4,
+    paddingTop: 0,
     alignItems: 'center',
     justifyContent: 'space-around',
   },
@@ -284,8 +284,8 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   tabLabel: {
-    fontSize: 11,
+    fontSize: 12,
     fontFamily: 'Satoshi-Medium',
-    marginTop: 2,
+    marginTop: 6,
   },
 });

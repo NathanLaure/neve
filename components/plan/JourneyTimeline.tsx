@@ -236,8 +236,12 @@ export const JourneyTimeline: React.FC<JourneyTimelineProps> = ({
 
                 {/* 2. Colonne Centrale (Badge Mode + Filet Vertical Continu + Dot Blanc) */}
                 <View style={styles.barColFlex}>
-                  <View style={styles.modeIconCircleBox}>
-                    <TransportLineBadge mode={leg.mode} size={18} hideModeIcon={false} />
+                  <View
+                    style={[
+                      styles.modeIconCircleBox,
+                      { borderRadius: leg.mode === 'metro' ? 12 : 7 },
+                    ]}>
+                    <TransportLineBadge mode={leg.mode} size={20} hideModeIcon={false} />
                   </View>
                   <View style={[styles.continuousVerticalLine, { backgroundColor: bgBadge }]}>
                     <View style={styles.whiteInnerDot} />
@@ -466,7 +470,6 @@ const styles = StyleSheet.create({
   modeIconCircleBox: {
     width: 24,
     height: 24,
-    borderRadius: 12,
     backgroundColor: '#FFFFFF',
     alignItems: 'center',
     justifyContent: 'center',

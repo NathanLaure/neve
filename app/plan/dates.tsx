@@ -114,7 +114,12 @@ export default function PlanDatesScreen() {
    * repassés tels quels à l'écran suivant — ce sont ceux dont il a besoin pour
    * viser le bon lieu, que cette modale ne fait que traverser.
    */
-  const params = useLocalSearchParams<{ randoId?: string; next?: string }>();
+  const params = useLocalSearchParams<{
+    randoId?: string;
+    next?: string;
+    /** Heure de départ du retour suggérée par l'appelant — voir `suggestReturnTime`. */
+    returnTime?: string;
+  }>();
   const isAddingReturn = params.next === 'return';
 
   const { hikes } = useAdventure();
@@ -148,7 +153,13 @@ export default function PlanDatesScreen() {
   const [hasCustomReturn, setHasCustomReturn] = useState(
     isAddingReturn ? false : draft.hasCustomReturn
   );
-  const [outwardTime, setOutwardTime] = useState(draft.outwardTime);
+  /* Une seule heure dans cet écran, dont le libellé change : « Aller à partir
+     de », ou « Retour à partir de » quand on vient en ajouter un. Dans ce second
+     cas elle part de l'heure suggérée par l'appelant — la fin de la marche — et
+     non de l'heure d'aller du brouillon, qui n'a rien à voir. */
+  const [outwardTime, setOutwardTime] = useState(
+    isAddingReturn ? params.returnTime || draft.outwardTime : draft.outwardTime
+  );
   /* Un départ vient d'être posé, la prochaine tape désigne donc le retour.
      En mode « ajouter un retour », le départ est déjà fixé de longue date : la
      toute première tape vise le retour, sans quoi elle déplacerait le départ et
@@ -226,6 +237,9 @@ export default function PlanDatesScreen() {
           next: undefined,
           outwardDate: startDate,
           returnDate: effectiveEndDate ?? undefined,
+          /* L'heure réglée ici est celle du retour : sans elle, l'écran de
+             résultats repartait de la valeur d'origine et le réglage était perdu. */
+          returnTime: outwardTime,
         },
       });
       return;
@@ -279,7 +293,7 @@ export default function PlanDatesScreen() {
           {/* Le choix aller simple / aller-retour n'a plus lieu d'être quand on
               vient précisément ajouter un retour. */}
           {!isAddingReturn && (
-            <View style={[styles.segmented, { borderColor: theme.border }]}>
+            <View style={[styles.segmented]}>
               {(
                 [
                   { value: 'round', label: 'Aller / Retour' },
@@ -371,7 +385,7 @@ export default function PlanDatesScreen() {
               },
             ]}>
             <View style={styles.timeRowLabel}>
-              <Text style={[styles.timeRowText, { color: theme.text }]}>Aller à partir de</Text>
+              <Text style={[styles.timeRowText, { color: theme.text }]}>{isAddingReturn ? 'Retour à partir de' : 'Aller à partir de'}</Text>
               <View style={[styles.timePill, { backgroundColor: theme.tint }]}>
                 <Text style={[styles.timePillText, { color: theme.buttonTextOnBrand }]}>
                   {outwardTime}
@@ -446,8 +460,8 @@ const styles = StyleSheet.create({
   },
   segmented: {
     flexDirection: 'row',
-    borderWidth: 1,
-    borderRadius: 8,
+    borderWidth: 0,
+    borderRadius: 12,
     overflow: 'hidden',
   },
   segmentedItem: {
@@ -456,7 +470,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 6,
-    paddingVertical: 12,
+    paddingVertical: 16,
   },
   segmentedText: {
     fontFamily: 'Satoshi-Bold',

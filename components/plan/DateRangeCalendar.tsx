@@ -84,6 +84,44 @@ export function daysBetween(a: string, b: string): number {
 }
 
 /** « 20 → 22 mars » ou « 20 mars » — le résumé affiché quand la carte est repliée. */
+/** « 20 mars 2027 » — la date pleine, année comprise : une aventure se planifie loin. */
+export function formatFullDate(iso: string): string {
+  return fromISODate(iso).toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  });
+}
+
+/** « 20/03 » — le repère porté par les traits de la frise d'aventure. */
+export function formatDayMonth(iso: string): string {
+  const [, month, day] = iso.split('-');
+  return `${day}/${month}`;
+}
+
+/**
+ * Étendue du séjour en une ligne : « 20-22 mars 2027 ». Le mois et l'année ne se
+ * répètent que s'ils changent en cours de route.
+ */
+export function formatAdventureRange(startDate: string, endDate: string | null): string {
+  if (!endDate || endDate === startDate) return formatFullDate(startDate);
+
+  const start = fromISODate(startDate);
+  const end = fromISODate(endDate);
+
+  if (start.getMonth() === end.getMonth() && start.getFullYear() === end.getFullYear()) {
+    const month = end.toLocaleDateString('fr-FR', { month: 'long' });
+    return `${start.getDate()}-${end.getDate()} ${month} ${end.getFullYear()}`;
+  }
+
+  const startLabel = start.toLocaleDateString('fr-FR', {
+    day: 'numeric',
+    month: 'long',
+    ...(start.getFullYear() === end.getFullYear() ? {} : { year: 'numeric' }),
+  });
+  return `${startLabel} - ${formatFullDate(endDate)}`;
+}
+
 export function formatDateRangeSummary(startDate: string | null, endDate: string | null): string {
   if (!startDate) return 'Choisir une date';
   const start = fromISODate(startDate);

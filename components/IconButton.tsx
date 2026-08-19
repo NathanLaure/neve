@@ -167,6 +167,12 @@ IconButton.displayName = 'IconButton';
 const styles = StyleSheet.create({
   plainWrapper: {
     position: 'relative',
+    /* Centrage indispensable : le `style` de l'appelant atterrit ici depuis le
+       passage à l'architecture bi-couche, et il lui arrive de poser une taille
+       (voir le retour de `OutwardHeader`, 36x36). Sans ça le bouton, qui n'est
+       large que de son icône, se colle en haut de la boîte. */
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   plainButton: {
     alignItems: 'center',

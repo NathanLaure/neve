@@ -26,12 +26,12 @@ export interface SortOption {
    bien par la feuille que par l'écran de résultats. C'est `SortBottomSheet` qui
    les associe, à l'endroit où elles se dessinent. */
 export const SORT_OPTIONS: SortOption[] = [
+  { id: 'relevance', label: 'Pertinence' },
   { id: 'nearest', label: 'Le plus proche' },
   { id: 'fastest_access', label: "Le plus rapide d'accès" },
   { id: 'least_elevation', label: 'Le moins de dénivelé' },
   { id: 'most_popular', label: 'Le plus populaire' },
   { id: 'newest', label: 'Nouveautés' },
-  { id: 'relevance', label: 'Pertinence' },
   { id: 'longest', label: 'Le plus long' },
   { id: 'shortest', label: 'Le plus court' },
 ];

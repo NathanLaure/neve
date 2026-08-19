@@ -446,9 +446,14 @@ export default function RandoDetailScreen() {
             zIndex: 10,
           },
         ]}>
+        {/* Pastille claire dans les deux thèmes, `Colors.light` et non `theme` :
+            même règle que les retours de la planification. Le bouton se pose sur
+            la photo de la rando, dont le fond ne suit pas le réglage de
+            l'appareil. Partage, favori et options, eux, basculent. */}
         <IconButton
           variant="circle"
-          icon={<ArrowLeft size={20} color={theme.text} />}
+          icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+          style={{ backgroundColor: Colors.light.buttonBgIcon }}
           onPress={() => router.back()}
         />
 
@@ -549,7 +554,7 @@ export default function RandoDetailScreen() {
         <View style={{ height: 380 }} />
 
         {/* Bottom Sheet Card Style Body */}
-        <View style={[styles.sheetContainer, { backgroundColor: theme.background }]}>
+        <View style={[styles.sheetContainer, { backgroundColor: theme.card }]}>
 
           {/* Top Slide Line indicator from Figma */}
           <View style={styles.slideIndicator} />
@@ -673,7 +678,7 @@ export default function RandoDetailScreen() {
                 });
               }
             }}
-            backgroundColor={theme.background}
+            backgroundColor={theme.transparent}
             style={{ marginBottom: 40, paddingVertical: 8, paddingHorizontal: 4 }}
           />
 

@@ -41,6 +41,15 @@ export interface TransitLeg {
   mode: 'train' | 'rer' | 'metro' | 'tram' | 'bus' | 'walk';
   lineName?: string;
   lineColor?: string;
+  /**
+   * Mode Navitia du tronçon, conservé tel quel.
+   *
+   * `mode` écrase la nuance : Transilien, TER, Intercités et TGV y tombent tous
+   * dans `train`. Or le pass Navigo couvre le premier et pas les derniers — c'est
+   * ce couple de champs qui permet de les départager (`isFullyCoveredByNavigo`).
+   */
+  physicalMode?: string;
+  commercialMode?: string;
   fromName: string;
   toName: string;
   durationMinutes: number;

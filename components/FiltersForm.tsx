@@ -9,7 +9,7 @@ import RangeSlider from '@/components/RangeSlider';
 import ToggleRow from '@/components/ToggleRow';
 import CheckboxRow from '@/components/CheckboxRow';
 import Divider from '@/components/Divider';
-import { POINTS_OF_INTEREST } from '@/constants/Filters';
+import { DIFFICULTIES, POINTS_OF_INTEREST } from '@/constants/Filters';
 
 const ACTIVITY_TYPES = [
   'Randonnée',
@@ -174,7 +174,7 @@ export default function FiltersForm({
       node: (
         <View style={styles.filterGroup}>
           <Text style={[styles.filterGroupTitle, { color: theme.text }]}>Difficulté</Text>
-          {['Facile', 'Modéré', 'Difficile'].map((diff, idx) => (
+          {DIFFICULTIES.map((diff, idx) => (
             <CheckboxRow
               key={diff}
               title={diff}

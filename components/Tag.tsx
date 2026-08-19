@@ -20,25 +20,21 @@ const getTagStyles = (statut: TagStatus, theme: any) => {
     case 'Success':
       return {
         bg: theme.statusBgSuccessSubtle,
-        border: theme.statusBgSuccess,
         text: theme.statusTextSuccess,
       };
     case 'Warning':
       return {
         bg: theme.statusBgWarningSubtle,
-        border: theme.statusBgWarning,
         text: theme.statusTextWarning,
       };
     case 'Error':
       return {
         bg: theme.statusBgErrorSubtle,
-        border: theme.statusBgError,
         text: theme.statusTextError,
       };
     case 'Info':
       return {
         bg: theme.statusBgInfoSubtle,
-        border: theme.statusBgInfo,
         text: theme.statusTextInfo,
       };
   }
@@ -59,7 +55,6 @@ export default function Tag({ text, statut = 'Success', size = 'sm', icon, style
         sizeContainerStyle,
         {
           backgroundColor: colors.bg,
-          borderColor: colors.border,
         },
         style,
       ]}>
@@ -81,7 +76,7 @@ export default function Tag({ text, statut = 'Success', size = 'sm', icon, style
 
 const styles = StyleSheet.create({
   container: {
-    borderWidth: 1,
+    borderWidth: 0,
     borderStyle: 'solid',
     flexDirection: 'row',
     alignItems: 'center',

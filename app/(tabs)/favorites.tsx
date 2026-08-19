@@ -555,9 +555,9 @@ export default function FavoritesScreen() {
               }}
             />
             <ItemButton
-              icon={<Trash2 size={20} color="#EF4444" />}
+              icon={<Trash2 size={20} color={theme.statusTextError} />}
               label="Supprimer"
-              color="#EF4444"
+              color={theme.statusTextError}
               onPress={handleRemoveFavorite}
             />
           </View>

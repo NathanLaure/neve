@@ -17,3 +17,14 @@ export const POINTS_OF_INTEREST = [
   'Voies vertes',
   'Balade en ville',
 ];
+
+export const DIFFICULTIES = ['Facile', 'Modéré', 'Difficile'];
+
+/**
+ * The three boxes are checked by default, so a full selection means "no
+ * preference" and must not restrict anything — otherwise the hikes stored with
+ * a difficulty outside this list (`expert`) would silently vanish from the
+ * default results. An empty selection stays permissive too, as before.
+ */
+export const isDifficultyFilterActive = (selected: string[]) =>
+  selected.length > 0 && selected.length < DIFFICULTIES.length;

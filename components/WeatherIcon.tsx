@@ -36,7 +36,7 @@ export default function WeatherIcon({ type, size = 48 }: WeatherIconProps) {
           </View>
           {/* Light Slate Cloud bottom left */}
           <View style={{ position: 'absolute', bottom: 0, left: 0 }}>
-            <Cloud size={size * 0.78} color="#E2E8F0" fill="rgba(226, 232, 240, 0.25)" />
+            <Cloud size={size * 0.78} color="#cacacaff" fill="rgba(223, 223, 223, 0.25)" />
           </View>
         </View>
       );

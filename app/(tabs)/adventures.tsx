@@ -15,17 +15,16 @@ import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
-import { useAdventure, PlannedAdventure, isOneWayAdventure } from '@/context/AdventureContext';
+import { useAdventure, PlannedAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS, RandoData } from '@/constants/RandosData';
 import { toISODate } from '@/components/plan/DateRangeCalendar';
 import Skeleton from '@/components/Skeleton';
 import { useTabBarHeight } from '@/components/TabBar';
 import Chip from '@/components/Chip';
 import RandoCard from '@/components/RandoCard';
+import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
+import AdventureActionsSheet from '@/components/plan/AdventureActionsSheet';
 import { formatHikeDuration } from '@/components/plan/AdventureHikeCard';
-// PROVISOIRE — voir `handleCardPress` : raccourci de test vers le résumé.
-import { usePlanDraft } from '@/context/PlanDraftContext';
-import { fromTrainOption } from '@/services/transitService';
 
 type FilterTab = 'all' | 'upcoming' | 'past';
 
@@ -95,9 +94,8 @@ export default function MyAdventuresScreen() {
     refreshFavorites,
   } = useAdventure();
 
-  // PROVISOIRE — voir `handleCardPress`.
-  const { commitDates, selectOutwardJourney, selectReturnJourney, setSavedAdventureId } =
-    usePlanDraft();
+  const actionsSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const [actionAdventure, setActionAdventure] = useState<PlannedAdventure | null>(null);
 
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
   const [sortByDistance, setSortByDistance] = useState(false);
@@ -218,6 +216,18 @@ export default function MyAdventuresScreen() {
     [hikes, loadHikeDetail]
   );
 
+  /* Appui long sur une carte : mêmes actions que le bouton « … » du
+     récapitulatif, sur le modèle de la feuille contextuelle des favoris. */
+  const handleLongPressAdventure = useCallback(
+    (id?: string) => {
+      const found = plannedAdventures.find((adv) => adv.id === id);
+      if (!found) return;
+      setActionAdventure(found);
+      actionsSheetRef.current?.present();
+    },
+    [plannedAdventures]
+  );
+
   // Helper date formatter matching Figma (e.g. "16 août 2026")
   const formatDateString = (outward: string, returnStr: string) => {
     if (!outward) return 'Date non définie';
@@ -237,61 +247,15 @@ export default function MyAdventuresScreen() {
   };
 
   /*
-   * PROVISOIRE — raccourci de test vers `/plan/summary`.
+   * La fiche d'une aventure enregistrée est le récapitulatif, pas le résumé de
+   * planification : elle relit l'aventure en base plutôt que le brouillon, et
+   * porte l'état d'achat des billets.
    *
-   * Le résumé lit les itinéraires dans le brouillon de planification : on l'y
-   * réinjecte depuis l'aventure enregistrée, ce qui évite de refaire tout le
-   * parcours à chaque essai. L'ordre compte, `commitDates` efface les
-   * itinéraires et `selectOutwardJourney` efface le retour.
-   *
-   * Limite assumée le temps des essais : les boutons « Modifier » du résumé
-   * dépilent une pile qui n'est pas celle du parcours et ne mènent donc nulle
-   * part de sensé.
-   *
-   * À rétablir : `router.push(`/recap?adventureId=${id}`)`.
+   * Les corrections d'itinéraire passent par sa feuille d'options (bouton « … »)
+   * ou par l'appui long sur cette carte, qui posent elles-mêmes le brouillon.
    */
   const handleCardPress = (id: string) => {
-    const adventure = plannedAdventures.find((item) => item.id === id);
-    if (!adventure) return;
-
-    const isOneWay = isOneWayAdventure(adventure);
-
-    commitDates({
-      startDate: adventure.outwardDate,
-      endDate: adventure.returnDate,
-      tripType: isOneWay ? 'oneway' : 'round',
-      hasCustomReturn: true,
-      outwardTime: adventure.outwardTrain.time,
-    });
-    selectOutwardJourney(
-      fromTrainOption(adventure.outwardTrain),
-      adventure.outwardTrain.isRealtime ?? false
-    );
-    /* Sur un aller simple, `returnTrain` n'est que l'aller recopié : le
-       restaurer ferait passer le résumé pour un aller-retour complet et
-       masquerait la proposition d'ajouter un vrai retour. */
-    if (!isOneWay) {
-      selectReturnJourney(
-        fromTrainOption(adventure.returnTrain),
-        adventure.returnTrain.isRealtime ?? false
-      );
-    }
-    // Le résumé corrige cette aventure au lieu d'en déposer une seconde à chaque
-    // essai d'enregistrement.
-    setSavedAdventureId(adventure.id);
-
-    router.push({
-      pathname: '/plan/summary',
-      params: {
-        randoId: adventure.randoId,
-        departureName: adventure.departureStationName,
-        returnName: adventure.returnStationName ?? adventure.departureStationName,
-        outwardDate: adventure.outwardDate,
-        returnDate: adventure.returnDate,
-        passengers: JSON.stringify(adventure.passengers ?? []),
-        isReversed: String(adventure.isReversed ?? false),
-      },
-    });
+    router.push({ pathname: '/recap', params: { adventureId: id } });
   };
 
   const handleResetFilters = () => {
@@ -496,6 +460,7 @@ export default function MyAdventuresScreen() {
                           departureStation={firstStation}
                           date={formatDateString(item.outwardDate, item.returnDate)}
                           onPress={() => handleCardPress(item.id)}
+                          onLongPress={handleLongPressAdventure}
                         />
                       );
                     })}
@@ -537,6 +502,7 @@ export default function MyAdventuresScreen() {
                           time={displayTime}
                           date={formatDateString(item.outwardDate, item.returnDate)}
                           onPress={() => handleCardPress(item.id)}
+                          onLongPress={handleLongPressAdventure}
                         />
                       );
                     })}
@@ -546,6 +512,17 @@ export default function MyAdventuresScreen() {
             )}
           </Animated.ScrollView>
         )}
+
+        {/* Actions contextuelles — ouvertes par appui long sur une card.
+            `actionAdventure` n'est volontairement pas remis à `null` à la
+            fermeture : la confirmation d'annulation s'ouvre après celle-ci et a
+            encore besoin de sa cible. */}
+        <AdventureActionsSheet
+          ref={actionsSheetRef}
+          adventure={actionAdventure}
+          hikeTitle={actionAdventure ? getHikeData(actionAdventure).title : undefined}
+          isPast={actionAdventure ? isAdventurePast(actionAdventure) : false}
+        />
       </SafeAreaView>
     </Animated.View>
   );

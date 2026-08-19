@@ -22,9 +22,12 @@ export default function RandoDetailSkeleton() {
       <View
         style={[styles.headerOverlay, { top: 0, paddingTop: insets.top + 8 }]}
         pointerEvents="box-none">
+        {/* Mêmes couleurs figées que le retour de la fiche qui prend le relais :
+            sans ça la pastille change de teinte à la fin du chargement. */}
         <IconButton
           variant="circle"
-          icon={<ArrowLeft size={20} color={theme.text} />}
+          icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
+          style={{ backgroundColor: Colors.light.buttonBgIcon }}
           onPress={() => router.back()}
         />
       </View>

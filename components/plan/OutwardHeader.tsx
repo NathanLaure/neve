@@ -85,10 +85,13 @@ export const OutwardHeader: React.FC<OutwardHeaderProps> = ({
   return (
     <View style={[styles.headerContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
       <View style={styles.actionBar}>
+        {/* Pastille claire dans les deux thèmes, `Colors.light` et non `theme` :
+            même règle que les retours de la planification et du résumé. En sombre,
+            `theme.card` la peignait en noir. */}
         <IconButton
-          icon={<ArrowLeft size={18} color={theme.text} />}
+          icon={<ArrowLeft size={18} color={Colors.light.buttonIconColor} />}
           onPress={onBack}
-          style={[styles.backButton, { backgroundColor: theme.card }]}
+          style={[styles.backButton, { backgroundColor: Colors.light.buttonBgIcon }]}
         />
 
         <View style={styles.titleContainer}>

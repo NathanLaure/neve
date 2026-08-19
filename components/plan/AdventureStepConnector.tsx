@@ -27,7 +27,7 @@ export default function AdventureStepConnector({ label }: AdventureStepConnector
   const half = (
     <View style={styles.half}>
       {Array.from({ length: DASHES_PER_HALF }, (_, index) => (
-        <View key={index} style={[styles.dash, { backgroundColor: theme.textDisabled }]} />
+        <View key={index} style={[styles.dash, { backgroundColor: theme.text }]} />
       ))}
     </View>
   );
@@ -35,7 +35,7 @@ export default function AdventureStepConnector({ label }: AdventureStepConnector
   return (
     <View style={styles.container}>
       {half}
-      <Text style={[styles.label, { color: theme.textDisabled }]}>{label}</Text>
+      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
       {half}
     </View>
   );
@@ -56,12 +56,12 @@ export function AdventureTimelineCaption({
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const arrowIcon = <ArrowDown size={12} color={theme.textDisabled} />;
+  const arrowIcon = <ArrowDown size={12} color={theme.text} />;
 
   return (
     <View style={styles.caption}>
       {arrow === 'above' && arrowIcon}
-      <Text style={[styles.label, { color: theme.textDisabled }]}>{label}</Text>
+      <Text style={[styles.label, { color: theme.text }]}>{label}</Text>
       {arrow === 'below' && arrowIcon}
     </View>
   );

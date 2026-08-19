@@ -31,6 +31,7 @@ import { Button } from '@/components/Button';
 import FiltersForm from '@/components/FiltersForm';
 import { searchPlaces } from '@/services/geocodingService';
 import PlaceSuggestionRow, { PlaceKind, getPlaceKind } from '@/components/PlaceSuggestionRow';
+import { DIFFICULTIES, isDifficultyFilterActive } from '@/constants/Filters';
 
 const { height: SCREEN_HEIGHT, width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -588,7 +589,7 @@ export default function SearchModal() {
     setOpenPanel('search');
     setPendingPlace(null);
     setPendingUseCurrentLocation(false);
-    setLocalDifficulties([]);
+    setLocalDifficulties([...DIFFICULTIES]);
     setTrainRange([0, 180]);
     setDistanceRange([0, 34]);
     setElevationRange([0, 4500]);
@@ -677,7 +678,7 @@ export default function SearchModal() {
       }
 
       // 2. Difficulty
-      if (localDifficulties.length > 0) {
+      if (isDifficultyFilterActive(localDifficulties)) {
         const randoDiffNorm = (rando.difficulty || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         const hasMatch = localDifficulties.some((d) => {
           const dNorm = d.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -757,7 +758,7 @@ export default function SearchModal() {
   // resets, otherwise "Tout effacer" would sit disabled with something to clear.
   const hasActiveFilters = useMemo(() => {
     return (
-      localDifficulties.length > 0 ||
+      localDifficulties.length !== DIFFICULTIES.length ||
       trainRange[1] < 180 ||
       distanceRange[1] < 34 ||
       elevationRange[1] < 4500 ||

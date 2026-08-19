@@ -94,7 +94,7 @@ export const Input = forwardRef<TextInput, InputProps>(
       : isFocused
       ? theme.primary
       : hasValue
-      ? theme.borderLight
+      ? theme.borderStrong
       : theme.border;
 
     const labelColor = error

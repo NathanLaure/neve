@@ -17,7 +17,11 @@ export interface AdventureJourneyCardProps {
   destinationName: string;
   /** Ouvre le détail pas-à-pas du trajet, dans la feuille tenue par l'écran. */
   onPressDetails: () => void;
-  onModify: () => void;
+  /**
+   * Absent, le bouton de modification n'est pas rendu : une sortie passée se
+   * relit, elle ne se replanifie plus trajet par trajet.
+   */
+  onModify?: () => void;
 }
 
 /**
@@ -89,7 +93,9 @@ export default function AdventureJourneyCard({
           </Text>
         </View>
 
-        <Button title={modifyLabel} variant="tertiary" style={styles.modify} onPress={onModify} />
+        {onModify ? (
+          <Button title={modifyLabel} variant="tertiary" style={styles.modify} onPress={onModify} />
+        ) : null}
       </View>
     </View>
   );

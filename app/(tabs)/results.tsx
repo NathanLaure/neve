@@ -58,6 +58,7 @@ import { useAuth } from '@/context/AuthContext';
 import { filterHikesByPasses } from '@/services/transitService';
 import { SortOptionId, getSortOptionLabel, sortHikes } from '@/constants/SortOptions';
 import { TransportPassId, formatPassesSummary } from '@/types/passenger';
+import { isDifficultyFilterActive } from '@/constants/Filters';
 
 export type MapStyleType = 'default' | 'satellite';
 
@@ -515,7 +516,7 @@ export default function SearchResultsScreen() {
     if (searchQuery) return searchQuery;
 
     const summaryParts: string[] = [];
-    if (selectedDifficulties.length > 0) {
+    if (isDifficultyFilterActive(selectedDifficulties)) {
       summaryParts.push(selectedDifficulties.join(', '));
     }
     if (maxTrainDuration !== null) {

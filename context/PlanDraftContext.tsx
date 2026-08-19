@@ -73,6 +73,30 @@ export interface RestoredPlan {
   savedAdventureId: string;
 }
 
+/**
+ * Ce qu'une aventure enregistrée rend au brouillon pour qu'on en corrige un trajet.
+ *
+ * Contrairement à `RestoredPlan`, le type de voyage suit : reprendre l'aller d'un
+ * aller simple ne doit pas lui inventer un retour au passage.
+ */
+export interface EditedPlan {
+  startDate: string;
+  endDate: string | null;
+  tripType: TripType;
+  /**
+   * Trajets déjà retenus, réinjectés tels quels — y compris celui qu'on part
+   * remplacer : abandonner la modification en cours de route doit laisser
+   * l'aventure exactement dans l'état où on l'a trouvée. C'est
+   * `selectOutwardJourney` qui périmera le retour, et seulement si un nouvel
+   * aller est réellement retenu.
+   */
+  outwardJourney: TransitOption | null;
+  outwardIsRealtime: boolean;
+  returnJourney: TransitOption | null;
+  returnIsRealtime: boolean;
+  savedAdventureId: string;
+}
+
 interface PlanDraftContextValue {
   draft: PlanDraft;
   /** Enregistre un choix de dates et le marque comme confirmé. */
@@ -81,8 +105,16 @@ interface PlanDraftContextValue {
    * Retient l'itinéraire d'aller choisi. Le retour déjà retenu est effacé :
    * revenir modifier l'aller change l'heure à laquelle le retour est possible,
    * le précédent n'a plus de raison d'être proposé au résumé.
+   *
+   * `keepReturn` lève cette règle, pour le seul cas où l'on vient corriger
+   * l'aller d'un voyage déjà complet : effacer le retour obligerait à le
+   * rechoisir, alors que ce n'est précisément pas ce qu'on est venu faire.
    */
-  selectOutwardJourney: (journey: TransitOption, isRealtime: boolean) => void;
+  selectOutwardJourney: (
+    journey: TransitOption,
+    isRealtime: boolean,
+    options?: { keepReturn?: boolean }
+  ) => void;
   /** Retient l'itinéraire de retour choisi. */
   selectReturnJourney: (journey: TransitOption, isRealtime: boolean) => void;
   /**
@@ -102,6 +134,15 @@ interface PlanDraftContextValue {
    * seconde.
    */
   restoreForReturn: (restored: RestoredPlan) => void;
+  /**
+   * Repart d'une aventure enregistrée pour en corriger un trajet, depuis la
+   * feuille d'options du récapitulatif ou les boutons « Modifier » du résumé.
+   *
+   * Ne fait que positionner le brouillon — dates, type de voyage, aventure visée.
+   * Rien n'est effacé au passage : le randonneur qui repart sans rien choisir
+   * doit retrouver son voyage intact.
+   */
+  restoreForEdit: (edited: EditedPlan) => void;
   /** Note l'aventure enregistrée, pour que le résumé la corrige au lieu d'en créer une autre. */
   setSavedAdventureId: (id: string) => void;
   /**
@@ -171,14 +212,17 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
     }));
   }, []);
 
-  const selectOutwardJourney = useCallback((journey: TransitOption, isRealtime: boolean) => {
-    setDraft((current) => ({
-      ...current,
-      outwardJourney: journey,
-      outwardIsRealtime: isRealtime,
-      returnJourney: null,
-    }));
-  }, []);
+  const selectOutwardJourney = useCallback(
+    (journey: TransitOption, isRealtime: boolean, options?: { keepReturn?: boolean }) => {
+      setDraft((current) => ({
+        ...current,
+        outwardJourney: journey,
+        outwardIsRealtime: isRealtime,
+        returnJourney: options?.keepReturn ? current.returnJourney : null,
+      }));
+    },
+    []
+  );
 
   const selectReturnJourney = useCallback((journey: TransitOption, isRealtime: boolean) => {
     setDraft((current) => ({ ...current, returnJourney: journey, returnIsRealtime: isRealtime }));
@@ -200,6 +244,25 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       // L'aventure existe déjà : le résumé devra la corriger, pas en créer une
       // seconde à côté.
       savedAdventureId: restored.savedAdventureId,
+    }));
+  }, []);
+
+  const restoreForEdit = useCallback((edited: EditedPlan) => {
+    setDraft((current) => ({
+      ...current,
+      startDate: edited.startDate,
+      // Un aller simple n'a pas de date de retour à retenir, même si l'aventure
+      // en porte une par recopie de l'aller.
+      endDate: edited.tripType === 'oneway' ? null : edited.endDate,
+      tripType: edited.tripType,
+      datesValidated: true,
+      hasCustomReturn: edited.tripType === 'round' && edited.endDate != null,
+      outwardTime: edited.outwardJourney?.departureTime || current.outwardTime,
+      outwardJourney: edited.outwardJourney,
+      outwardIsRealtime: edited.outwardIsRealtime,
+      returnJourney: edited.tripType === 'oneway' ? null : edited.returnJourney,
+      returnIsRealtime: edited.returnIsRealtime,
+      savedAdventureId: edited.savedAdventureId,
     }));
   }, []);
 
@@ -236,6 +299,7 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       selectReturnJourney,
       addReturnTrip,
       restoreForReturn,
+      restoreForEdit,
       setSavedAdventureId,
       setOutwardTime,
       resetDraft,
@@ -248,6 +312,7 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       selectReturnJourney,
       addReturnTrip,
       restoreForReturn,
+      restoreForEdit,
       setSavedAdventureId,
       setOutwardTime,
       resetDraft,
