@@ -1,0 +1,16 @@
+-- Migration : ferme la lecture publique de `user_adventures`.
+--
+-- À N'APPLIQUER QU'APRÈS le déploiement du site utilisant
+-- `get_shared_adventure` : tant que la page `/share/[token]` interroge la table
+-- directement, retirer cette politique renvoie toutes les feuilles de route
+-- partagées sur une page « introuvable ».
+--
+-- Ordre sûr :
+--   1. appliquer `20260820_get_shared_adventure_rpc.sql` (purement additif) ;
+--   2. déployer le site, qui passe alors par la fonction ;
+--   3. appliquer cette migration-ci.
+--
+-- La politique retirée autorisait le rôle `anon` à lire toute ligne dont le
+-- jeton n'était pas nul — c'est-à-dire toutes les aventures partagées, de tous
+-- les comptes, sans jamais vérifier quel jeton l'appelant connaissait.
+drop policy if exists "Allow public read on shared adventures" on public.user_adventures;
