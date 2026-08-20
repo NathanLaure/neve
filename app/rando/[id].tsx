@@ -324,33 +324,24 @@ export default function RandoDetailScreen() {
     },
   ];
 
-  // Mock comments/reviews
-  const reviews = [
-    {
-      id: 'rev-1',
-      name: 'Michel Ion',
-      time: 'Il y a 1 semaine',
-      stars: 5,
-      comment: 'Belle balade, ça fait les jambes, beaucoup de montée !!!',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80',
-    },
-    {
-      id: 'rev-2',
-      name: 'Sophie Dubois',
-      time: 'Il y a 3 jours',
-      stars: 4,
-      comment: 'Une expérience incroyable! Les paysages étaient à couper le souffle et j’ai adoré chaque minute passée en pleine nature. Je recommande vivement.',
-      avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=100&q=80',
-    },
-    {
-      id: 'rev-3',
-      name: 'Thomas Martin',
-      time: 'Il y a 2 semaines',
-      stars: 5,
-      comment: 'C’était une aventure mémorable! Bien que le chemin soit difficile par moments, la vue au sommet en valait vraiment la peine. N’oubliez pas votre appareil photo !',
-      avatar: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?auto=format&fit=crop&w=100&q=80',
-    },
-  ];
+  /*
+   * Note réelle de la randonnée, ou rien.
+   *
+   * Cet écran affichait auparavant trois témoignages inventés — noms et photos
+   * de banque d'images — sous une note « 4,6 » figée et un nombre d'avis tiré du
+   * premier caractère de l'identifiant. C'était du remplissage de maquette, mais
+   * publié tel quel ce sont de faux avis : trompeur pour le randonneur, et motif
+   * de retrait chez Google au titre de la fausse déclaration.
+   *
+   * `rating_avg` et `rating_count` viennent de la base et valent zéro tant que
+   * personne n'a noté. Tant que la table `hike_comments` n'est alimentée par
+   * aucun écran, c'est donc l'état vide qui s'affiche — ce qui est la vérité.
+   */
+  const ratingCount = rando?.ratingCount ?? 0;
+  const ratingAvg = rando?.ratingAvg ?? 0;
+  const hasReviews = ratingCount > 0 && ratingAvg > 0;
+  /** Virgule décimale : une note se lit « 4,6 » en français, pas « 4.6 ». */
+  const ratingLabel = ratingAvg.toFixed(1).replace('.', ',');
 
   // Hike categories/keywords
   const categories = [
@@ -582,12 +573,19 @@ export default function RandoDetailScreen() {
                 </View>
               </View>
 
-              <View style={styles.ratingRow}>
-                <Star size={12} color={theme.text} fill={theme.text} />
-                <Text style={[styles.ratingText, { color: theme.text }]}>
-                  4,6 <Text style={[styles.ratingCountText, { color: theme.textMuted }]}>({rando.id.charCodeAt(0) % 150 + 80})</Text>
-                </Text>
-              </View>
+              {/* Rien plutôt qu'une note inventée : une randonnée que personne
+                  n'a encore notée n'a pas de note à montrer. */}
+              {hasReviews ? (
+                <View style={styles.ratingRow}>
+                  <Star size={12} color={theme.text} fill={theme.text} />
+                  <Text style={[styles.ratingText, { color: theme.text }]}>
+                    {ratingLabel}{' '}
+                    <Text style={[styles.ratingCountText, { color: theme.textMuted }]}>
+                      ({ratingCount})
+                    </Text>
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             {/* Hike Main Title */}
@@ -801,57 +799,29 @@ export default function RandoDetailScreen() {
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Avis des randonneurs</Text>
           </View>
 
-          <View style={[styles.reviewsSummaryRow, { marginBottom: 24 }]}>
-            <View style={styles.reviewsSummaryLeft}>
-              <Text style={[styles.reviewsLargeScore, { color: theme.text }]}>4,6</Text>
-              <Star size={20} color={theme.text} fill={theme.text} style={{ marginBottom: 7 }} />
+          {hasReviews ? (
+            <View style={[styles.reviewsSummaryRow, { marginBottom: 24 }]}>
+              <View style={styles.reviewsSummaryLeft}>
+                <Text style={[styles.reviewsLargeScore, { color: theme.text }]}>{ratingLabel}</Text>
+                <Star size={20} color={theme.text} fill={theme.text} style={{ marginBottom: 7 }} />
+              </View>
+              <Text style={[styles.reviewsCountUnderline, { color: theme.textMuted }]}>
+                {ratingCount} avis
+              </Text>
             </View>
-            <Text style={[styles.reviewsCountUnderline, { color: '#989898' }]}>234 avis</Text>
-          </View>
+          ) : (
+            /* Aucun avis : on le dit. La liste des avis se remplira quand les
+               randonneurs pourront en déposer — pas avant. */
+            <Text style={[styles.reviewsEmptyText, { color: theme.textMuted }]}>
+              Aucun avis pour l’instant. Sois le premier à raconter cette randonnée.
+            </Text>
+          )}
 
           {/* Write a review Button */}
           <Button
             variant="tertiary"
             title="Laisser un avis sur cette randonnée"
             onPress={() => Alert.alert('Laisser un avis', 'Formulaire de notation en cours de développement.')}
-          />
-
-          {/* Reviews List */}
-          <View style={styles.reviewsListContainer}>
-            {reviews.map((rev) => (
-              <View key={rev.id} style={[styles.reviewItem, { borderBottomColor: theme.border }]}>
-                <View style={styles.reviewHeader}>
-                  <View style={styles.reviewUserRow}>
-                    <Image source={{ uri: rev.avatar }} style={styles.reviewAvatar} />
-                    <View>
-                      <Text style={[styles.reviewUserName, { color: theme.text }]}>{rev.name}</Text>
-                      <Text style={[styles.reviewTime, { color: theme.textMuted }]}>{rev.time}</Text>
-                    </View>
-                  </View>
-                  <View style={styles.reviewStars}>
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        size={16}
-                        color={i < rev.stars ? theme.text : theme.border}
-                        fill={i < rev.stars ? theme.text : 'transparent'}
-                        style={{ marginLeft: 2 }}
-                      />
-                    ))}
-                  </View>
-                </View>
-                <Text style={[styles.reviewContentText, { color: theme.text }]}>
-                  {rev.comment}
-                </Text>
-              </View>
-            ))}
-          </View>
-
-          {/* View all reviews Button */}
-          <Button
-            variant="tertiary"
-            title="Afficher tous les avis"
-            onPress={() => Alert.alert('Tous les avis', 'Affichage de la liste complète des avis.')}
           />
 
         </View>
@@ -1552,6 +1522,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textDecorationLine: 'underline',
   },
+  reviewsEmptyText: {
+    fontFamily: 'Satoshi-Regular',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 24,
+  },
   actionBtn: {
     borderRadius: 12,
     alignItems: 'center',
@@ -1568,48 +1544,9 @@ const styles = StyleSheet.create({
     fontFamily: 'BricolageGrotesque-Medium',
     fontSize: 16,
   },
-  reviewsListContainer: {
-    marginTop: 12,
-  },
-  reviewItem: {
-    borderBottomWidth: 1,
-    paddingBottom: 36,
-    marginTop: 20,
-  },
-  reviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    marginBottom: 4,
-  },
-  reviewUserRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  reviewAvatar: {
-    width: 53,
-    height: 53,
-    borderRadius: 100,
-  },
-  reviewUserName: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
-  },
-  reviewTime: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
-  },
-  reviewStars: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  reviewContentText: {
-    fontFamily: 'Satoshi-Medium',
-    fontSize: 16,
-    lineHeight: 24,
-    marginTop: 12,
-  },
+  /* Les styles de la liste d'avis sont partis avec elle. Ils reviendront le jour
+     où de vrais avis s'afficheront — les recopier depuis l'historique coûtera
+     moins cher que de laisser traîner un décor sans pièce à jouer. */
   instructionsContainer: {
     marginTop: 4,
   },
