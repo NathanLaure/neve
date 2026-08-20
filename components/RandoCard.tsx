@@ -1114,10 +1114,16 @@ const styles = StyleSheet.create({
   },
   adventureUpcomingImageWrapper: {
     position: 'relative',
-    aspectRatio: 1,
-    minWidth: 118,
-    minHeight: 118,
-    alignSelf: 'stretch',
+    /* Carré figé, et non `alignSelf: 'stretch'` avec `aspectRatio: 1`. Étirée sur
+       la hauteur de la carte, la vignette gagnait aussi en largeur — un titre qui
+       passe à la ligne, ou une adresse de départ un peu longue, et elle enflait.
+       Même parti que la carte des aventures passées, qui pose ses 86 en dur.
+
+       Centrée plutôt que collée en haut : la carte peut dépasser 126, et une
+       vignette alignée sur le bord haut laisserait tout le vide en bas. */
+    width: 118,
+    height: 118,
+    alignSelf: 'center',
     borderRadius: 16,
     overflow: 'hidden',
   },
