@@ -64,10 +64,18 @@ grant execute on function public.get_shared_adventure_preview(text) to anon, aut
 -- `rando_id` y figure, en revanche : c'est lui qui permettra à l'application
 -- d'ouvrir la bonne randonnée quand le destinataire reprendra l'aventure à son
 -- compte.
+-- Supprimée d'abord : ajouter une colonne au `returns table` change le type de
+-- retour, et `create or replace` refuse de le faire.
+drop function if exists public.get_shared_adventure(text);
+
 create or replace function public.get_shared_adventure(p_token text)
 returns table (
   share_token text,
   rando_id text,
+  -- Nom d'affichage de celui qui partage, pour que la modale dise « Untel
+  -- t'invite à randonner » plutôt qu'une formule anonyme. C'est le nom que son
+  -- profil montre déjà ; ni son adresse, ni son identifiant ne suivent.
+  author_name text,
   outward_date date,
   return_date date,
   outward_train jsonb,
@@ -85,6 +93,7 @@ set search_path to ''
 as $function$
   select a.share_token,
          a.rando_id,
+         p.full_name,
          a.outward_date,
          a.return_date,
          a.outward_train,
@@ -95,6 +104,7 @@ as $function$
          a.is_reversed,
          a.hike_snapshot
     from public.user_adventures a
+    left join public.profiles p on p.id = a.user_id
    where a.share_token = p_token
    limit 1;
 $function$;

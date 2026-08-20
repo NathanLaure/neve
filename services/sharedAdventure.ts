@@ -12,6 +12,8 @@ import { supabase } from '@/utils/supabase';
 export interface SharedAdventure {
   shareToken: string;
   randoId: string;
+  /** Nom d'affichage de l'auteur. Absent si son profil n'en porte pas. */
+  authorName?: string;
   outwardDate: string;
   returnDate: string | null;
   outwardTrain: TrainOption;
@@ -62,6 +64,7 @@ export async function fetchSharedAdventure(
     adventure: {
       shareToken: String(row.share_token),
       randoId: String(row.rando_id),
+      authorName: row.author_name?.trim() || undefined,
       outwardDate: String(row.outward_date),
       returnDate: row.return_date ? String(row.return_date) : null,
       outwardTrain: row.outward_train,

@@ -1,7 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import Animated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { X } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
@@ -44,7 +53,11 @@ export default function SharedAdventureScreen() {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const scrollBottomClearance = useScreenFooterPadding();
+  /* `useScreenFooterPadding` comptabilise la barre systeme, pas le bouton qui
+     flotte au-dessus du contenu : on ajoute sa hauteur, son espacement et une
+     respiration, comme le recapitulatif. Sans quoi la derniere ligne se lit
+     sous le bouton. */
+  const scrollBottomClearance = useScreenFooterPadding() + 48 + 12 + 40;
 
   const { hikes, loadHikeDetail } = useAdventure();
   const journeyDetailSheetRef = useRef<BaseBottomSheetModalRef>(null);
@@ -114,10 +127,54 @@ export default function SharedAdventureScreen() {
     ? (rando?.startStation ?? '')
     : (rando?.endStation ?? rando?.startStation ?? '');
 
+  /*
+   * L'invitation nomme son auteur. Sans nom — profil incomplet, aventure
+   * partagée avant que la fonction ne le renvoie — on reste sur une formule qui
+   * dit la même chose sans mentir sur qui l'envoie.
+   *
+   * Le prénom seul : c'est ainsi qu'on annonce quelqu'un, et le nom complet
+   * n'ajoute rien à une invitation entre gens qui se connaissent déjà.
+   */
+  const invitationLabel = useMemo(() => {
+    const firstName = adventure?.authorName?.split(' ')[0]?.trim();
+    return firstName
+      ? `${firstName} t’invite à venir randonner`
+      : 'On t’invite à venir randonner';
+  }, [adventure]);
+
   const handleOpenDetails = (phase: 'outward' | 'return') => {
     setDetailedPhase(phase);
     journeyDetailSheetRef.current?.present();
   };
+
+  /*
+   * En-tête qui prend le relais du titre au défilement, comme le récapitulatif :
+   * le grand titre s'efface sur la première moitié de la course, le compact
+   * n'arrive que sur la seconde. Un fondu croisé superposerait deux titres à
+   * demi transparents à mi-chemin.
+   */
+  const scrollY = useSharedValue(0);
+  const titleBlockHeight = useSharedValue(0);
+
+  const headerScrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
+  });
+
+  const collapse = useDerivedValue(() => {
+    if (titleBlockHeight.value <= 0) return 0;
+    return Math.min(1, Math.max(0, scrollY.value / titleBlockHeight.value));
+  });
+
+  const bigTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0, 0.45], [1, 0], Extrapolation.CLAMP),
+  }));
+
+  const compactTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: 8 * (1 - collapse.value) }],
+  }));
 
   /**
    * Reprendre l'aventure à son compte.
@@ -180,27 +237,53 @@ export default function SharedAdventureScreen() {
     <View style={[styles.screen, { backgroundColor: theme.background, paddingTop: insets.top }]}>
       <Stack.Screen options={{ headerShown: false }} />
 
+      {/* La modale plein écran ouvre son propre contexte : le style posé à la
+          racine ne la suit pas, et les icônes système restaient claires sur le
+          fond clair de l'app. */}
+      <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} animated />
+
       {/* Une croix et non une flèche : on ferme une parenthèse, on ne remonte
-          pas d'un cran dans un parcours. */}
-      <View style={styles.header}>
+          pas d'un cran dans un parcours.
+
+          Barre opaque et fixe : c'est elle qui masque le titre qui remonte. */}
+      <View style={[styles.header, { backgroundColor: theme.background }]}>
         <IconButton
           variant="circle"
           icon={<X size={20} color={Colors.light.buttonIconColor} />}
           style={{ backgroundColor: Colors.light.buttonBgIcon }}
           onPress={() => router.back()}
         />
+
+        <View style={styles.headerCenter} pointerEvents="none">
+          <Animated.Text
+            numberOfLines={1}
+            style={[styles.compactTitle, { color: theme.text }, compactTitleStyle]}>
+            {rando.title}
+          </Animated.Text>
+        </View>
+
+        {/* Symétrique de la croix, invisible : sans lui le titre se centre sur
+            l'espace restant et se retrouve décalé d'une demi-pastille. */}
+        <View style={styles.headerSpacer} />
       </View>
 
-      <ScrollView
+      <Animated.ScrollView
+        onScroll={headerScrollHandler}
+        scrollEventThrottle={16}
         contentContainerStyle={[styles.content, { paddingBottom: scrollBottomClearance }]}
         showsVerticalScrollIndicator={false}>
-        <View style={styles.titleBlock}>
-          <Text style={[styles.eyebrow, { color: theme.tint }]}>On t’invite à l’aventure</Text>
+        <Animated.View
+          style={[styles.titleBlock, bigTitleStyle]}
+          onLayout={(event) => {
+            const height = event.nativeEvent.layout.height;
+            if (height > 0) titleBlockHeight.value = height;
+          }}>
+          <Text style={[styles.eyebrow, { color: theme.textMuted }]}>{invitationLabel}</Text>
           <Text style={[styles.title, { color: theme.text }]}>{rando.title}</Text>
           <Text style={[styles.subtitle, { color: theme.textMuted }]}>
             {formatAdventureRange(adventure.outwardDate, adventure.returnDate)}
           </Text>
-        </View>
+        </Animated.View>
 
         <AdventureTimelineCaption label="C'est le début de l'aventure !" />
 
@@ -247,7 +330,7 @@ export default function SharedAdventureScreen() {
           Les horaires ci-dessus sont ceux de la personne qui t’a envoyé ce lien. En ajoutant
           l’aventure, tes propres trajets seront calculés depuis ton point de départ.
         </Text>
-      </ScrollView>
+      </Animated.ScrollView>
 
       <ScreenFooter>
         <Button title="Ajouter à mes aventures" variant="primary" onPress={handleAdd} />
@@ -267,9 +350,26 @@ const styles = StyleSheet.create({
   },
   header: {
     flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
     paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 8,
+  },
+  headerCenter: {
+    flex: 1,
+    minWidth: 0,
+  },
+  /* Symétrique de la croix : sans lui, le titre se centre sur l'espace restant
+     et se retrouve décalé d'une demi-pastille. */
+  headerSpacer: {
+    width: 40,
+  },
+  compactTitle: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 15,
+    lineHeight: 20,
+    textAlign: 'center',
   },
   content: {
     paddingHorizontal: 20,
