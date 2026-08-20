@@ -48,6 +48,7 @@ import ScreenFooter from '@/components/ScreenFooter';
 import { IconButton } from '@/components/IconButton';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, calculateDistanceKm } from '@/context/AdventureContext';
+import { showToast } from '@/utils/toast';
 import { useAuth } from '@/context/AuthContext';
 import { TrainOption } from '@/constants/RandosData';
 import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
@@ -656,13 +657,13 @@ export default function PlanScreen() {
     );
   }
 
-  const handleFinalize = () => {
+  const handleFinalize = async () => {
     if (!selectedOutwardTrain) return;
     // En aller simple il n'y a pas de retour à choisir : on réutilise l'aller pour
     // satisfaire le modèle existant de PlannedAdventure, qui en exige un.
     const returnTrain = selectedReturnTrain ?? selectedOutwardTrain;
 
-    const advId = addAdventure({
+    const { id: advId, error } = await addAdventure({
       randoId: rando.id,
       outwardDate: startDate,
       returnDate: effectiveEndDate ?? startDate,
@@ -673,6 +674,13 @@ export default function PlanScreen() {
       isReversed,
       isBooked: false,
     });
+
+    /* Écriture refusée : l'aventure n'existe qu'en mémoire et disparaîtra au
+       premier rechargement. On ne l'annonce pas comme enregistrée. */
+    if (error) {
+      showToast.error("L'aventure n'a pas pu être enregistrée", 'Réessaie dans un instant.');
+      return;
+    }
 
     router.replace(`/recap?adventureId=${advId}`);
   };

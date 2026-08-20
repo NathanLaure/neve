@@ -1,15 +1,13 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useRef, useState, useMemo } from 'react';
 import { StyleSheet, View, Text, Platform } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
+import '@/services/mapbox';
 import { Navigation2 } from 'lucide-react-native';
 import { RandoData } from '@/constants/RandosData';
 import { useColorScheme } from '@/components/useColorScheme';
 import Colors from '@/constants/Colors';
 import { TRACE_MIN_ZOOM } from '@/services/hikeTraceService';
 import type { HikeTrace } from '@/components/useHikeTraces';
-
-const MAPBOX_TOKEN = process.env.EXPO_PUBLIC_MAPBOX_ACCESS_TOKEN || '';
-Mapbox.setAccessToken(MAPBOX_TOKEN);
 
 export interface BoundingBox {
   swLat: number;
@@ -58,7 +56,12 @@ interface ExplorerMapProps {
 
 export interface ExplorerMapRef {
   resetNorth: () => void;
-  centerOnUser: () => void;
+  /**
+   * Recadre sur la position suivie. Des coordonnées explicites l'emportent :
+   * celles qui viennent d'être obtenues du GPS ne sont pas encore redescendues
+   * en props au moment où l'appelant veut viser.
+   */
+  centerOnUser: (coords?: { latitude: number; longitude: number }) => void;
   /**
    * Fait sauter le recadrage automatique du prochain changement de sélection.
    * À appeler juste avant de sélectionner une rando depuis la carte elle-même.
@@ -172,10 +175,10 @@ const ExplorerMap = forwardRef<ExplorerMapRef, ExplorerMapProps>(function Explor
     },
     // Recenters the camera on the position already tracked in the background —
     // it does not request a new GPS fix.
-    centerOnUser: () => {
+    centerOnUser: (coords) => {
       setCameraProgrammatically(
         {
-          centerCoordinate: [safeUserLng, safeUserLat],
+          centerCoordinate: [coords?.longitude ?? safeUserLng, coords?.latitude ?? safeUserLat],
           zoomLevel: initialZoomLevel,
         },
         600

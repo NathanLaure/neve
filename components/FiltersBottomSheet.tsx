@@ -47,10 +47,16 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
     getTransitInfo,
     selectedDifficulties,
     setSelectedDifficulties,
+    minTrainDuration,
+    setMinTrainDuration,
     maxTrainDuration,
     setMaxTrainDuration,
+    minDistance,
+    setMinDistance,
     maxDistance,
     setMaxDistance,
+    minElevation,
+    setMinElevation,
     maxElevation,
     setMaxElevation,
     dogsAllowed,
@@ -85,9 +91,11 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   useImperativeHandle(ref, () => ({
     present: () => {
       setLocalDifficulties(selectedDifficulties);
-      setTrainRange([0, maxTrainDuration !== null ? maxTrainDuration : 180]);
-      setDistanceRange([0, maxDistance !== null ? maxDistance : 34]);
-      setElevationRange([0, maxElevation !== null ? maxElevation : 4500]);
+      /* Les deux bornes sont relues : rouvrir la feuille doit montrer la plage
+         réellement appliquée, pas seulement son plafond. */
+      setTrainRange([minTrainDuration ?? 0, maxTrainDuration ?? 180]);
+      setDistanceRange([minDistance ?? 0, maxDistance ?? 34]);
+      setElevationRange([minElevation ?? 0, maxElevation ?? 4500]);
       setLocalDogs(dogsAllowed);
       setLocalKids(kidsFriendly);
       setLocalActivityTypes(selectedActivityTypes);
@@ -100,8 +108,14 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
   }));
 
   const handleApply = () => {
+    /* Une borne posée sur la butée ne filtre rien : on la traduit en `null`
+       plutôt qu'en 0 ou en maximum, pour que le compteur de filtres actifs ne
+       compte pas une plage qui laisse tout passer. */
+    setMinTrainDuration(trainRange[0] <= 0 ? null : trainRange[0]);
     setMaxTrainDuration(trainRange[1] >= 180 ? null : trainRange[1]);
+    setMinDistance(distanceRange[0] <= 0 ? null : distanceRange[0]);
     setMaxDistance(distanceRange[1] >= 34 ? null : distanceRange[1]);
+    setMinElevation(elevationRange[0] <= 0 ? null : elevationRange[0]);
     setMaxElevation(elevationRange[1] >= 4500 ? null : elevationRange[1]);
     setSelectedDifficulties(localDifficulties);
     setDogsAllowed(localDogs);
@@ -195,24 +209,33 @@ const FiltersBottomSheetRender: React.ForwardRefRenderFunction<
 
       // 3. Hike Distance
       const maxDistVal = distanceRange[1] >= 34 ? null : distanceRange[1];
-      if (maxDistVal !== null) {
+      const minDistVal = distanceRange[0] <= 0 ? null : distanceRange[0];
+      if (maxDistVal !== null || minDistVal !== null) {
         const distNum = (rando as any).distance_km ?? parseFloat(rando.distance);
-        if (!isNaN(distNum) && distNum > maxDistVal) return false;
+        if (!isNaN(distNum)) {
+          if (maxDistVal !== null && distNum > maxDistVal) return false;
+          if (minDistVal !== null && distNum < minDistVal) return false;
+        }
       }
 
       // 4. Hike Elevation
       const maxElevVal = elevationRange[1] >= 4500 ? null : elevationRange[1];
-      if (maxElevVal !== null) {
+      const minElevVal = elevationRange[0] <= 0 ? null : elevationRange[0];
+      if (maxElevVal !== null || minElevVal !== null) {
         const elevMatch = rando.elevation ? rando.elevation.match(/\d+/) : null;
         const elevNum = (rando as any).elevation_gain_m ?? (elevMatch ? parseInt(elevMatch[0], 10) : 0);
-        if (elevNum > maxElevVal) return false;
+        if (maxElevVal !== null && elevNum > maxElevVal) return false;
+        if (minElevVal !== null && elevNum < minElevVal) return false;
       }
 
       // 5. Train Duration (Transit time)
       const maxTrainVal = trainRange[1] >= 180 ? null : trainRange[1];
-      if (maxTrainVal !== null) {
+      const minTrainVal = trainRange[0] <= 0 ? null : trainRange[0];
+      if (maxTrainVal !== null || minTrainVal !== null) {
         const transitInfo = getTransitInfo(rando);
-        if (transitInfo.durationMinutes > maxTrainVal) return false;
+        const minutes = transitInfo.durationMinutes;
+        if (maxTrainVal !== null && minutes > maxTrainVal) return false;
+        if (minTrainVal !== null && minutes < minTrainVal) return false;
       }
 
       // 6. Dogs Allowed

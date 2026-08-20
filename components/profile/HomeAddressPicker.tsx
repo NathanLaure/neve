@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Mapbox from '@rnmapbox/maps';
+import '@/services/mapbox';
 import * as Location from 'expo-location';
 import { House, Lock } from 'lucide-react-native';
 

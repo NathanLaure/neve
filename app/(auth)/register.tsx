@@ -65,6 +65,23 @@ export default function SwarmAuthScreen() {
     isLoading,
   } = useAuth();
 
+  /*
+   * Parcours réduit aux seules autorisations système.
+   *
+   * On y entre quand un compte déjà constitué ouvre l'app sur un appareil neuf :
+   * la gare d'origine, les pass et la newsletter sont sur le profil, seules les
+   * autorisations sont propres au téléphone. Le parcours s'arrête donc après la
+   * localisation, au lieu d'enchaîner sur des questions déjà répondues.
+   */
+  const isDeviceOnlyOnboarding =
+    (Array.isArray(searchParams.scope) ? searchParams.scope[0] : searchParams.scope) === 'device';
+
+  /** Sortie du parcours réduit : rien d'autre à demander, on entre dans l'app. */
+  const finishDeviceOnboarding = async () => {
+    await completeAccountOnboarding();
+    router.replace('/(tabs)');
+  };
+
   const initialAuthMode = (() => {
     const raw = Array.isArray(searchParams.mode) ? searchParams.mode[0] : searchParams.mode;
     if (
@@ -295,6 +312,30 @@ export default function SwarmAuthScreen() {
         await signIn(email, password);
       }
       setIsCheckingConfirmation(false);
+
+      /*
+       * Les étapes qui suivent écrivent toutes dans le profil, et les politiques
+       * RLS exigent `auth.uid() = id` : sans session, elles sont refusées une par
+       * une, en silence. Le mot de passe n'est pas toujours là — l'étape de
+       * vérification est reprise depuis AsyncStorage, lui non — et la connexion
+       * était donc conditionnelle alors que la suite ne l'était pas.
+       *
+       * On interroge le client plutôt que l'état React : `signIn` vient de le
+       * poser, le rendu n'a pas encore eu lieu.
+       */
+      const {
+        data: { session: activeSession },
+      } = await supabase.auth.getSession();
+
+      if (!activeSession) {
+        showToast.error(
+          'Connexion nécessaire',
+          'Ton adresse est confirmée. Connecte-toi pour terminer ton profil.'
+        );
+        await goToStep('login');
+        return;
+      }
+
       await goToStep('notifications');
     } else {
       setIsCheckingConfirmation(false);
@@ -401,6 +442,16 @@ export default function SwarmAuthScreen() {
 
   // Handle Location Permission Request Post Registration
   const handleRequestLocation = async () => {
+    if (isDeviceOnlyOnboarding) {
+      try {
+        await refreshUserLocation();
+      } catch (e) {
+        console.warn('Location permission notice:', e);
+      }
+      await finishDeviceOnboarding();
+      return;
+    }
+
     try {
       await refreshUserLocation();
     } catch (e) {
@@ -412,14 +463,17 @@ export default function SwarmAuthScreen() {
   // Handle Home Location declaration
   const handleHomeLocationChoice = async () => {
     if (homePlace) {
-      try {
-        await updateProfile({
-          homeLocation: formatPlaceLabel(homePlace),
-          homeLat: homePlace.latitude,
-          homeLng: homePlace.longitude,
-        });
-      } catch (e) {
-        console.warn('Home location notice:', e);
+      /* `updateProfile` rend `{ error }` et ne lève jamais : le `try/catch` d'avant
+         ne pouvait rien attraper, et une écriture refusée passait inaperçue —
+         l'adresse était perdue sans que personne ne le sache. */
+      const { error } = await updateProfile({
+        homeLocation: formatPlaceLabel(homePlace),
+        homeLat: homePlace.latitude,
+        homeLng: homePlace.longitude,
+      });
+
+      if (error) {
+        showToast.error('Adresse non enregistrée', 'Tu pourras la reprendre depuis ton profil.');
       }
     }
     await goToStep('transport');
@@ -432,20 +486,19 @@ export default function SwarmAuthScreen() {
    * randonneur d'une aventure.
    */
   const handleTransportChoice = async () => {
-    try {
-      await updateProfile({ transportPasses });
-    } catch (e) {
-      console.warn('Transport passes notice:', e);
+    // Même remarque que pour l'adresse : le retour porte l'échec, pas une exception.
+    const { error } = await updateProfile({ transportPasses });
+    if (error) {
+      showToast.error('Pass non enregistrés', 'Tu pourras les reprendre depuis tes réglages.');
     }
     await goToStep('newsletter');
   };
 
   // Handle Newsletter Opt-In Post Registration
   const handleNewsletterChoice = async (accepted: boolean) => {
-    try {
-      await updateProfile({ newsletterConsent: accepted });
-    } catch (e) {
-      console.warn('Newsletter consent notice:', e);
+    const { error } = await updateProfile({ newsletterConsent: accepted });
+    if (error) {
+      showToast.error('Choix non enregistré', 'Tu pourras le reprendre depuis tes réglages.');
     }
     await goToStep('welcome');
   };
@@ -607,7 +660,11 @@ export default function SwarmAuthScreen() {
           {authMode === 'location' && (
             <LocationStep
               onRequestLocation={handleRequestLocation}
-              onSkip={() => goToStep('home-location')}
+              onSkip={
+                isDeviceOnlyOnboarding
+                  ? finishDeviceOnboarding
+                  : () => goToStep('home-location')
+              }
             />
           )}
 

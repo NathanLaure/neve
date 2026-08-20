@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import * as WebBrowser from 'expo-web-browser';
 import * as Linking from 'expo-linking';
+import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { makeRedirectUri } from 'expo-auth-session';
 import { User, Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -41,6 +43,12 @@ interface AuthContextType {
   hasCompletedOnboarding: boolean;
   hasCompletedAccountOnboarding: boolean;
   accountOnboardingStep: string | null;
+  /**
+   * `device` : seules les autorisations système sont à (re)poser, le reste du
+   * profil est déjà renseigné sur le compte. Le parcours s'arrête alors après la
+   * localisation au lieu d'enchaîner sur la gare d'origine et les pass.
+   */
+  accountOnboardingScope: 'full' | 'device';
   setAccountOnboardingStep: (step: string) => Promise<void>;
   completeAccountOnboarding: () => Promise<void>;
   isEmailConfirmed: boolean;
@@ -169,8 +177,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [hasCompletedOnboarding, setHasCompletedOnboarding] = useState(false);
   const [hasCompletedAccountOnboarding, setHasCompletedAccountOnboarding] = useState(true);
   const [accountOnboardingStep, setAccountOnboardingStepState] = useState<string | null>(null);
+  const [accountOnboardingScope, setAccountOnboardingScope] = useState<'full' | 'device'>('full');
 
   const isEmailConfirmed = !!user?.email_confirmed_at;
+
+  /**
+   * Première autorisation système jamais demandée sur cet appareil, s'il en reste.
+   *
+   * Ne renvoie que les étapes liées à l'appareil. La gare d'origine, les pass et
+   * la newsletter vivent sur le profil : les redemander à chaque nouveau téléphone
+   * serait à la fois pénible et faux.
+   *
+   * Un refus n'est pas un oubli : `denied` veut dire que l'utilisateur a déjà
+   * répondu ici, on ne le relance pas. Et toute erreur de sondage rend `null` —
+   * cette fonction garde la porte d'entrée de l'app, elle ne doit jamais la
+   * bloquer.
+   */
+  const findPendingDevicePermission = async (): Promise<string | null> => {
+    try {
+      const notifications = await Notifications.getPermissionsAsync();
+      if (notifications.status === 'undetermined') return 'notifications';
+
+      const location = await Location.getForegroundPermissionsAsync();
+      if (location.status === 'undetermined') return 'location';
+
+      return null;
+    } catch (e) {
+      console.warn('Could not read device permissions:', e);
+      return null;
+    }
+  };
 
   const checkAccountOnboarding = async (currentUser: User) => {
     try {
@@ -183,13 +219,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const savedStep = await AsyncStorage.getItem(`@neve_account_onboarding_step_${currentUser.id}`);
       if (savedStep) {
+        /* La portée est reprise avec l'étape : sans elle, une app tuée entre les
+           notifications et la localisation reprendrait en parcours complet et
+           redemanderait la gare d'origine, les pass et la newsletter. */
+        const savedScope = await AsyncStorage.getItem(
+          `@neve_account_onboarding_scope_${currentUser.id}`
+        );
         setHasCompletedAccountOnboarding(false);
+        setAccountOnboardingScope(savedScope === 'device' ? 'device' : 'full');
         setAccountOnboardingStepState(savedStep);
         return;
       }
 
-      // Par défaut pour les comptes déjà établis sans étape en suspens
+      /*
+       * Ni drapeau d'achèvement, ni étape en suspens : deux situations très
+       * différentes que ces clés ne distinguent pas, puisqu'elles vivent dans
+       * AsyncStorage, donc sur l'appareil. Un compte qui a fait son parcours
+       * ailleurs et un appareil neuf se ressemblent parfaitement ici.
+       *
+       * Le système, lui, sait : une autorisation `undetermined` n'a jamais été
+       * demandée sur CET appareil. C'est la seule source fiable, et elle rend le
+       * drapeau inutile pour cette question.
+       */
+      const pending = await findPendingDevicePermission();
+      if (pending) {
+        setHasCompletedAccountOnboarding(false);
+        setAccountOnboardingScope('device');
+        setAccountOnboardingStepState(pending);
+        return;
+      }
+
       setHasCompletedAccountOnboarding(true);
+      setAccountOnboardingScope('full');
       setAccountOnboardingStepState(null);
     } catch (e) {
       console.warn('Error checking account onboarding:', e);
@@ -203,6 +264,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (targetUserId) {
       try {
         await AsyncStorage.setItem(`@neve_account_onboarding_step_${targetUserId}`, step);
+        // La portée en cours suit l'étape, pour survivre à une app tuée en route.
+        await AsyncStorage.setItem(
+          `@neve_account_onboarding_scope_${targetUserId}`,
+          accountOnboardingScope
+        );
         await AsyncStorage.removeItem(`@neve_account_onboarding_completed_${targetUserId}`);
       } catch (e) {
         console.warn('Error saving account onboarding step:', e);
@@ -212,12 +278,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const completeAccountOnboarding = async () => {
     setHasCompletedAccountOnboarding(true);
+    setAccountOnboardingScope('full');
     setAccountOnboardingStepState(null);
     const targetUserId = user?.id || session?.user?.id;
     if (targetUserId) {
       try {
         await AsyncStorage.setItem(`@neve_account_onboarding_completed_${targetUserId}`, 'true');
         await AsyncStorage.removeItem(`@neve_account_onboarding_step_${targetUserId}`);
+        await AsyncStorage.removeItem(`@neve_account_onboarding_scope_${targetUserId}`);
       } catch (e) {
         console.warn('Error completing account onboarding:', e);
       }
@@ -658,6 +726,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasCompletedOnboarding,
         hasCompletedAccountOnboarding,
         accountOnboardingStep,
+        accountOnboardingScope,
         setAccountOnboardingStep,
         completeAccountOnboarding,
         isEmailConfirmed,

@@ -1,4 +1,7 @@
 import '../global.css';
+/* Pose le jeton du SDK natif Mapbox. En tête de la racine : une carte rendue
+   avant cet appel fait tomber l'app côté natif. */
+import '@/services/mapbox';
 import React, { useEffect } from 'react';
 import { DevSettings, LogBox, View, Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';

@@ -11,6 +11,7 @@ export default function IndexGatekeeper() {
     hasCompletedOnboarding,
     hasCompletedAccountOnboarding,
     accountOnboardingStep,
+    accountOnboardingScope,
   } = useAuth();
   const [isSplashFinished, setIsSplashFinished] = useState(false);
 
@@ -27,13 +28,15 @@ export default function IndexGatekeeper() {
 
   // 2. User is authenticated
   if (user && session) {
-    // If user has an in-progress account onboarding step (e.g. notifications, location, etc.), resume it!
+    /* Étape en suspens à reprendre : soit une inscription interrompue, soit les
+       autorisations système jamais posées sur cet appareil — la portée dit
+       laquelle, et jusqu'où le parcours doit aller. */
     if (!hasCompletedAccountOnboarding && accountOnboardingStep) {
       return (
         <Redirect
           href={{
             pathname: '/(auth)/register',
-            params: { mode: accountOnboardingStep },
+            params: { mode: accountOnboardingStep, scope: accountOnboardingScope },
           }}
         />
       );

@@ -87,11 +87,16 @@ export const OutwardHeader: React.FC<OutwardHeaderProps> = ({
       <View style={styles.actionBar}>
         {/* Pastille claire dans les deux thèmes, `Colors.light` et non `theme` :
             même règle que les retours de la planification et du résumé. En sombre,
-            `theme.card` la peignait en noir. */}
+            `theme.card` la peignait en noir.
+
+            `circle` et non le gabarit `plain` sur mesure : la rangée d'icônes doit
+            tomber à la même hauteur d'un écran à l'autre du parcours, et c'est la
+            taille qu'ont les trois autres en-têtes. */}
         <IconButton
-          icon={<ArrowLeft size={18} color={Colors.light.buttonIconColor} />}
+          variant="circle"
+          icon={<ArrowLeft size={20} color={Colors.light.buttonIconColor} />}
           onPress={onBack}
-          style={[styles.backButton, { backgroundColor: Colors.light.buttonBgIcon }]}
+          style={{ backgroundColor: Colors.light.buttonBgIcon }}
         />
 
         <View style={styles.titleContainer}>
@@ -148,7 +153,10 @@ export const OutwardHeader: React.FC<OutwardHeaderProps> = ({
 const styles = StyleSheet.create({
   headerContainer: {
     paddingHorizontal: 16,
-    paddingTop: 12,
+    /* 8 et non 12 : l'écran pose déjà `insets.top` sur son conteneur, ce qui
+       aligne la rangée sur le `insets.top + 8` de la planification, du résumé et
+       du récapitulatif. */
+    paddingTop: 8,
     paddingBottom: 8,
     zIndex: 10,
   },
@@ -157,11 +165,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     minHeight: 40,
     gap: 12,
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
   },
   titleContainer: {
     flex: 1,

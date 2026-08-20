@@ -102,13 +102,33 @@ interface AdventureContextType {
   isLoadingHikes: boolean;
   loadHikes: () => Promise<void>;
   loadHikeDetail: (id: string) => Promise<void>;
-  addAdventure: (adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>) => string;
+  /**
+   * Enregistre une aventure et **attend** que la base l'ait acceptée.
+   *
+   * L'écriture était auparavant lancée sans que personne n'en lise le résultat,
+   * son échec se perdant dans un `console.warn` que la production dépouille :
+   * l'app annonçait « enregistrée » sans le savoir, la ligne ne vivait qu'en
+   * mémoire, et le premier rechargement depuis le serveur la faisait disparaître.
+   *
+   * `error` non nul veut dire que seule la copie locale existe — à dire à
+   * l'utilisateur, pas à taire.
+   */
+  addAdventure: (
+    adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>
+  ) => Promise<{ id: string; error: string | null }>;
   updateAdventure: (id: string, updates: Partial<PlannedAdventure>) => void;
   deleteAdventure: (id: string) => void;
   toggleAdventureBooked: (id: string) => void;
   refreshAdventures: () => Promise<void>;
   setUserLocationManually: (coords: Coordinates, name: string) => void;
-  refreshUserLocation: (requestPermission?: boolean) => Promise<void>;
+  /**
+   * Relit la position de l'appareil.
+   *
+   * Rend les coordonnées obtenues, ou `null` si l'autorisation manque ou que le
+   * GPS n'a rien donné : l'appelant qui veut recadrer une carte dessus ne peut
+   * pas attendre le prochain rendu pour savoir où viser.
+   */
+  refreshUserLocation: (requestPermission?: boolean) => Promise<Coordinates | null>;
   /** `fromLocation` overrides the user's tracked position — used to preview a place before committing to it. */
   getTransitInfo: (
     rando: RandoData,
@@ -124,10 +144,22 @@ interface AdventureContextType {
   setSearchQuery: (query: string) => void;
   selectedDifficulties: string[];
   setSelectedDifficulties: (difficulties: string[]) => void;
+  /*
+   * Bornes des trois sélecteurs de plage. `null` veut dire « pas de limite de ce
+   * côté ». L'interface a toujours proposé un intervalle ; seul le plafond était
+   * lu, la poignée gauche bougeait sans effet — un randonneur qui veut marcher au
+   * moins 15 km n'a pas envie de voir des boucles de 3.
+   */
+  minTrainDuration: number | null;
+  setMinTrainDuration: (duration: number | null) => void;
   maxTrainDuration: number | null;
   setMaxTrainDuration: (duration: number | null) => void;
+  minDistance: number | null;
+  setMinDistance: (distance: number | null) => void;
   maxDistance: number | null;
   setMaxDistance: (distance: number | null) => void;
+  minElevation: number | null;
+  setMinElevation: (elevation: number | null) => void;
   maxElevation: number | null;
   setMaxElevation: (elevation: number | null) => void;
   dogsAllowed: boolean;
@@ -281,8 +313,11 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   // Search & Filters State
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedDifficulties, setSelectedDifficulties] = useState<string[]>([...DIFFICULTIES]);
+  const [minTrainDuration, setMinTrainDuration] = useState<number | null>(null);
   const [maxTrainDuration, setMaxTrainDuration] = useState<number | null>(null);
+  const [minDistance, setMinDistance] = useState<number | null>(null);
   const [maxDistance, setMaxDistance] = useState<number | null>(null);
+  const [minElevation, setMinElevation] = useState<number | null>(null);
   const [maxElevation, setMaxElevation] = useState<number | null>(null);
   const [dogsAllowed, setDogsAllowed] = useState(false);
   const [kidsFriendly, setKidsFriendly] = useState(false);
@@ -857,7 +892,9 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     [hikes, updateOfflineHikeIds]
   );
 
-  const refreshUserLocation = async (requestPermission: boolean = true) => {
+  const refreshUserLocation = async (
+    requestPermission: boolean = true
+  ): Promise<Coordinates | null> => {
     setIsLocating(true);
     try {
       let isGranted = false;
@@ -875,7 +912,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         setDeviceLocation(DEFAULT_COORDS);
         setDeviceLocationName(DEFAULT_LOCATION_NAME);
         setIsLocating(false);
-        return;
+        return null;
       }
 
       const location = await Location.getCurrentPositionAsync({
@@ -904,12 +941,15 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         setUserLocationName('Ma Position');
         setDeviceLocationName('Ma Position');
       }
+
+      return coords;
     } catch (error) {
       console.warn('Could not retrieve user location, fallback to Paris:', error);
       setUserLocation(DEFAULT_COORDS);
       setUserLocationName(DEFAULT_LOCATION_NAME);
       setDeviceLocation(DEFAULT_COORDS);
       setDeviceLocationName(DEFAULT_LOCATION_NAME);
+      return null;
     } finally {
       setIsLocating(false);
       // Se déclenche sur les 3 issues possibles (accordé, refusé, erreur) : le point unique
@@ -1095,7 +1135,9 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   }, [user, loadAdventuresFromCache, loadAdventures]);
 
   const addAdventure = useCallback(
-    (adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>) => {
+    async (
+      adventure: Omit<PlannedAdventure, 'id' | 'createdAt'>
+    ): Promise<{ id: string; error: string | null }> => {
       const id = Date.now().toString();
       const matchedHike = hikes.find((h) => h.id === adventure.randoId);
       const snapshot = matchedHike
@@ -1131,16 +1173,21 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         return next;
       });
 
+      /* L'état local est déjà posé au-dessus : l'écran répond tout de suite. Mais
+         on attend la base avant de rendre la main, pour que l'appelant puisse
+         dire la vérité plutôt que d'afficher un succès de principe. */
       if (user) {
-        supabase
+        const { error } = await supabase
           .from('user_adventures')
-          .insert(mapPlannedAdventureToRow(newAdventure, user.id))
-          .then(({ error }) => {
-            if (error) console.warn('Error inserting adventure to Supabase:', error);
-          });
+          .insert(mapPlannedAdventureToRow(newAdventure, user.id));
+
+        if (error) {
+          console.warn('Error inserting adventure to Supabase:', error);
+          return { id, error: error.message };
+        }
       }
 
-      return id;
+      return { id, error: null };
     },
     [hikes, saveAdventuresToCache, user, mapPlannedAdventureToRow]
   );
@@ -1297,8 +1344,11 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   const clearAllFilters = useCallback(() => {
     setSearchQuery('');
     setSelectedDifficulties([...DIFFICULTIES]);
+    setMinTrainDuration(null);
     setMaxTrainDuration(null);
+    setMinDistance(null);
     setMaxDistance(null);
+    setMinElevation(null);
     setMaxElevation(null);
     setDogsAllowed(false);
     setKidsFriendly(false);
@@ -1309,9 +1359,9 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
   const activeFiltersCount = useMemo(
     () =>
       (isDifficultyFilterActive(selectedDifficulties) ? selectedDifficulties.length : 0) +
-      (maxTrainDuration !== null ? 1 : 0) +
-      (maxDistance !== null ? 1 : 0) +
-      (maxElevation !== null ? 1 : 0) +
+      (maxTrainDuration !== null || minTrainDuration !== null ? 1 : 0) +
+      (maxDistance !== null || minDistance !== null ? 1 : 0) +
+      (maxElevation !== null || minElevation !== null ? 1 : 0) +
       (dogsAllowed ? 1 : 0) +
       (kidsFriendly ? 1 : 0) +
       selectedActivityTypes.length +
@@ -1374,22 +1424,30 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       }
 
       // 3. Hike Distance
-      if (maxDistance !== null) {
+      if (maxDistance !== null || minDistance !== null) {
         const distNum = (rando as any).distance_km ?? parseFloat(rando.distance);
-        if (!isNaN(distNum) && distNum > maxDistance) return false;
+        /* Une distance illisible ne disqualifie pas la randonnée : c'est ce que
+           faisait déjà le plafond, la borne basse s'aligne dessus. */
+        if (!isNaN(distNum)) {
+          if (maxDistance !== null && distNum > maxDistance) return false;
+          if (minDistance !== null && distNum < minDistance) return false;
+        }
       }
 
       // 4. Hike Elevation
-      if (maxElevation !== null) {
+      if (maxElevation !== null || minElevation !== null) {
         const elevMatch = rando.elevation ? rando.elevation.match(/\d+/) : null;
         const elevNum = (rando as any).elevation_gain_m ?? (elevMatch ? parseInt(elevMatch[0], 10) : 0);
-        if (elevNum > maxElevation) return false;
+        if (maxElevation !== null && elevNum > maxElevation) return false;
+        if (minElevation !== null && elevNum < minElevation) return false;
       }
 
       // 5. Train Duration (Transit time)
-      if (maxTrainDuration !== null) {
+      if (maxTrainDuration !== null || minTrainDuration !== null) {
         const transitInfo = getTransitInfo(rando);
-        if (transitInfo.durationMinutes > maxTrainDuration) return false;
+        const minutes = transitInfo.durationMinutes;
+        if (maxTrainDuration !== null && minutes > maxTrainDuration) return false;
+        if (minTrainDuration !== null && minutes < minTrainDuration) return false;
       }
 
       // 6. Dogs Allowed
@@ -1441,8 +1499,11 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
     userLocation,
     userLocationName,
     selectedDifficulties,
+    minDistance,
     maxDistance,
+    minElevation,
     maxElevation,
+    minTrainDuration,
     maxTrainDuration,
     dogsAllowed,
     kidsFriendly,
@@ -1477,10 +1538,16 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         setSearchQuery,
         selectedDifficulties,
         setSelectedDifficulties,
+        minTrainDuration,
+        setMinTrainDuration,
         maxTrainDuration,
         setMaxTrainDuration,
+        minDistance,
+        setMinDistance,
         maxDistance,
         setMaxDistance,
+        minElevation,
+        setMinElevation,
         maxElevation,
         setMaxElevation,
         dogsAllowed,

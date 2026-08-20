@@ -137,23 +137,33 @@ function SlideCard({
           </Animated.View>
         </View>
 
-        {/* Card Action Buttons (Back / Next Arrow Circles) */}
+        {/* Flèches de navigation de la carte.
+
+            Mêmes couleurs figées que « Commencer gratuitement », qui est un
+            `secondary` forcé en `colorScheme="light"` : pastille sombre, contenu
+            blanc. Elles se posent sur l'aplat coloré de la diapositive, dont la
+            teinte ne suit pas le thème — `theme.background` les faisait
+            disparaître en sombre, et ne décrivait de toute façon pas la surface
+            sur laquelle elles reposent.
+
+            Les deux flèches vont ensemble : une paire dépareillée serait pire que
+            le défaut d'origine. */}
         <View style={styles.cardNavRow}>
           {index > 0 ? (
             <IconButton
-              icon={<ArrowLeft size={22} color={theme.text} />}
+              icon={<ArrowLeft size={22} color={Colors.light.buttonSecondaryText} />}
               variant="circle"
               onPress={onPrev}
-              style={{ backgroundColor: theme.background }}
+              style={{ backgroundColor: Colors.light.buttonSecondary }}
             />
           ) : null}
 
           {!isLastSlide ? (
             <IconButton
-              icon={<ArrowRight size={22} color={theme.text} />}
+              icon={<ArrowRight size={22} color={Colors.light.buttonSecondaryText} />}
               variant="circle"
               onPress={onNext}
-              style={{ backgroundColor: theme.background }}
+              style={{ backgroundColor: Colors.light.buttonSecondary }}
             />
           ) : null}
         </View>

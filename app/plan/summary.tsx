@@ -141,7 +141,9 @@ export default function PlanSummaryScreen() {
   const hasSavedRef = useRef(false);
 
   const saveAdventure = useCallback(
-    (explicitShareToken?: string): { id: string; shareToken: string } | null => {
+    async (
+      explicitShareToken?: string
+    ): Promise<{ id: string; shareToken: string } | null> => {
       if (!rando || !outwardJourney || !outwardDate) return null;
 
       // En aller simple il n'y a pas de retour à enregistrer : on réutilise l'aller
@@ -186,7 +188,14 @@ export default function PlanSummaryScreen() {
         return { id: savedAdventureId, shareToken };
       }
 
-      const id = addAdventure(payload);
+      const { id, error } = await addAdventure(payload);
+      /* Écriture refusée : l'aventure n'existe qu'en mémoire et disparaîtra au
+         premier rechargement. Mieux vaut le dire que laisser croire. */
+      if (error) {
+        hasSavedRef.current = false;
+        return null;
+      }
+
       setSavedAdventureId(id);
       return { id, shareToken };
     },
@@ -228,8 +237,11 @@ export default function PlanSummaryScreen() {
   const handleShare = useCallback(async () => {
     if (!rando || !outwardDate) return;
 
-    const saved = saveAdventure();
-    if (!saved) return;
+    const saved = await saveAdventure();
+    if (!saved) {
+      showToast.error("L'aventure n'a pas pu être enregistrée");
+      return;
+    }
 
     const { shareToken } = saved;
     const shareUrl = `https://neve-rando.fr/share/${shareToken}`;
@@ -277,16 +289,16 @@ export default function PlanSummaryScreen() {
     saveAdventure,
   ]);
 
-  const handleBuyNow = useCallback(() => {
-    if (!saveAdventure()) {
+  const handleBuyNow = useCallback(async () => {
+    if (!(await saveAdventure())) {
       showToast.error("L'aventure n'a pas pu être enregistrée");
       return;
     }
     buySheetRef.current?.present();
   }, [saveAdventure]);
 
-  const handleLater = useCallback(() => {
-    const saved = saveAdventure();
+  const handleLater = useCallback(async () => {
+    const saved = await saveAdventure();
     if (!saved) {
       showToast.error("L'aventure n'a pas pu être enregistrée");
       return;
@@ -440,7 +452,7 @@ export default function PlanSummaryScreen() {
       (savedAdventure.isOneWay ?? false) === !returnJourney;
 
     if (unchanged) return;
-    saveAdventure();
+    void saveAdventure();
   }, [
     outwardDate,
     outwardJourney,

@@ -37,6 +37,7 @@ import ExplorerMap, { type ExplorerMapRef, type BoundingBox } from '@/components
 import { setPreference, usePreferences } from '@/utils/preferences';
 import GlobalSearchbar from '@/components/GlobalSearchbar';
 import MapControls from '@/components/MapControls';
+import { useLocateMe } from '@/components/useLocateMe';
 import HikesBottomSheet, { type HikesBottomSheetRef } from '@/components/HikesBottomSheet';
 import FiltersBottomSheet, { type FiltersBottomSheetRef } from '@/components/FiltersBottomSheet';
 import RadiusBottomSheet, { type RadiusBottomSheetRef } from '@/components/RadiusBottomSheet';
@@ -82,6 +83,11 @@ export default function ExplorerScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const mapRef = useRef<ExplorerMapRef>(null);
+
+  /* Le bouton « me localiser » demande l'autorisation quand elle n'a jamais été
+     posée : sans elle, recadrer viserait le centre de Paris en faisant croire
+     que c'est la position de l'utilisateur. */
+  const handleLocateMe = useLocateMe((coords) => mapRef.current?.centerOnUser(coords));
   const [fadeAnim] = useState(() => new Animated.Value(1));
 
   const { width: windowWidth } = useWindowDimensions();
@@ -622,7 +628,9 @@ export default function ExplorerScreen() {
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ gap: 6 }}>
               <Pressable
-                onPress={refreshUserLocation}
+                /* Enveloppé : passé directement, l'événement de pression
+                   arrivait dans `requestPermission`. */
+                onPress={() => refreshUserLocation()}
                 style={[styles.simButton, { backgroundColor: theme.greenBadge }]}>
                 {isLocating ? (
                   <ActivityIndicator size="small" color={theme.tint} />
@@ -668,7 +676,7 @@ export default function ExplorerScreen() {
           compassBearing={compassBearing}
           onPressCompass={() => mapRef.current?.resetNorth()}
           onPressLayers={() => layerSheetRef.current?.present()}
-          onPressLocate={() => mapRef.current?.centerOnUser()}
+          onPressLocate={handleLocateMe}
           isLocating={isLocating}
           style={animatedMapControlsStyle}
           pointerEvents={isImmersive ? 'none' : 'auto'}

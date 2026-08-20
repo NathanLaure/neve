@@ -10,7 +10,8 @@
       "requestHeaders": {
         "expo-channel-name": "production"
       },
-      "url": "https://u.expo.dev/edc1c6fe-220f-4a4f-bcc1-124a1fbc7132"
+      "url": "https://u.expo.dev/edc1c6fe-220f-4a4f-bcc1-124a1fbc7132",
+      "fallbackToCacheTimeout": 3000
     },
     "scheme": "neve",
     "platforms": [
@@ -23,6 +24,7 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
+      "./plugins/with-neve-android",
       "expo-router",
       "expo-status-bar",
       "expo-web-browser",
@@ -79,6 +81,7 @@
         "backgroundColor": "#FFF7F2"
       },
       "package": "fr.neverando.app",
+      "versionCode": 2,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ],
