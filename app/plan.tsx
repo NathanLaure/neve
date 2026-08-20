@@ -58,7 +58,7 @@ import {
   computeAutoReturnDate,
   computeHikeDays,
 } from '@/context/PlanDraftContext';
-import { formatDateRangeSummary } from '@/components/plan/DateRangeCalendar';
+import { formatDateRangeSummary, toISODate } from '@/components/plan/DateRangeCalendar';
 import { SELECTABLE_TIMES } from '@/components/plan/TimePickerSheet';
 import PassengersEditor from '@/components/plan/PassengersEditor';
 import PassengersBottomSheet from '@/components/plan/PassengersBottomSheet';
@@ -236,7 +236,7 @@ function TransitOptionsList({
 }
 
 export default function PlanScreen() {
-  const { randoId } = useLocalSearchParams();
+  const { randoId, startDate: sharedStartDate } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
@@ -394,7 +394,7 @@ export default function PlanScreen() {
   // Les dates se choisissent dans la modale `/plan/dates`, une route frère de
   // celle-ci. Elles transitent par le brouillon partagé plutôt que par des
   // paramètres d'URL, qui imposeraient une synchronisation dans les deux sens.
-  const { draft, setOutwardTime, resetDraft } = usePlanDraft();
+  const { draft, commitDates, setOutwardTime, resetDraft } = usePlanDraft();
   const { startDate, tripType, datesValidated, outwardTime } = draft;
 
   /*
@@ -414,6 +414,26 @@ export default function PlanScreen() {
    */
   useLayoutEffect(() => {
     resetDraft();
+
+    /*
+     * Date proposée par un lien de partage, posée juste après la remise à neuf —
+     * jamais avant, elle serait effacée dans la foulée.
+     *
+     * Seulement si elle est encore devant nous : un lien retrouvé des semaines
+     * plus tard ne doit pas préremplir un jour passé, que le calendrier
+     * refuserait de toute façon.
+     */
+    if (typeof sharedStartDate === 'string' && sharedStartDate >= toISODate(new Date())) {
+      commitDates({
+        startDate: sharedStartDate,
+        endDate: null,
+        tripType: 'round',
+        hasCustomReturn: false,
+        outwardTime: '08:00',
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- au montage seulement :
+    // la date du lien ne change pas sous les pieds de l'écran.
   }, [resetDraft]);
 
   // Réinitialiser automatiquement les données stockées uniquement lors du changement de rando.

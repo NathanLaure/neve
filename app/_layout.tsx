@@ -179,6 +179,17 @@ export default function RootLayout() {
                         animation: 'slide_from_bottom',
                       }}
                     />
+                    {/* Aventure reçue par lien. Modale plein écran : elle peut
+                        arriver depuis n'importe quel onglet, à n'importe quel
+                        moment, et ne doit pas déranger la navigation en cours. */}
+                    <Stack.Screen
+                      name="share/[token]"
+                      options={{
+                        headerShown: false,
+                        presentation: 'fullScreenModal',
+                        animation: 'slide_from_bottom',
+                      }}
+                    />
                     <Stack.Screen
                       name="rando/[id]"
                       options={{
