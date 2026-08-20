@@ -42,16 +42,19 @@ $function$;
 revoke all on function public.get_shared_adventure_preview(text) from public;
 grant execute on function public.get_shared_adventure_preview(text) to anon, authenticated;
 
--- 2. LA FEUILLE DE ROUTE, réservée aux comptes.
+-- 2. LA FEUILLE DE ROUTE.
 --
--- Horaires, gares, correspondances : ce qui fait la valeur du lien, et ce pour
--- quoi on demande un compte. `authenticated` seulement — un appelant anonyme
--- n'obtient rien, ce qui est la porte d'entrée de l'écran de connexion, sur le
--- site comme dans l'application.
+-- Horaires, gares, correspondances. Ouverte aux deux rôles, et ce n'est pas un
+-- relâchement : la sécurité tient à ce que la fonction exige un jeton et ne rend
+-- qu'une ligne, là où la politique retirée ouvrait la table entière. Connaître
+-- le lien reste la condition d'accès.
 --
--- Conséquence à connaître : la page `/share/[token]` du site est un composant
--- serveur, dont le client Supabase n'a pas de session. Cette lecture doit donc
--- se faire côté client, là où la session existe.
+-- Demander un compte pour consulter est une décision de produit, qui viendra
+-- avec l'écran de connexion — et pas avant, car elle impose un déplacement :
+-- la page `/share/[token]` est un composant serveur, dont le client Supabase
+-- n'a pas de session. Restreindre à `authenticated` aujourd'hui rendrait la page
+-- inaccessible à tout le monde, y compris aux gens connectés. La lecture devra
+-- d'abord passer côté client.
 --
 -- Les colonnes rendues sont exactement celles qu'affiche la feuille de route.
 -- `user_id`, les coordonnées, la liste des voyageurs et l'état d'achat n'y sont
@@ -96,5 +99,5 @@ as $function$
    limit 1;
 $function$;
 
-revoke all on function public.get_shared_adventure(text) from public, anon;
-grant execute on function public.get_shared_adventure(text) to authenticated;
+revoke all on function public.get_shared_adventure(text) from public;
+grant execute on function public.get_shared_adventure(text) to anon, authenticated;
