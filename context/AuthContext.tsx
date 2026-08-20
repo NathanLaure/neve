@@ -7,6 +7,7 @@ import { makeRedirectUri } from 'expo-auth-session';
 import { User, Session } from '@supabase/supabase-js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/utils/supabase';
+import { removeAvatar } from '@/services/avatarService';
 import { TransportPassId, normalizePasses } from '@/types/passenger';
 
 WebBrowser.maybeCompleteAuthSession();
@@ -81,6 +82,11 @@ interface AuthContextType {
   checkEmailConfirmed: (email?: string) => Promise<boolean>;
   signOut: () => Promise<{ error: string | null }>;
   deleteUnconfirmedUser: () => Promise<void>;
+  /**
+   * Supprime définitivement le compte et toutes ses données, puis déconnecte.
+   * Irréversible : l'appelant doit avoir fait confirmer.
+   */
+  deleteAccount: () => Promise<{ error: string | null }>;
   completeOnboarding: () => void;
   resetPassword: (email: string) => Promise<{ error: string | null }>;
   updateUserPassword: (password: string) => Promise<{ error: string | null }>;
@@ -747,6 +753,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: error ? translateAuthError(error) : null };
   };
 
+  /**
+   * Suppression définitive du compte et de ses données.
+   *
+   * Le serveur fait l'essentiel : `delete_own_account` efface la photo de profil
+   * puis la ligne d'authentification, d'où tout le reste part en cascade. Ne
+   * restent que les traces locales — caches d'aventures, de favoris, drapeaux
+   * d'inscription — qui survivraient sur l'appareil à un compte disparu.
+   *
+   * Rien n'est effacé localement avant la confirmation du serveur : un réseau
+   * coupé laisserait sinon un compte intact et un appareil vidé.
+   */
+  const deleteAccount = async (): Promise<{ error: string | null }> => {
+    const targetUserId = user?.id || session?.user?.id;
+    if (!targetUserId) return { error: 'Aucun utilisateur connecté.' };
+
+    setIsLoading(true);
+    try {
+      /*
+       * La photo passe par l'API de stockage, et avant la suppression du compte :
+       * elle seule efface le fichier lui-même. Retirer la ligne de
+       * `storage.objects` — ce que fait la fonction en dernier recours — ne
+       * supprimerait que l'index et laisserait l'image derrière, ce qui ne
+       * s'appelle pas effacer ses données.
+       *
+       * Un échec ne bloque pas : la session est encore valide, mais le droit à
+       * l'effacement ne peut pas dépendre d'un appel de stockage capricieux.
+       */
+      const { error: avatarError } = await removeAvatar(targetUserId);
+      if (avatarError) {
+        console.warn('Could not remove the avatar before account deletion:', avatarError);
+      }
+
+      const { error } = await supabase.rpc('delete_own_account');
+      if (error) return { error: translateAuthError(error) };
+
+      try {
+        await AsyncStorage.multiRemove([
+          `@neve_account_onboarding_completed_${targetUserId}`,
+          `@neve_account_onboarding_step_${targetUserId}`,
+          `@neve_account_onboarding_scope_${targetUserId}`,
+          `@neve_favorites_cache_${targetUserId}`,
+          `@neve_planned_adventures_${targetUserId}`,
+          /* Ni les randonnées hors ligne ni les préférences de recherche ne
+             portent l'identifiant du compte, mais elles décrivent bien celui qui
+             s'en va : les laisser reviendrait à léguer ses choix au suivant. */
+          '@neve_offline_hike_ids',
+          '@neve_offline_hikes_data',
+          '@neve_preferences',
+        ]);
+      } catch (e) {
+        /* Sans faire échouer : le compte est supprimé, c'est ce qui compte. Le
+           reliquat local ne désigne plus rien et sera écrasé à la prochaine
+           connexion. */
+        console.warn('Could not clear local data after account deletion:', e);
+      }
+
+      /* `local` : le compte n'existe plus côté serveur, chercher à y révoquer la
+         session ne ferait que rendre une erreur sur un travail déjà fait. */
+      await supabase.auth.signOut({ scope: 'local' });
+      setUser(null);
+      setSession(null);
+      setProfile(null);
+      return { error: null };
+    } catch (err) {
+      return { error: translateAuthError(err) };
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const deleteUnconfirmedUser = async () => {
     try {
       if (user) {
@@ -845,6 +921,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         checkEmailConfirmed,
         signOut,
         deleteUnconfirmedUser,
+        deleteAccount,
         completeOnboarding,
         resetPassword,
         updateUserPassword,

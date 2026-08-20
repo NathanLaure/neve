@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Mail } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
@@ -8,6 +8,8 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useAuth } from '@/context/AuthContext';
 import SettingsPage from '@/components/profile/SettingsPage';
 import ProfileMenuRow from '@/components/profile/ProfileMenuRow';
+import DeleteAccountSheet from '@/components/profile/DeleteAccountSheet';
+import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { showToast } from '@/utils/toast';
 
 /**
@@ -22,7 +24,33 @@ export default function GeneralSettingsScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const { user, resetPassword } = useAuth();
+  const { user, resetPassword, deleteAccount } = useAuth();
+
+  const deleteSheetRef = useRef<BaseBottomSheetModalRef>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  /**
+   * Suppression du compte, exigée par le RGPD (article 17) et, plus
+   * concrètement, par Google Play depuis 2024 pour toute app permettant de créer
+   * un compte — sous peine de refus en production.
+   *
+   * On ne navigue pas : la disparition de la session fait basculer `app/index`
+   * vers l'écran d'accueil de son propre chef. Pousser une route en plus
+   * risquerait de croiser cette redirection.
+   */
+  const handleDeleteAccount = async () => {
+    setIsDeleting(true);
+    const { error } = await deleteAccount();
+    setIsDeleting(false);
+
+    if (error) {
+      showToast.error('Suppression impossible', error);
+      return;
+    }
+
+    deleteSheetRef.current?.dismiss();
+    showToast.success('Compte supprimé', 'Tes données ont été effacées.');
+  };
 
   // Compte créé via Google/Apple : il n'y a pas de mot de passe Névé à changer.
   const isEmailAccount = user?.app_metadata?.provider === 'email';
@@ -92,6 +120,20 @@ export default function GeneralSettingsScreen() {
         </View>
       </View>
 
+      {/* Sa propre carte, à l'écart des rubriques anodines : c'est le patron que
+          suit déjà la déconnexion sur la page de profil, et la seule action de
+          l'app que rien ne rattrape. */}
+      <View style={styles.group}>
+        <View style={[styles.card, { backgroundColor: theme.card }]}>
+          <ProfileMenuRow
+            label="Supprimer mon compte"
+            tone="danger"
+            trailing="none"
+            onPress={() => deleteSheetRef.current?.present()}
+          />
+        </View>
+      </View>
+
       {!isEmailAccount ? (
         <View style={styles.providerRow}>
           <Mail size={16} color={theme.textMuted} />
@@ -100,6 +142,13 @@ export default function GeneralSettingsScreen() {
           </Text>
         </View>
       ) : null}
+
+      <DeleteAccountSheet
+        ref={deleteSheetRef}
+        isDeleting={isDeleting}
+        onConfirm={handleDeleteAccount}
+        onCancel={() => deleteSheetRef.current?.dismiss()}
+      />
     </SettingsPage>
   );
 }
