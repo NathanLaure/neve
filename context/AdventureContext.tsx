@@ -34,6 +34,20 @@ export interface PlannedAdventure {
    * ramène au départ.
    */
   returnStationName?: string;
+  /**
+   * Point de départ retenu à la planification, en coordonnées.
+   *
+   * Le nom seul ne suffit pas à repartir chercher un trajet : il faudrait le
+   * regéocoder, et on retomberait à côté du point d'origine. Sans lui, corriger
+   * un aller recalculait les itinéraires depuis là où se trouve le téléphone au
+   * moment de la correction.
+   *
+   * Optionnel : les aventures enregistrées avant la colonne n'en ont pas, et les
+   * écrans retombent alors sur la position de l'appareil comme avant.
+   */
+  departureCoords?: Coordinates;
+  /** Coordonnées du lieu de retour, quand il diffère du point de départ. */
+  returnCoords?: Coordinates;
   isReversed?: boolean;
   /**
    * Aller simple : aucun trajet retour n'a été choisi. `returnTrain` porte alors
@@ -75,9 +89,14 @@ export function isOneWayAdventure(adventure: PlannedAdventure): boolean {
   return !!outwardId && outwardId === adventure.returnTrain?.id;
 }
 
-interface Coordinates {
+export interface Coordinates {
   latitude: number;
   longitude: number;
+}
+
+/** Position de l'appareil, avec le libellé obtenu par géocodage inverse. */
+export interface NamedCoordinates extends Coordinates {
+  name: string;
 }
 
 interface AdventureContextType {
@@ -124,11 +143,18 @@ interface AdventureContextType {
   /**
    * Relit la position de l'appareil.
    *
-   * Rend les coordonnées obtenues, ou `null` si l'autorisation manque ou que le
-   * GPS n'a rien donné : l'appelant qui veut recadrer une carte dessus ne peut
-   * pas attendre le prochain rendu pour savoir où viser.
+   * Rend les coordonnées obtenues et leur libellé, ou `null` si l'autorisation
+   * manque ou que le GPS n'a rien donné : l'appelant qui veut recadrer une carte
+   * dessus, ou en faire un point de départ, ne peut pas attendre le prochain
+   * rendu pour savoir où viser.
    */
-  refreshUserLocation: (requestPermission?: boolean) => Promise<Coordinates | null>;
+  refreshUserLocation: (requestPermission?: boolean) => Promise<NamedCoordinates | null>;
+  /**
+   * Relit la position de l'appareil si elle date, et seulement si l'autorisation
+   * est déjà accordée : aucune fenêtre système n'est déclenchée. À appeler depuis
+   * les écrans qui s'en servent comme point de départ.
+   */
+  ensureFreshDeviceLocation: () => Promise<void>;
   /** `fromLocation` overrides the user's tracked position — used to preview a place before committing to it. */
   getTransitInfo: (
     rando: RandoData,
@@ -207,6 +233,14 @@ const AdventureContext = createContext<AdventureContextType | undefined>(undefin
 
 // Default coordinates pointing to Paris Châtelet
 const DEFAULT_COORDS = { latitude: 48.8584, longitude: 2.3488 };
+
+/**
+ * Au-delà, la position de l'appareil est considérée comme périmée et relue.
+ *
+ * Cinq minutes : assez pour ne pas rallumer le GPS à chaque écran ouvert, assez
+ * court pour qu'un déplacement dans la journée ne passe pas inaperçu.
+ */
+const DEVICE_LOCATION_MAX_AGE_MS = 5 * 60 * 1000;
 const DEFAULT_LOCATION_NAME = 'Paris (Centre)';
 
 // Rayon de chargement initial : on ne va chercher que les randos proches plutôt que
@@ -273,6 +307,8 @@ export const AdventureProvider = ({ children }: { children: ReactNode }) => {
   const [deviceLocationName, setDeviceLocationName] =
     useState<string>(DEFAULT_LOCATION_NAME);
   const [isLocating, setIsLocating] = useState<boolean>(false);
+  /** Date du dernier point GPS réellement obtenu, pour juger de sa fraîcheur. */
+  const locatedAtRef = useRef(0);
   const [plannedAdventures, setPlannedAdventures] = useState<PlannedAdventure[]>([]);
   const [isLoadingAdventures, setIsLoadingAdventures] = useState<boolean>(true);
   const [hikes, setHikes] = useState<RandoData[]>([]);
@@ -894,7 +930,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
   const refreshUserLocation = async (
     requestPermission: boolean = true
-  ): Promise<Coordinates | null> => {
+  ): Promise<NamedCoordinates | null> => {
     setIsLocating(true);
     try {
       let isGranted = false;
@@ -927,22 +963,25 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       // Seul endroit qui écrit la position de l'appareil : elle vient du GPS et
       // de rien d'autre, contrairement au centre de recherche.
       setDeviceLocation(coords);
+      locatedAtRef.current = Date.now();
 
       // Le géocodage inverse ne sert qu'à mettre un nom lisible sur les coordonnées.
       // Il passe par un backend Play Services qui expire régulièrement, d'où son
       // propre catch : perdre le libellé ne doit jamais coûter la position elle-même.
+      let label = 'Ma Position';
       try {
         const geocode = await Location.reverseGeocodeAsync(coords);
-        const label = formatUserLocationLabel(geocode?.[0]);
-        setUserLocationName(label);
-        setDeviceLocationName(label);
+        label = formatUserLocationLabel(geocode?.[0]);
       } catch (error) {
         console.warn('Reverse geocoding failed, keeping the GPS position unnamed:', error);
-        setUserLocationName('Ma Position');
-        setDeviceLocationName('Ma Position');
       }
+      setUserLocationName(label);
+      setDeviceLocationName(label);
 
-      return coords;
+      /* Le libellé accompagne les coordonnées plutôt que d'être seulement posé
+         dans l'état : l'appelant qui vient de demander une position en a besoin
+         tout de suite, et l'état ne lui sera redescendu qu'au rendu suivant. */
+      return { ...coords, name: label };
     } catch (error) {
       console.warn('Could not retrieve user location, fallback to Paris:', error);
       setUserLocation(DEFAULT_COORDS);
@@ -957,6 +996,32 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       setHasResolvedLocationOnce(true);
     }
   };
+
+  /**
+   * S'assure que la position de l'appareil n'est pas périmée, sans rien demander.
+   *
+   * `deviceLocation` n'était lu qu'au démarrage de l'app. Ouvrir la planification
+   * en fin de journée proposait donc comme point de départ l'endroit où l'on se
+   * trouvait le matin, et calculait les itinéraires depuis là — sans que rien ne
+   * le laisse voir, puisque le libellé affiché était celui de ce même point.
+   *
+   * Silencieuse par construction : elle ne relit que si l'autorisation est déjà
+   * accordée. Faire surgir une fenêtre système à l'ouverture d'un écran de
+   * planification serait déplacé, et l'utilisateur a déjà répondu ailleurs.
+   */
+  const ensureFreshDeviceLocation = useCallback(async () => {
+    if (Date.now() - locatedAtRef.current < DEVICE_LOCATION_MAX_AGE_MS) return;
+
+    try {
+      const { status } = await Location.getForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      await refreshUserLocation(false);
+    } catch (error) {
+      console.warn('Could not refresh the device location:', error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `refreshUserLocation`
+    // est recréée à chaque rendu ; la suivre relancerait cette fonction sans fin.
+  }, []);
 
   // Au démarrage, on interroge l'état existant de la permission sans déclencher de pop-up système.
   // Si la permission est déjà accordée (utilisateur de retour), on récupère la position.
@@ -987,6 +1052,14 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
 
   // Helper mappings for Supabase user_adventures table
   const mapRowToPlannedAdventure = useCallback((row: any): PlannedAdventure => {
+    const toCoords = (lat: any, lng: any): Coordinates | undefined => {
+      if (lat === null || lat === undefined || lng === null || lng === undefined) return undefined;
+      const latitude = Number(lat);
+      const longitude = Number(lng);
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return undefined;
+      return { latitude, longitude };
+    };
+
     return {
       id: String(row.id),
       randoId: String(row.rando_id),
@@ -996,6 +1069,11 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       returnTrain: row.return_train,
       departureStationName: row.departure_station_name,
       returnStationName: row.return_station_name ?? undefined,
+      /* Les deux colonnes vont ensemble ou pas du tout : une latitude sans sa
+         longitude ne désigne rien. Postgres rend du `numeric`, donc une chaîne
+         via PostgREST — d'où la conversion. */
+      departureCoords: toCoords(row.departure_lat, row.departure_lng),
+      returnCoords: toCoords(row.return_lat, row.return_lng),
       isReversed: Boolean(row.is_reversed),
       isOneWay: Boolean(row.is_one_way),
       isBooked: Boolean(row.is_booked),
@@ -1018,6 +1096,10 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
       return_train: adv.returnTrain,
       departure_station_name: adv.departureStationName,
       return_station_name: adv.returnStationName ?? null,
+      departure_lat: adv.departureCoords?.latitude ?? null,
+      departure_lng: adv.departureCoords?.longitude ?? null,
+      return_lat: adv.returnCoords?.latitude ?? null,
+      return_lng: adv.returnCoords?.longitude ?? null,
       is_reversed: adv.isReversed ?? false,
       is_one_way: adv.isOneWay ?? false,
       is_booked: adv.isBooked ?? false,
@@ -1211,6 +1293,16 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
           rowUpdates.departure_station_name = updates.departureStationName;
         if (updates.returnStationName !== undefined)
           rowUpdates.return_station_name = updates.returnStationName;
+        /* Le point voyage entier : poser une latitude sans sa longitude laisserait
+           en base un couple à moitié écrit, que la relecture rejetterait. */
+        if (updates.departureCoords !== undefined) {
+          rowUpdates.departure_lat = updates.departureCoords?.latitude ?? null;
+          rowUpdates.departure_lng = updates.departureCoords?.longitude ?? null;
+        }
+        if (updates.returnCoords !== undefined) {
+          rowUpdates.return_lat = updates.returnCoords?.latitude ?? null;
+          rowUpdates.return_lng = updates.returnCoords?.longitude ?? null;
+        }
         if (updates.isReversed !== undefined) rowUpdates.is_reversed = updates.isReversed;
         if (updates.isOneWay !== undefined) rowUpdates.is_one_way = updates.isOneWay;
         if (updates.passengersCount !== undefined)
@@ -1533,6 +1625,7 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         refreshAdventures: loadAdventures,
         setUserLocationManually,
         refreshUserLocation,
+        ensureFreshDeviceLocation,
         getTransitInfo,
         searchQuery,
         setSearchQuery,

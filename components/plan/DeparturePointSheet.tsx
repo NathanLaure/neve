@@ -10,6 +10,7 @@ import BaseBottomSheetModal, {
 } from '@/components/BaseBottomSheetModal';
 import PlaceSuggestionRow, { getPlaceKind } from '@/components/PlaceSuggestionRow';
 import SearchInput from '@/components/SearchInput';
+import { useAdventure } from '@/context/AdventureContext';
 import { GeocodedPlace, searchPlaces } from '@/services/geocodingService';
 import { searchStations } from '@/services/transitService';
 import { formatStationLabel } from '@/utils/stationLabel';
@@ -65,9 +66,13 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
     const theme = Colors[colorScheme];
     const insets = useSafeAreaInsets();
 
+    const { refreshUserLocation } = useAdventure();
+
     const [query, setQuery] = useState('');
     const [results, setResults] = useState<GeocodedPlace[]>([]);
     const [isSearching, setIsSearching] = useState(false);
+    /** Interrogation du GPS en cours, déclenchée par « Ma position actuelle ». */
+    const [isLocating, setIsLocating] = useState(false);
 
     useEffect(() => {
       if (query.trim().length < 2) {
@@ -116,6 +121,35 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
       setResults([]);
     };
 
+    /**
+     * « Ma position actuelle » interroge le GPS au lieu de recopier ce qui est
+     * affiché.
+     *
+     * `currentLocation` vient de `deviceLocation`, qui n'est lu qu'au démarrage
+     * de l'app : la choisir sans redemander revenait à partir d'où l'on était en
+     * ouvrant l'app le matin. Le libellé, lui, ne bougeait pas — l'écart ne se
+     * voyait donc que dans les itinéraires proposés.
+     *
+     * La position fraîche est rendue par l'appel : l'état du contexte ne
+     * redescendra qu'au rendu suivant, trop tard pour ce que l'on retient ici.
+     * Sans réponse (refus, GPS muet), on retient ce qui était proposé plutôt que
+     * de ne rien faire — l'utilisateur a demandé un point de départ.
+     */
+    const chooseCurrentLocation = async () => {
+      if (!currentLocation || isLocating) return;
+      setIsLocating(true);
+      try {
+        const fresh = await refreshUserLocation();
+        choose(
+          fresh
+            ? { name: fresh.name, latitude: fresh.latitude, longitude: fresh.longitude }
+            : currentLocation
+        );
+      } finally {
+        setIsLocating(false);
+      }
+    };
+
     const showEmptyState = query.trim().length >= 2 && !isSearching && results.length === 0;
 
     // Pleine hauteur, arrêtée sous la barre d'état : la liste de résultats a
@@ -145,11 +179,11 @@ const DeparturePointSheet = forwardRef<BaseBottomSheetModalRef, DeparturePointSh
               <PlaceSuggestionRow
                 kind="nearby"
                 name="Ma position actuelle"
-                dept={currentLocation.name}
+                dept={isLocating ? 'Localisation en cours…' : currentLocation.name}
                 scheme={colorScheme}
                 textColor={theme.text}
                 mutedColor={theme.textMuted}
-                onPress={() => choose(currentLocation)}
+                onPress={chooseCurrentLocation}
               />
             )}
 

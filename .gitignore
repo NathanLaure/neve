@@ -60,7 +60,11 @@ GoogleService-Info.plist
 !.vscode/extensions.json
 
 # Supabase CLI
-supabase/
+supabase/*
+# … sauf le schema et les fonctions, qui font partie du projet : la regle
+# ci-dessus vise le dossier de travail local du CLI, pas son contenu versionne.
+!supabase/migrations/
+!supabase/functions/
 
 # =============================================================
 #  Logs, caches & temporaires

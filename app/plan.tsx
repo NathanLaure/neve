@@ -242,7 +242,8 @@ export default function PlanScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const { addAdventure, deviceLocationName, deviceLocation, hikes } = useAdventure();
+  const { addAdventure, deviceLocationName, deviceLocation, ensureFreshDeviceLocation, hikes } =
+    useAdventure();
   const { profile } = useAuth();
 
   const rando = hikes.find((r) => r.id === randoId);
@@ -343,6 +344,20 @@ export default function PlanScreen() {
     }),
     [deviceLocationName, deviceLocation.latitude, deviceLocation.longitude]
   );
+
+  /*
+   * On repart d'un point relevé à l'ouverture de cet écran, et non de celui du
+   * lancement de l'app : c'est ici, et nulle part ailleurs, qu'il devient le
+   * départ d'un voyage. Silencieux — aucune fenêtre système — et sans effet si le
+   * relevé est récent.
+   *
+   * Sans risque de déplacer le départ sous les doigts de l'utilisateur : la
+   * recherche d'itinéraires ne part qu'au clic sur « Voir les trajets
+   * disponibles », bien après.
+   */
+  useEffect(() => {
+    ensureFreshDeviceLocation();
+  }, [ensureFreshDeviceLocation]);
 
   // Adresse saisie à la main, qui l'emporte sur le GPS tant qu'elle est posée.
   const [customDeparture, setCustomDeparture] = useState<DeparturePoint | null>(null);

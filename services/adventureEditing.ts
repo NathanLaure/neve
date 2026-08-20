@@ -16,15 +16,40 @@ import { fromTrainOption } from '@/services/transitService';
  * Contexte de planification transporté par l'URL vers `/plan/outward`,
  * `/plan/return` ou `/plan/dates`.
  *
- * Les coordonnées manquent volontairement : une aventure enregistrée ne retient
- * que le nom de ses gares, et les écrans d'arrivée savent retomber sur la
- * position de l'appareil.
+ * Les coordonnées du départ en font partie, et c'est le point important : sans
+ * elles, l'écran d'arrivée retombe sur la position de l'appareil et recalcule les
+ * itinéraires depuis là où se trouve le téléphone au moment de la correction —
+ * alors que le nom affiché, lui, reste celui du départ d'origine. On planifie de
+ * chez soi, on corrige l'aller depuis le bureau, et on se voit proposer des
+ * trains au départ du bureau.
+ *
+ * Elles restent absentes des aventures enregistrées avant la colonne
+ * `departure_lat` : l'ancien repli sur la position de l'appareil vaut alors
+ * toujours, faute de mieux.
  */
 export function buildAdventurePlanParams(adventure: PlannedAdventure) {
+  const returnCoords = adventure.returnCoords ?? adventure.departureCoords;
+
   return {
     randoId: adventure.randoId,
     departureName: adventure.departureStationName,
     returnName: adventure.returnStationName ?? adventure.departureStationName,
+    /* Chaînes et non nombres : un paramètre d'URL n'en transporte pas d'autres.
+       Omis plutôt que vides quand l'aventure n'en a pas — `parseCoordinates`
+       rejette la chaîne vide, mais un paramètre absent se lit plus franchement
+       comme « on ne sait pas ». */
+    ...(adventure.departureCoords
+      ? {
+          departureLat: String(adventure.departureCoords.latitude),
+          departureLng: String(adventure.departureCoords.longitude),
+        }
+      : {}),
+    ...(returnCoords
+      ? {
+          returnLat: String(returnCoords.latitude),
+          returnLng: String(returnCoords.longitude),
+        }
+      : {}),
     outwardDate: adventure.outwardDate,
     outwardTime: adventure.outwardTrain.time,
     returnDate: adventure.returnDate,

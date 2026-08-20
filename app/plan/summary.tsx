@@ -35,7 +35,7 @@ import AdventureStepConnector, {
 import BuyTicketsSheet from '@/components/plan/BuyTicketsSheet';
 import JourneyDetailSheet from '@/components/plan/JourneyDetailSheet';
 import AdventureActionsSheet from '@/components/plan/AdventureActionsSheet';
-import { toTrainOption } from '@/services/transitService';
+import { parseCoordinates, toTrainOption } from '@/services/transitService';
 import {
   BookingProvider,
   buildTrainlineSearchUrl,
@@ -121,6 +121,17 @@ export default function PlanSummaryScreen() {
   const departureName = params.departureName || 'Votre position';
   const returnName = params.returnName || departureName;
 
+  /* Mémorisés : `parseCoordinates` rend un objet neuf à chaque rendu, et
+     `saveAdventure` les prend en dépendance. */
+  const departureCoords = useMemo(
+    () => parseCoordinates(params.departureLat, params.departureLng),
+    [params.departureLat, params.departureLng]
+  );
+  const returnCoords = useMemo(
+    () => parseCoordinates(params.returnLat, params.returnLng),
+    [params.returnLat, params.returnLng]
+  );
+
   const outwardDate = draft.startDate || params.outwardDate || null;
   const returnDate =
     draft.tripType === 'oneway' ? null : draft.endDate || params.returnDate || outwardDate;
@@ -168,6 +179,12 @@ export default function PlanSummaryScreen() {
         returnTrain: toTrainOption(returnOption, returnIsReal),
         departureStationName: departureName,
         returnStationName: returnName !== departureName ? returnName : undefined,
+        /* Les coordonnées suivent les noms, sinon revenir corriger un trajet
+           repartirait de la position de l'appareil à cet instant-là. Elles
+           traversent le parcours en paramètres d'URL : c'est le seul endroit où
+           on peut encore les attraper avant qu'il ne se termine. */
+        departureCoords: departureCoords ?? undefined,
+        returnCoords: returnName !== departureName ? (returnCoords ?? undefined) : undefined,
         isReversed,
         // `returnTrain` recopie l'aller en aller simple : sans ce drapeau, la
         // fiche de l'aventure afficherait un retour qui n'a jamais été planifié.
@@ -209,6 +226,8 @@ export default function PlanSummaryScreen() {
       returnDate,
       departureName,
       returnName,
+      departureCoords,
+      returnCoords,
       isReversed,
       returnJourney,
       passengers,

@@ -49,6 +49,12 @@ interface AuthContextType {
    * localisation au lieu d'enchaîner sur la gare d'origine et les pass.
    */
   accountOnboardingScope: 'full' | 'device';
+  /**
+   * Recalcule l'état du parcours pour ce compte, l'applique au contexte et le
+   * rend. Les connexions OAuth naviguent dessus : elles doivent partir de la même
+   * réponse que le démarrage de l'app, sans quoi elles se contredisent.
+   */
+  refreshAccountOnboarding: (userId: string) => Promise<AccountOnboardingState>;
   setAccountOnboardingStep: (step: string) => Promise<void>;
   completeAccountOnboarding: () => Promise<void>;
   isEmailConfirmed: boolean;
@@ -167,6 +173,22 @@ function parseSupabaseUrl(url: string): Record<string, string> {
   return params;
 }
 
+/**
+ * Au-delà, on n'attend plus la réponse de la base sur l'état du parcours.
+ *
+ * Le démarrage de l'app s'y suspend : mieux vaut une décision prise sur les
+ * seules autorisations système qu'un splash qui ne se lève pas.
+ */
+const PROFILE_READ_TIMEOUT_MS = 2500;
+
+/** Verdict rendu par `refreshAccountOnboarding`, sur lequel les écrans naviguent. */
+export interface AccountOnboardingState {
+  completed: boolean;
+  /** Étape à afficher quand le parcours n'est pas fini. */
+  step: string | null;
+  scope: 'full' | 'device';
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -208,53 +230,105 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  const checkAccountOnboarding = async (currentUser: User) => {
+  /**
+   * Où en est ce compte de son parcours d'inscription, et sur cet appareil ?
+   *
+   * Un seul endroit répond à la question. Les connexions OAuth la posaient
+   * chacune de leur côté, avec leur propre règle — « le profil a-t-il un nom ou
+   * un domicile ? » — qui répondait toujours oui : le déclencheur
+   * `handle_new_user` remplit `full_name` dès la création du compte. Un compte
+   * Google tout neuf était donc pris pour un habitué et entrait directement dans
+   * l'app, sans autorisations ni domicile ni pass.
+   *
+   * L'ordre des sources va du plus local au plus lointain, et ce n'est pas un
+   * détail : les deux premières décrivent cet appareil-ci, la troisième décrit le
+   * compte partout.
+   */
+  const resolveAccountOnboarding = async (userId: string): Promise<AccountOnboardingState> => {
     try {
-      const isCompleted = await AsyncStorage.getItem(`@neve_account_onboarding_completed_${currentUser.id}`);
-      if (isCompleted === 'true') {
-        setHasCompletedAccountOnboarding(true);
-        setAccountOnboardingStepState(null);
-        return;
-      }
+      const isCompleted = await AsyncStorage.getItem(`@neve_account_onboarding_completed_${userId}`);
+      if (isCompleted === 'true') return { completed: true, step: null, scope: 'full' };
 
-      const savedStep = await AsyncStorage.getItem(`@neve_account_onboarding_step_${currentUser.id}`);
+      const savedStep = await AsyncStorage.getItem(`@neve_account_onboarding_step_${userId}`);
       if (savedStep) {
         /* La portée est reprise avec l'étape : sans elle, une app tuée entre les
            notifications et la localisation reprendrait en parcours complet et
            redemanderait la gare d'origine, les pass et la newsletter. */
         const savedScope = await AsyncStorage.getItem(
-          `@neve_account_onboarding_scope_${currentUser.id}`
+          `@neve_account_onboarding_scope_${userId}`
         );
-        setHasCompletedAccountOnboarding(false);
-        setAccountOnboardingScope(savedScope === 'device' ? 'device' : 'full');
-        setAccountOnboardingStepState(savedStep);
-        return;
+        return {
+          completed: false,
+          step: savedStep,
+          scope: savedScope === 'device' ? 'device' : 'full',
+        };
       }
 
       /*
        * Ni drapeau d'achèvement, ni étape en suspens : deux situations très
        * différentes que ces clés ne distinguent pas, puisqu'elles vivent dans
        * AsyncStorage, donc sur l'appareil. Un compte qui a fait son parcours
-       * ailleurs et un appareil neuf se ressemblent parfaitement ici.
+       * ailleurs, un appareil neuf et un compte qui vient d'être créé se
+       * ressemblent parfaitement ici.
        *
-       * Le système, lui, sait : une autorisation `undetermined` n'a jamais été
-       * demandée sur CET appareil. C'est la seule source fiable, et elle rend le
-       * drapeau inutile pour cette question.
+       * Le compte, lui, sait : `account_onboarded_at` n'est écrit qu'au bout du
+       * parcours, et seul le parcours l'écrit.
+       *
+       * Cette lecture retient le splash — voir `getSession()` plus bas — donc
+       * elle est bornée. Un réseau qui ne répond pas ne doit pas laisser
+       * l'utilisateur devant un écran de démarrage : au-delà du délai, on
+       * retombe sur ce que le système sait dire tout seul.
        */
-      const pending = await findPendingDevicePermission();
-      if (pending) {
-        setHasCompletedAccountOnboarding(false);
-        setAccountOnboardingScope('device');
-        setAccountOnboardingStepState(pending);
-        return;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), PROFILE_READ_TIMEOUT_MS);
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('account_onboarded_at')
+        .eq('id', userId)
+        .abortSignal(controller.signal)
+        .maybeSingle();
+      clearTimeout(timeout);
+
+      if (error) {
+        /* Hors ligne ou colonne absente : on ne sait pas. Dans le doute on ne
+           réinflige pas le parcours complet à quelqu'un qui l'a peut-être déjà
+           fait — on se contente de rattraper les autorisations manquantes, ce
+           que le système sait dire sans réseau. */
+        console.warn('Could not read account onboarding state, falling back to device probe:', error);
+        const pendingOffline = await findPendingDevicePermission();
+        return pendingOffline
+          ? { completed: false, step: pendingOffline, scope: 'device' }
+          : { completed: true, step: null, scope: 'full' };
       }
 
-      setHasCompletedAccountOnboarding(true);
-      setAccountOnboardingScope('full');
-      setAccountOnboardingStepState(null);
+      if (!data?.account_onboarded_at) {
+        return { completed: false, step: 'notifications', scope: 'full' };
+      }
+
+      /*
+       * Le compte a fait son parcours, mais peut-être pas sur ce téléphone-ci :
+       * une autorisation `undetermined` n'a jamais été demandée ICI.
+       */
+      const pending = await findPendingDevicePermission();
+      if (pending) return { completed: false, step: pending, scope: 'device' };
+
+      /* Rien à redemander : on pose le drapeau local pour que les lancements
+         suivants répondent sans réseau. */
+      await AsyncStorage.setItem(`@neve_account_onboarding_completed_${userId}`, 'true');
+      return { completed: true, step: null, scope: 'full' };
     } catch (e) {
       console.warn('Error checking account onboarding:', e);
+      return { completed: true, step: null, scope: 'full' };
     }
+  };
+
+  /** Résout l'état puis l'applique au contexte, et le rend à l'appelant. */
+  const refreshAccountOnboarding = async (userId: string): Promise<AccountOnboardingState> => {
+    const state = await resolveAccountOnboarding(userId);
+    setHasCompletedAccountOnboarding(state.completed);
+    setAccountOnboardingScope(state.scope);
+    setAccountOnboardingStepState(state.step);
+    return state;
   };
 
   const setAccountOnboardingStep = async (step: string) => {
@@ -288,6 +362,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await AsyncStorage.removeItem(`@neve_account_onboarding_scope_${targetUserId}`);
       } catch (e) {
         console.warn('Error completing account onboarding:', e);
+      }
+
+      /*
+       * Le même fait, mais sur le compte plutôt que sur l'appareil : c'est lui
+       * que relira une réinstallation ou un second téléphone. Les clés
+       * AsyncStorage ci-dessus ne franchissent pas ces frontières.
+       *
+       * Écrit même quand le parcours réduit s'achève : il ne s'ouvre que sur un
+       * compte déjà passé par le parcours complet, et réécrire une date déjà
+       * posée ne coûte rien.
+       */
+      const { error } = await supabase
+        .from('profiles')
+        .update({ account_onboarded_at: new Date().toISOString() })
+        .eq('id', targetUserId);
+
+      if (error) {
+        /* Sans lever : le parcours est fini du point de vue de l'utilisateur, et
+           le drapeau local suffit sur cet appareil-ci. Au pire le parcours sera
+           reproposé sur le suivant. */
+        console.warn('Could not stamp account onboarding completion:', error);
       }
     }
   };
@@ -366,12 +461,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // 1. Get initial Supabase session
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
       setSession(session);
       setUser(session?.user ?? null);
       if (session?.user) {
         loadUserProfile(session.user);
-        checkAccountOnboarding(session.user);
+        /*
+         * Attendu, contrairement au profil : c'est cette réponse qui décide de
+         * l'écran d'après. `app/index.tsx` redirige dès que `isLoading` retombe,
+         * en lisant `hasCompletedAccountOnboarding` — dont le défaut est `true`,
+         * c'est-à-dire « je ne sais pas encore ». Lever le rideau avant la
+         * réponse envoyait donc sur l'explorateur un compte qui devait reprendre
+         * son parcours.
+         *
+         * L'attente est bornée côté résolution (voir PROFILE_READ_TIMEOUT_MS).
+         */
+        await refreshAccountOnboarding(session.user.id);
       }
       setIsLoading(false);
     });
@@ -384,7 +489,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(session?.user ?? null);
       if (session?.user) {
         loadUserProfile(session.user);
-        checkAccountOnboarding(session.user);
+        refreshAccountOnboarding(session.user.id);
       } else {
         setProfile(null);
         setHasCompletedAccountOnboarding(true);
@@ -727,6 +832,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         hasCompletedAccountOnboarding,
         accountOnboardingStep,
         accountOnboardingScope,
+        refreshAccountOnboarding,
         setAccountOnboardingStep,
         completeAccountOnboarding,
         isEmailConfirmed,

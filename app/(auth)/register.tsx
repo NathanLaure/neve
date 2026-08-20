@@ -18,7 +18,6 @@ import Colors from '@/constants/Colors';
 import { useAuth } from '@/context/AuthContext';
 import { showToast } from '@/utils/toast';
 import { supabase } from '@/utils/supabase';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { AuthEntryStep } from '@/components/auth/AuthEntryStep';
 import { SignupPasswordStep } from '@/components/auth/SignupPasswordStep';
@@ -61,6 +60,7 @@ export default function SwarmAuthScreen() {
     hasCompletedAccountOnboarding,
     accountOnboardingStep,
     setAccountOnboardingStep,
+    refreshAccountOnboarding,
     completeAccountOnboarding,
     isLoading,
   } = useAuth();
@@ -373,45 +373,25 @@ export default function SwarmAuthScreen() {
         data: { session: currentSession },
       } = await supabase.auth.getSession();
       const currentUserId = currentSession?.user?.id;
-      let isCompleted = false;
-      let savedStep: string | null = null;
-      if (currentUserId) {
-        const isCompletedVal = await AsyncStorage.getItem(
-          `@neve_account_onboarding_completed_${currentUserId}`
-        );
-        isCompleted = isCompletedVal === 'true';
-        savedStep = await AsyncStorage.getItem(
-          `@neve_account_onboarding_step_${currentUserId}`
-        );
 
-        if (!isCompleted && !savedStep) {
-          try {
-            const { data: dbProfile } = await supabase
-              .from('profiles')
-              .select('id, full_name, home_location')
-              .eq('id', currentUserId)
-              .maybeSingle();
+      /* Sans session, rien à décider : le fournisseur a répondu mais Supabase n'a
+         pas ouvert de session, l'écran reste où il est. */
+      if (!currentUserId) return;
 
-            if (dbProfile?.full_name || dbProfile?.home_location) {
-              isCompleted = true;
-              await AsyncStorage.setItem(
-                `@neve_account_onboarding_completed_${currentUserId}`,
-                'true'
-              );
-            }
-          } catch (e) {
-            console.warn('Error checking existing profile in handleOAuth:', e);
-          }
-        }
-      }
+      /* Une seule règle, celle du contexte — voir `resolveAccountOnboarding`.
+         Décider ici avec des critères maison est précisément ce qui envoyait les
+         nouveaux comptes Google directement sur l'explorateur. */
+      const state = await refreshAccountOnboarding(currentUserId);
 
-      if (isCompleted) {
+      if (state.completed) {
         router.replace('/(tabs)');
-      } else if (savedStep) {
-        goToStep(savedStep as any);
-      } else {
-        await goToStep('notifications');
+        return;
       }
+
+      /* La portée voyage par l'URL, comme depuis `app/index.tsx` : c'est elle qui
+         arrête le parcours réduit après la localisation. */
+      router.setParams({ scope: state.scope });
+      await goToStep((state.step ?? 'notifications') as any);
     }
   };
 

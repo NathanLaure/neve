@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   StyleSheet,
@@ -7,7 +7,6 @@ import {
 } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import * as Linking from 'expo-linking';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AlertCircle, CheckCircle2 } from 'lucide-react-native';
 
 import { supabase } from '@/utils/supabase';
@@ -64,78 +63,62 @@ export default function AuthCallbackScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  const {
-    user,
-    session,
-    hasCompletedAccountOnboarding,
-    accountOnboardingStep,
-    setAccountOnboardingStep,
-  } = useAuth();
+  const { user, session, refreshAccountOnboarding, setAccountOnboardingStep } = useAuth();
 
   const [status, setStatus] = useState<AuthCallbackStatus>('verifying');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  // Dès que AuthContext détient une session active, rediriger immédiatement
+  /** Sans lui l'effet se rejouerait : `refreshAccountOnboarding` change de
+      référence à chaque rendu. */
+  const hasRedirectedRef = useRef(false);
+
+  /**
+   * Redirection dès qu'AuthContext détient une session.
+   *
+   * L'état du parcours est redemandé au lieu d'être lu dans le contexte :
+   * `hasCompletedAccountOnboarding` vaut `true` tant que rien n'a été résolu — ce
+   * qui est le bon défaut pour ne pas faire clignoter l'app au démarrage, mais
+   * signifie ici « je ne sais pas encore ». Le lire à cet instant envoyait sur
+   * l'explorateur les comptes dont le parcours n'avait pas encore été calculé.
+   */
   useEffect(() => {
-    if (user && session) {
-      if (hasCompletedAccountOnboarding) {
+    if (!user || !session || hasRedirectedRef.current) return;
+    hasRedirectedRef.current = true;
+
+    (async () => {
+      const state = await refreshAccountOnboarding(user.id);
+      if (state.completed) {
         router.replace('/(tabs)');
-      } else {
-        router.replace({
-          pathname: '/(auth)/register',
-          params: { mode: (accountOnboardingStep as any) || 'notifications' },
-        });
+        return;
       }
-    }
-  }, [user, session, hasCompletedAccountOnboarding, accountOnboardingStep, router]);
+      router.replace({
+        pathname: '/(auth)/register',
+        params: { mode: state.step ?? 'notifications', scope: state.scope },
+      });
+    })();
+  }, [user, session, refreshAccountOnboarding, router]);
 
   useEffect(() => {
     let isMounted = true;
 
     // Redirection immédiate pour les connexions OAuth (Google, Apple, Facebook)
     const handleOAuthRedirect = async (sessionUser: any) => {
-      try {
-        const isCompleted = await AsyncStorage.getItem(
-          `@neve_account_onboarding_completed_${sessionUser.id}`
-        );
-        if (isCompleted === 'true') {
-          router.replace('/(tabs)');
-          return;
-        }
+      /* Même règle que l'effet ci-dessus et que le démarrage de l'app : une
+         connexion OAuth n'a aucune raison de juger différemment. C'est en jugeant
+         à part — « le profil a-t-il un nom ? », toujours vrai — que ce chemin
+         faisait entrer les comptes neufs directement dans l'app. */
+      hasRedirectedRef.current = true;
+      const state = await refreshAccountOnboarding(sessionUser.id);
 
-        const savedStep = await AsyncStorage.getItem(
-          `@neve_account_onboarding_step_${sessionUser.id}`
-        );
-        if (savedStep) {
-          router.replace({ pathname: '/(auth)/register', params: { mode: savedStep } });
-          return;
-        }
-
-        // Vérifier si le profil existe déjà en base pour un utilisateur existant
-        try {
-          const { data: dbProfile } = await supabase
-            .from('profiles')
-            .select('id, full_name, home_location')
-            .eq('id', sessionUser.id)
-            .maybeSingle();
-
-          if (dbProfile?.full_name || dbProfile?.home_location) {
-            await AsyncStorage.setItem(
-              `@neve_account_onboarding_completed_${sessionUser.id}`,
-              'true'
-            );
-            router.replace('/(tabs)');
-            return;
-          }
-        } catch (e) {
-          console.warn('Error checking existing profile in callback:', e);
-        }
-
-        await setAccountOnboardingStep('notifications');
-        router.replace({ pathname: '/(auth)/register', params: { mode: 'notifications' } });
-      } catch {
+      if (state.completed) {
         router.replace('/(tabs)');
+        return;
       }
+
+      router.replace({
+        pathname: '/(auth)/register',
+        params: { mode: state.step ?? 'notifications', scope: state.scope },
+      });
     };
 
     const isOAuthFlow = (user: any, parsed: Record<string, string>) => {
