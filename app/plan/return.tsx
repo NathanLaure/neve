@@ -102,7 +102,7 @@ export default function ReturnPlanScreen() {
   const isReturnEditOnly = params.editOnly === 'return';
 
   const { hikes, deviceLocationName, deviceLocation, loadHikeDetail } = useAdventure();
-  const { draft, selectReturnJourney } = usePlanDraft();
+  const { draft, selectReturnJourney, setReturnTime } = usePlanDraft();
 
   const rando = useMemo(
     () => hikes.find((r) => r.id === params.randoId) ?? hikes[0],
@@ -184,7 +184,11 @@ export default function ReturnPlanScreen() {
   // Heure de retour : propre à cet écran, pas de pendant dans le brouillon
   // partagé (voir PlanDraftContext) — elle vient du calcul fait sur l'aller et
   // ne se réajuste ici que localement.
-  const [returnTime, setReturnTime] = useState(params.returnTime || '16:00');
+  /* Dans le brouillon et non dans un état local, comme l'heure d'aller sur
+     l'écran voisin : le calendrier ouvert par-dessus cet écran la règle aussi, et
+     revenir de là perdait le réglage — comme le réglage fait ici était perdu en
+     allant au calendrier. */
+  const returnTime = draft.returnTime || params.returnTime || '16:00';
 
   // Liste détaillée si elle a suivi depuis l'écran aller (repli sur un unique
   // passager) : c'est elle qui permet la modification/ajout depuis la puce.
@@ -448,7 +452,23 @@ export default function ReturnPlanScreen() {
               activePhase="return"
               outwardLabel={outwardDateLabel}
               returnLabel={returnDateLabel}
-              onPress={() => router.push({ pathname: '/plan/dates', params: { randoId: rando?.id } })}
+              /* `next: 'return'` : on ne vient redater que le retour. Sans lui, le
+                 calendrier repartait en mode planification complète et
+                 `commitDates` effaçait l'aller déjà retenu — après quoi choisir un
+                 trajet de retour ne menait nulle part, le résumé n'ayant plus
+                 d'aller à afficher. `currentReturnDate` le distingue de l'ajout
+                 d'un retour à un aller simple, où l'on repart bien de zéro. */
+              onPress={() =>
+                router.push({
+                  pathname: '/plan/dates',
+                  params: {
+                    randoId: rando?.id,
+                    next: 'return',
+                    currentReturnDate: returnDate ?? undefined,
+                    returnTime,
+                  },
+                })
+              }
             />
 
             <View style={styles.filterRow}>

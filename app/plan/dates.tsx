@@ -10,7 +10,7 @@ import Animated, {
   withTiming,
 } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useRouter, Stack } from 'expo-router';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { Check, ChevronRight, Info, X } from 'lucide-react-native';
 
@@ -119,11 +119,21 @@ export default function PlanDatesScreen() {
     next?: string;
     /** Heure de départ du retour suggérée par l'appelant — voir `suggestReturnTime`. */
     returnTime?: string;
+    /**
+     * Retour déjà daté, quand on vient le corriger depuis l'écran de choix du
+     * retour plutôt que l'ajouter à un aller simple.
+     *
+     * Distinct du `returnDate` relayé : celui-ci n'est pas transmis par les
+     * appelants qui ajoutent un retour, où il vaut la date de l'aller recopiée et
+     * proposerait donc un retour le jour du départ.
+     */
+    currentReturnDate?: string;
   }>();
   const isAddingReturn = params.next === 'return';
 
   const { hikes } = useAdventure();
-  const { draft, commitDates, addReturnTrip, horizon } = usePlanDraft();
+  const navigation = useNavigation();
+  const { draft, commitDates, addReturnTrip, setReturnTime, horizon } = usePlanDraft();
 
   const autoReturnSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const timeSheetRef = useRef<BaseBottomSheetModalRef>(null);
@@ -144,8 +154,12 @@ export default function PlanDatesScreen() {
   const [startDate, setStartDate] = useState<string | null>(draft.startDate);
   /* En mode « ajouter un retour », on repart de zéro côté retour : la date que
      porte le brouillon est celle de l'aller, recopiée à l'enregistrement d'un
-     aller simple. La reprendre proposerait un retour le jour du départ. */
-  const [endDate, setEndDate] = useState<string | null>(isAddingReturn ? null : draft.endDate);
+     aller simple. La reprendre proposerait un retour le jour du départ.
+     Sauf quand l'appelant en transmet une explicitement : il vient alors corriger
+     un retour qui existe déjà, et l'effacer serait lui faire tout ressaisir. */
+  const [endDate, setEndDate] = useState<string | null>(
+    isAddingReturn ? (params.currentReturnDate ?? null) : draft.endDate
+  );
   // Ajouter un retour, c'est déjà avoir répondu à la question du type de trajet.
   const [tripType, setTripType] = useState<TripType>(
     isAddingReturn ? 'round' : draft.tripType
@@ -184,8 +198,12 @@ export default function PlanDatesScreen() {
   }, [today, horizon]);
 
   const handleSelectDate = (date: string) => {
-    // Seconde tape, postérieure au départ qu'on vient de poser : c'est le retour.
-    if (startDate && tripType === 'round' && isPickingReturn && date > startDate) {
+    /* Seconde tape, à partir du départ qu'on vient de poser : c'est le retour.
+       Le jour du départ compte — c'est le cas de loin le plus fréquent, et sur
+       une rando de plusieurs jours c'était le seul moyen de refuser le retour
+       calculé d'office. La condition était `>` : taper ce jour-là redéplaçait le
+       départ, et il n'y avait aucune façon de rentrer le soir même. */
+    if (startDate && tripType === 'round' && isPickingReturn && date >= startDate) {
       setEndDate(date);
       setHasCustomReturn(true);
       /* En mode « ajouter un retour », on reste sur le retour : corriger sa date
@@ -211,14 +229,26 @@ export default function PlanDatesScreen() {
       const departureMoved = startDate !== draft.startDate;
 
       if (departureMoved) {
-        commitDates({ startDate, endDate, tripType, hasCustomReturn, outwardTime });
+        /* L'unique champ d'heure de cet écran porte ici celle du RETOUR — c'est
+           son libellé. La donner pour heure d'aller ferait chercher les trains du
+           matin à partir de la fin de la marche. L'aller garde donc la sienne, et
+           l'heure réglée reste au retour, à qui elle appartient. */
+        commitDates({
+          startDate,
+          endDate,
+          tripType,
+          hasCustomReturn,
+          outwardTime: draft.outwardTime,
+        });
+        setReturnTime(outwardTime);
         router.replace({
           pathname: '/plan/outward',
           params: {
             ...params,
             next: undefined,
             outwardDate: startDate,
-            outwardTime,
+            outwardTime: draft.outwardTime,
+            returnTime: outwardTime,
             returnDate: effectiveEndDate ?? undefined,
           },
         });
@@ -226,10 +256,22 @@ export default function PlanDatesScreen() {
       }
 
       /* Départ inchangé : `addReturnTrip` et non `commitDates`, celui-ci
-         effacerait l'aller alors qu'on ne vient dater que le retour. `replace`
-         retire le calendrier de la pile — revenir en arrière depuis les
-         résultats doit ramener au récapitulatif. */
+         effacerait l'aller alors qu'on ne vient dater que le retour. */
       addReturnTrip(effectiveEndDate);
+      setReturnTime(outwardTime);
+
+      /* L'écran de choix du retour est déjà sous le calendrier : on lui rend la
+         main au lieu d'en empiler un second. Il relit la date et l'heure dans le
+         brouillon, qui viennent d'y être posées. */
+      const routes = (navigation.getState()?.routes ?? []) as { name?: string }[];
+      if (routes[routes.length - 2]?.name === 'plan/return') {
+        router.back();
+        return;
+      }
+
+      /* Sinon on vient du résumé ou du récapitulatif : `replace` retire le
+         calendrier de la pile — revenir en arrière depuis les résultats doit
+         ramener à la fiche, pas au calendrier. */
       router.replace({
         pathname: '/plan/return',
         params: {

@@ -35,6 +35,16 @@ export interface PlanDraft {
    * la même modale que les dates, et se réajuste depuis l'écran de résultats.
    */
   outwardTime: string;
+  /**
+   * `HH:MM` — heure à partir de laquelle chercher le retour, sur le même modèle
+   * que l'aller. `null` tant que rien n'a été réglé : l'écran de retour retombe
+   * alors sur son propre défaut.
+   *
+   * Ici et non dans l'état de l'écran de retour, parce que deux écrans la
+   * règlent : cet écran-là, et le calendrier ouvert par-dessus lui. Tant qu'elle
+   * vivait dans l'un des deux, revenir de l'autre la perdait en silence.
+   */
+  returnTime: string | null;
   /** Les dates ont été confirmées dans la modale : la suite du formulaire s'ouvre. */
   datesValidated: boolean;
   /** Itinéraire d'aller retenu sur `/plan/outward`. */
@@ -150,6 +160,8 @@ interface PlanDraftContextValue {
    * résultats la propose pendant qu'on parcourt la liste des trains.
    */
   setOutwardTime: (time: string) => void;
+  /** Même rôle pour le retour, réglable depuis l'écran de retour et le calendrier. */
+  setReturnTime: (time: string) => void;
   /** Repart d'un brouillon vierge, à l'ouverture d'une nouvelle planification. */
   resetDraft: () => void;
   /**
@@ -173,6 +185,7 @@ function createEmptyDraft(): PlanDraft {
     tripType: 'round',
     hasCustomReturn: false,
     outwardTime: DEFAULT_OUTWARD_TIME,
+    returnTime: null,
     datesValidated: false,
     outwardJourney: null,
     returnJourney: null,
@@ -287,6 +300,10 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
     setDraft((current) => ({ ...current, outwardTime }));
   }, []);
 
+  const setReturnTime = useCallback((returnTime: string) => {
+    setDraft((current) => ({ ...current, returnTime }));
+  }, []);
+
   const resetDraft = useCallback(() => {
     setDraft(createEmptyDraft());
   }, []);
@@ -302,6 +319,7 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       restoreForEdit,
       setSavedAdventureId,
       setOutwardTime,
+      setReturnTime,
       resetDraft,
       horizon,
     }),
@@ -315,6 +333,7 @@ export function PlanDraftProvider({ children }: { children: ReactNode }) {
       restoreForEdit,
       setSavedAdventureId,
       setOutwardTime,
+      setReturnTime,
       resetDraft,
       horizon,
     ]
