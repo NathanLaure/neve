@@ -166,9 +166,27 @@ export default function PlanSummaryScreen() {
         ? plannedAdventures.find((a) => a.id === savedAdventureId)
         : undefined;
 
+      /*
+       * L'aventure visée doit porter sur la randonnée qu'on est en train de
+       * planifier. Sinon `savedAdventureId` est un reliquat, et le corriger
+       * reviendrait à réécrire l'aventure d'une autre randonnée par-dessus
+       * celle-ci — sans jamais en déposer de nouvelle.
+       *
+       * Ce n'est pas une hypothèse : `updateAdventure` ne recopie en base ni
+       * `rando_id` ni `hike_snapshot`. La liste affichait donc la nouvelle
+       * aventure, seule, pendant que la base gardait l'ancienne avec les trains
+       * de la nouvelle — et un rechargement faisait disparaître ce qu'on venait
+       * d'enregistrer.
+       *
+       * Le brouillon est remis à neuf à l'ouverture de la planification, ce qui
+       * traite la cause. Cette vérification tient la conséquence : quel que soit
+       * le chemin, une aventure n'en écrase jamais une autre.
+       */
+      const isCorrectingExisting = !!existingAdv && existingAdv.randoId === rando.id;
+
       const shareToken =
         explicitShareToken ||
-        existingAdv?.shareToken ||
+        (isCorrectingExisting ? existingAdv?.shareToken : undefined) ||
         Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
 
       const payload = {
@@ -197,12 +215,12 @@ export default function PlanSummaryScreen() {
 
       hasSavedRef.current = true;
 
-      if (savedAdventureId) {
+      if (isCorrectingExisting && existingAdv) {
         // `isBooked` est délibérément absent : l'achat déjà engagé ne doit pas être
         // effacé par une correction d'itinéraire.
         const { isBooked, ...corrections } = payload;
-        updateAdventure(savedAdventureId, corrections);
-        return { id: savedAdventureId, shareToken };
+        updateAdventure(existingAdv.id, corrections);
+        return { id: existingAdv.id, shareToken };
       }
 
       const { id, error } = await addAdventure(payload);

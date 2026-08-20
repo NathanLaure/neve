@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -396,6 +396,25 @@ export default function PlanScreen() {
   // paramètres d'URL, qui imposeraient une synchronisation dans les deux sens.
   const { draft, setOutwardTime, resetDraft } = usePlanDraft();
   const { startDate, tripType, datesValidated, outwardTime } = draft;
+
+  /*
+   * Ouvrir cet écran, c'est commencer une planification : le brouillon repart
+   * vierge.
+   *
+   * Le parcours de correction d'un trajet ne passe pas par ici — il va de la
+   * fiche d'aventure droit à `/plan/outward` — et ne nettoie donc rien derrière
+   * lui. Ce qu'il laisse se voyait aux dates déjà cochées, mais il laissait
+   * surtout `savedAdventureId` : la planification suivante allait corriger
+   * l'aventure précédente au lieu d'en déposer une nouvelle. Deux des quatre
+   * entrées vers cet écran remettaient le brouillon à neuf de leur côté, les deux
+   * autres l'oubliaient ; la garantie est désormais ici, où toutes passent.
+   *
+   * `useLayoutEffect` : avec `useEffect`, le premier rendu montrerait les dates de
+   * la planification précédente, le temps d'une image.
+   */
+  useLayoutEffect(() => {
+    resetDraft();
+  }, [resetDraft]);
 
   // Réinitialiser automatiquement les données stockées uniquement lors du changement de rando.
   const prevRandoIdRef = useRef<string | undefined>(rando?.id);
