@@ -115,7 +115,23 @@ const withShareAppLinks = (config) =>
         { $: { 'android:name': 'android.intent.category.DEFAULT' } },
         { $: { 'android:name': 'android.intent.category.BROWSABLE' } },
       ],
+      /*
+       * Les deux hôtes, et `www` d'abord : c'est lui le canonique, l'apex répond
+       * 308 vers lui. Android ne suit pas les redirections pour aller chercher
+       * `/.well-known/assetlinks.json` — déclarer le seul apex faisait donc
+       * échouer la vérification, et un lien de partage ouvrait le navigateur au
+       * lieu de l'application.
+       *
+       * L'apex reste déclaré pour les liens déjà envoyés, qui le portent.
+       */
       data: [
+        {
+          $: {
+            'android:scheme': 'https',
+            'android:host': 'www.neve-rando.fr',
+            'android:pathPrefix': '/share/',
+          },
+        },
         {
           $: {
             'android:scheme': 'https',
