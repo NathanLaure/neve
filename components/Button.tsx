@@ -19,6 +19,8 @@ export interface ButtonProps extends TouchableOpacityProps {
   size?: 'default' | 'small';
   iconOnly?: boolean;
   icon?: React.ReactNode;
+  /** Côté de l'icône. À droite, elle suit le libellé au lieu de l'annoncer. */
+  iconPosition?: 'left' | 'right';
   loading?: boolean;
   textStyle?: TextStyle;
   colorScheme?: 'light' | 'dark';
@@ -34,6 +36,7 @@ export const Button = forwardRef<View, ButtonProps>(
       size = 'default',
       iconOnly = false,
       icon,
+      iconPosition = 'left',
       loading,
       style,
       textStyle,
@@ -91,11 +94,16 @@ export const Button = forwardRef<View, ButtonProps>(
           <View style={defaultStyles.centeredIconWrapper}>{renderIcon()}</View>
         ) : (
           <View style={defaultStyles.contentRow}>
-            {icon ? <View style={defaultStyles.iconWrapper}>{renderIcon()}</View> : null}
+            {icon && iconPosition === 'left' ? (
+              <View style={defaultStyles.iconWrapper}>{renderIcon()}</View>
+            ) : null}
             {title ? (
               <Text style={[variantStyles.text, textStyle]}>
                 {title}
               </Text>
+            ) : null}
+            {icon && iconPosition === 'right' ? (
+              <View style={defaultStyles.iconWrapperRight}>{renderIcon()}</View>
             ) : null}
           </View>
         )}
@@ -285,6 +293,11 @@ const defaultStyles = StyleSheet.create({
   },
   iconWrapper: {
     marginRight: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  iconWrapperRight: {
+    marginLeft: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
