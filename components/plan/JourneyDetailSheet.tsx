@@ -106,9 +106,12 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
           option ? (
             <View style={styles.footerRow}>
               {onConfirm ? (
+                /* Orange, contrairement au défaut des feuilles : retenir un
+                   itinéraire ferme la feuille ET emmène au récapitulatif.
+                   C'est l'exception du changement de page. */
                 <Button
                   title={primaryLabel}
-                  variant="secondary"
+                  variant="primary"
                   onPress={onConfirm}
                   style={styles.footerButton}
                 />
