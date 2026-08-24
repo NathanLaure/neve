@@ -1,6 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Modal,
+  BackHandler,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,11 +9,11 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, ChevronDown } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
+import { useOverlay } from '@/components/OverlayHost';
 
 export interface InlineSelectOption {
   value: string;
@@ -34,6 +34,13 @@ const MENU_PADDING = 8;
 const GAP = 6;
 const SCREEN_MARGIN = 16;
 
+interface AnchorRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
  * Fin de phrase réglable : « Je voudrais [signaler un problème] ».
  *
@@ -46,6 +53,10 @@ const SCREEN_MARGIN = 16;
  * dernier n'accepte que des enfants natifs, la pastille devrait donc être
  * rebâtie en primitives Compose — sans la police ni les jetons de l'app — puis
  * une seconde fois en SwiftUI pour iOS.
+ *
+ * Le menu est posé sur le calque de `OverlayProvider` et non dans une `Modal` :
+ * une modale ouvre sa propre fenêtre, dont l'origine ne coïncide pas avec le
+ * repère de `measureInWindow`. Les coordonnées s'appliquent ici telles quelles.
  */
 export default function InlineSelect({
   value,
@@ -56,32 +67,10 @@ export default function InlineSelect({
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
   const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const setOverlay = useOverlay();
 
   const anchorRef = useRef<View>(null);
-  const [anchor, setAnchor] = useState<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  } | null>(null);
-
-  /*
-   * Décalage vertical de la modale.
-   *
-   * `measureInWindow` compte depuis le haut de la fenêtre de l'application, qui
-   * passe sous la barre d'état en affichage bord à bord. Une modale Android,
-   * elle, ouvre sa propre fenêtre posée SOUS cette barre : les deux repères
-   * diffèrent donc de la hauteur de l'encoche haute, et le menu se posait sur
-   * la phrase au lieu de se poser dessous.
-   *
-   * Mesurer la modale de l'intérieur ne sert à rien — `measureInWindow` y rend
-   * des coordonnées relatives à sa propre fenêtre, donc zéro. Il faut bien
-   * retrancher l'encoche.
-   *
-   * Horizontalement il n'y a rien à corriger : en portrait, les deux fenêtres
-   * partagent le même bord gauche.
-   */
-  const insets = useSafeAreaInsets();
+  const [anchor, setAnchor] = useState<AnchorRect | null>(null);
 
   const selected = options.find((option) => option.value === value) ?? options[0];
 
@@ -105,6 +94,16 @@ export default function InlineSelect({
     [close, onSelect]
   );
 
+  /* Le retour système referme le menu au lieu de quitter l'écran. */
+  useEffect(() => {
+    if (!anchor) return;
+    const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
+      close();
+      return true;
+    });
+    return () => subscription.remove();
+  }, [anchor, close]);
+
   /*
    * Le menu descend sous la pastille, sauf s'il n'y tient pas — auquel cas il
    * remonte au-dessus. Hauteur estimée plutôt que mesurée : la mesurer
@@ -115,9 +114,9 @@ export default function InlineSelect({
   const opensDownward = !anchor || menuHeight <= spaceBelow;
 
   const menuTop = anchor
-    ? (opensDownward
-        ? anchor.y + anchor.height + GAP
-        : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)) - insets.top
+    ? opensDownward
+      ? anchor.y + anchor.height + GAP
+      : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)
     : 0;
 
   /*
@@ -130,77 +129,91 @@ export default function InlineSelect({
     ? Math.max(SCREEN_MARGIN, Math.min(anchor.x, windowWidth - SCREEN_MARGIN - anchor.width))
     : 0;
 
-  /* Ce qui reste à droite du menu une fois posé, pour qu'il ne déborde jamais. */
   const maxMenuWidth = anchor ? windowWidth - SCREEN_MARGIN - menuLeft : windowWidth;
 
-  return (
-    <>
-      <Pressable
-        ref={anchorRef}
-        onPress={open}
-        accessibilityRole="button"
-        accessibilityLabel={accessibilityLabel}
-        accessibilityValue={{ text: selected?.label }}
-        style={[styles.chip, { backgroundColor: theme.card }]}>
-        <Text style={[styles.chipLabel, { color: theme.tint }]}>{selected?.label}</Text>
-        <ChevronDown size={20} color={theme.tint} />
-      </Pressable>
+  /*
+   * Posé sur le calque depuis un effet, et non depuis le gestionnaire d'appui :
+   * le contenu dépend de `anchor`, qui n'est connu qu'après la mesure. Le
+   * retrait au démontage évite de laisser un menu orphelin si l'on quitte
+   * l'écran pendant qu'il est ouvert.
+   */
+  useEffect(() => {
+    if (!anchor) {
+      setOverlay(null);
+      return;
+    }
 
-      <Modal
-        visible={anchor !== null}
-        transparent
-        animationType="none"
-        statusBarTranslucent
-        onRequestClose={close}>
-        {/* Appuyer à côté referme, sans voile sombre : le menu est un
-            prolongement de la phrase, pas une couche par-dessus l'écran. */}
-        <Pressable style={styles.backdrop} onPress={close}>
-          {anchor && (
-            <Animated.View
-              entering={FadeIn.duration(120)}
-              style={[
-                styles.menu,
-                {
-                  top: menuTop,
-                  left: menuLeft,
-                  minWidth: anchor.width,
-                  maxWidth: maxMenuWidth,
-                  maxHeight: menuHeight,
-                  backgroundColor: theme.card,
-                  borderColor: theme.borderLight,
-                },
-              ]}>
-              <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
-                {options.map((option) => {
-                  const isSelected = option.value === value;
-                  return (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => handleSelect(option.value)}
-                      android_ripple={{ color: theme.ripple, foreground: true }}
-                      accessibilityRole="menuitem"
-                      accessibilityState={{ selected: isSelected }}
-                      style={styles.item}>
-                      <Text
-                        numberOfLines={1}
-                        style={[
-                          styles.itemLabel,
-                          { color: isSelected ? theme.tint : theme.text },
-                        ]}>
-                        {option.label}
-                      </Text>
-                      {/* La coche dit où l'on en est sans avoir à relire toute
-                          la liste — utile quand le doigt masque le haut. */}
-                      {isSelected && <Check size={16} color={theme.tint} />}
-                    </Pressable>
-                  );
-                })}
-              </ScrollView>
-            </Animated.View>
-          )}
-        </Pressable>
-      </Modal>
-    </>
+    setOverlay(
+      /* Appuyer à côté referme, sans voile sombre : le menu est un
+         prolongement de la phrase, pas une couche par-dessus l'écran. */
+      <Pressable style={styles.backdrop} onPress={close}>
+        <Animated.View
+          entering={FadeIn.duration(120)}
+          style={[
+            styles.menu,
+            {
+              top: menuTop,
+              left: menuLeft,
+              minWidth: anchor.width,
+              maxWidth: maxMenuWidth,
+              maxHeight: menuHeight,
+              backgroundColor: theme.card,
+              borderColor: theme.borderLight,
+            },
+          ]}>
+          <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
+            {options.map((option) => {
+              const isSelected = option.value === value;
+              return (
+                <Pressable
+                  key={option.value}
+                  onPress={() => handleSelect(option.value)}
+                  android_ripple={{ color: theme.ripple, foreground: true }}
+                  accessibilityRole="menuitem"
+                  accessibilityState={{ selected: isSelected }}
+                  style={styles.item}>
+                  <Text
+                    numberOfLines={1}
+                    style={[styles.itemLabel, { color: isSelected ? theme.tint : theme.text }]}>
+                    {option.label}
+                  </Text>
+                  {/* La coche dit où l'on en est sans avoir à relire toute la
+                      liste — utile quand le doigt masque le haut. */}
+                  {isSelected && <Check size={16} color={theme.tint} />}
+                </Pressable>
+              );
+            })}
+          </ScrollView>
+        </Animated.View>
+      </Pressable>
+    );
+
+    return () => setOverlay(null);
+  }, [
+    anchor,
+    close,
+    handleSelect,
+    maxMenuWidth,
+    menuHeight,
+    menuLeft,
+    menuTop,
+    options,
+    setOverlay,
+    theme,
+    value,
+  ]);
+
+  return (
+    <Pressable
+      ref={anchorRef}
+      onPress={open}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityValue={{ text: selected?.label }}
+      style={[styles.chip, { backgroundColor: theme.card }]}>
+      <Text style={[styles.chipLabel, { color: theme.tint }]}>{selected?.label}</Text>
+      <ChevronDown size={20} color={theme.tint} />
+    </Pressable>
   );
 }
 
@@ -233,7 +246,10 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
     shadowRadius: 12,
-    elevation: 8,
+    /* Plus haut que le pied flottant d'un écran, qui monte à 10 : sur Android
+       l'élévation décide de l'ordre de tracé, et le menu doit rester dessus
+       s'il descend jusque-là. */
+    elevation: 16,
   },
   item: {
     height: ITEM_HEIGHT,

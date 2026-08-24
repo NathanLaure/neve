@@ -8,6 +8,7 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { ThemeProvider, DarkTheme, DefaultTheme } from 'expo-router/react-navigation';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import { OverlayProvider } from '@/components/OverlayHost';
 import { Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import * as SplashScreen from 'expo-splash-screen';
@@ -126,6 +127,10 @@ export default function RootLayout() {
             <SafeAreaProvider>
               <ThemeProvider value={customTheme}>
                 <View style={{ flex: 1 }}>
+                  {/* Ce conteneur est à l'origine de la fenêtre : le calque qu'y
+                      pose `OverlayProvider` partage donc le repère de
+                      `measureInWindow`, ce qu'une `Modal` ne fait pas. */}
+                  <OverlayProvider>
                   <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} animated />
                   <Stack screenOptions={{ contentStyle: { backgroundColor: themeColors.background } }}>
                     <Stack.Screen name="index" options={{ headerShown: false, animation: 'fade' }} />
@@ -229,6 +234,9 @@ export default function RootLayout() {
                       <Stack.Screen key={name} name={name} options={{ headerShown: false }} />
                     ))}
                   </Stack>
+                  </OverlayProvider>
+                  {/* Hors du calque : un toast doit rester lisible par-dessus
+                      tout, menu ancré compris. */}
                   <Toast
                     config={toastConfig}
                     topOffset={Platform.OS === 'ios' ? 68 : 60}
