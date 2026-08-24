@@ -47,7 +47,7 @@ import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import { Button } from '@/components/Button';
-import ScreenFooter, { useScreenFooterPadding } from '@/components/ScreenFooter';
+import ScreenFooter, { useScreenFooterHeight } from '@/components/ScreenFooter';
 import Chip from '@/components/Chip';
 import { IconButton } from '@/components/IconButton';
 import Tag from '@/components/Tag';
@@ -82,7 +82,10 @@ export default function RandoDetailScreen() {
   // Le footer est en `position: absolute` : il ne prend aucune place dans le flux.
   // C'est ce dégagement qui évite que le dernier bloc de contenu finisse caché
   // dessous — il suit le padding bas du footer, plus la hauteur de sa rangée.
-  const scrollBottomClearance = useScreenFooterPadding() + 72;
+  /* Hauteur réelle du pied flottant, plus une respiration. Le calcul précédent
+     partait du seul rembourrage bas et ajoutait 72 : il tombait huit pixels sous
+     la hauteur du pied, et le dernier bouton de la page finissait dessous. */
+  const scrollBottomClearance = useScreenFooterHeight() + 24;
 
   const {
     userLocationName,
@@ -204,23 +207,6 @@ export default function RandoDetailScreen() {
   const optionsOnlyOpacity = scrollY.interpolate({
     inputRange: [100, 180],
     outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-
-  // Button background color animation
-  const buttonBgColor = scrollY.interpolate({
-    inputRange: [0, 120],
-    outputRange: [
-      theme.card,
-      colorScheme === 'dark' ? 'rgba(27, 27, 27, 0)' : 'rgba(255, 255, 255, 0)',
-    ],
-    extrapolate: 'clamp',
-  });
-
-  // Button shadow opacity animation
-  const buttonShadowOpacity = scrollY.interpolate({
-    inputRange: [0, 80],
-    outputRange: [0.1, 0],
     extrapolate: 'clamp',
   });
 
@@ -456,8 +442,15 @@ export default function RandoDetailScreen() {
 
         <View style={styles.headerRight}>
           {/* Extra buttons: fade OUT on scroll */}
+          {/* `needsOffscreenAlphaCompositing` : sur Android l'ombre d'`elevation`
+              est dessinée par le parent d'après le contour de la vue, pas par la
+              vue elle-même — elle ignore donc l'alpha qu'on lui applique. Les
+              pastilles s'effaçaient en laissant deux ombres rondes flottant sur
+              la photo. Le compositage hors écran fait porter l'opacité à tout le
+              sous-arbre, ombres comprises. */}
           <Animated.View
             style={[styles.headerRight, { opacity: extraButtonsOpacity }]}
+            needsOffscreenAlphaCompositing
             pointerEvents="box-none">
             <IconButton
               variant="circle"
