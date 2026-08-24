@@ -588,8 +588,21 @@ function mapSupabaseHikeToRandoData(row: any): RandoData {
         throw error;
       }
       if (data) {
-        const mapped = mapSupabaseHikeToRandoData(data);
-        setHikes((prev) => prev.map((h) => (h.id === id ? { ...mapped, hasFullDetail: true } : h)));
+        const mapped = { ...mapSupabaseHikeToRandoData(data), hasFullDetail: true };
+        /*
+         * Ajoutée si elle manque, et pas seulement remplacée.
+         *
+         * La liste ne contient que les randonnées du rayon chargé. Un lien de
+         * partage, ou simplement un démarrage à froid où le chargement n'a pas
+         * encore eu lieu, désigne un sentier qui n'y est pas : `map` seul
+         * n'écrivait alors rien, et l'écran appelant concluait « introuvable »
+         * pour une randonnée qui existe bel et bien en base.
+         */
+        setHikes((prev) =>
+          prev.some((h) => h.id === id)
+            ? prev.map((h) => (h.id === id ? mapped : h))
+            : [...prev, mapped]
+        );
       }
     } catch (error) {
       console.warn('Could not fetch hike detail from Supabase:', error);

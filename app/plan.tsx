@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import {
+  ActivityIndicator,
   StyleSheet,
   Text,
   View,
@@ -242,11 +243,44 @@ export default function PlanScreen() {
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
 
-  const { addAdventure, deviceLocationName, deviceLocation, ensureFreshDeviceLocation, hikes } =
-    useAdventure();
+  const {
+    addAdventure,
+    deviceLocationName,
+    deviceLocation,
+    ensureFreshDeviceLocation,
+    hikes,
+    loadHikeDetail,
+  } = useAdventure();
   const { profile } = useAuth();
 
   const rando = hikes.find((r) => r.id === randoId);
+
+  /*
+   * La randonnée n'est pas forcément déjà chargée.
+   *
+   * On arrive ici depuis sa fiche la plupart du temps — elle est alors dans le
+   * magasin —, mais aussi depuis une aventure reçue par lien, qui peut désigner
+   * un sentier hors du rayon chargé, et depuis un démarrage à froid où la liste
+   * n'a pas encore été lue. Annoncer « introuvable » dans ces cas-là, c'est
+   * accuser un lien parfaitement valide.
+   */
+  const [isResolvingRando, setIsResolvingRando] = useState(
+    !!randoId && !hikes.some((h) => h.id === randoId)
+  );
+
+  useEffect(() => {
+    if (!randoId) return;
+
+    let isStale = false;
+    loadHikeDetail(String(randoId)).finally(() => {
+      if (!isStale) setIsResolvingRando(false);
+    });
+
+    return () => {
+      isStale = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `loadHikeDetail` change à chaque rendu
+  }, [randoId]);
 
   const passengersSheetRef = useRef<BaseBottomSheetModalRef>(null);
   const autoReturnSheetRef = useRef<BaseBottomSheetModalRef>(null);
@@ -701,12 +735,19 @@ export default function PlanScreen() {
   if (!rando) {
     return (
       <View style={[styles.centered, { backgroundColor: theme.background }]}>
-        <Text style={[styles.errorText, { color: theme.text }]}>Aventure introuvable</Text>
-        <Pressable onPress={() => router.back()}>
-          <View style={[styles.backBtn, { backgroundColor: theme.tint }]}>
-            <Text style={styles.backBtnText}>Retour</Text>
-          </View>
-        </Pressable>
+        <Stack.Screen options={{ headerShown: false }} />
+        {isResolvingRando ? (
+          <ActivityIndicator color={theme.tint} />
+        ) : (
+          <>
+            <Text style={[styles.errorText, { color: theme.text }]}>Randonnée introuvable</Text>
+            <Pressable onPress={() => router.back()}>
+              <View style={[styles.backBtn, { backgroundColor: theme.tint }]}>
+                <Text style={styles.backBtnText}>Retour</Text>
+              </View>
+            </Pressable>
+          </>
+        )}
       </View>
     );
   }

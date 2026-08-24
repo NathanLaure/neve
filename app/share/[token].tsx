@@ -150,8 +150,25 @@ export default function SharedAdventureScreen() {
     invitationSheetRef.current?.present();
   }, [status]);
 
+  /*
+   * Le pied flottant s'efface tant qu'une feuille est ouverte.
+   *
+   * Il est en position absolue, posé par-dessus le contenu, et il occupe
+   * exactement la bande où une feuille range ses propres actions. Superposés,
+   * les deux se disputent les appuis dans cette bande — et l'invitation, dont
+   * les deux boutons y tombent, ne répondait plus. Le voile de la feuille le
+   * recouvre de toute façon : personne ne le voit disparaître.
+   *
+   * L'invitation s'ouvre systématiquement à l'arrivée : elle est donc déjà
+   * comptée ouverte au premier rendu, avant même d'être présentée.
+   */
+  const [isInvitationOpen, setIsInvitationOpen] = useState(true);
+  const [isJourneyDetailOpen, setIsJourneyDetailOpen] = useState(false);
+  const isSheetOpen = isInvitationOpen || isJourneyDetailOpen;
+
   const handleOpenDetails = (phase: 'outward' | 'return') => {
     setDetailedPhase(phase);
+    setIsJourneyDetailOpen(true);
     journeyDetailSheetRef.current?.present();
   };
 
@@ -350,13 +367,16 @@ export default function SharedAdventureScreen() {
           </Text>
         </Animated.ScrollView>
 
-        <ScreenFooter>
-          <Button title="Ajouter à mes aventures" variant="primary" onPress={handleAdd} />
-        </ScreenFooter>
+        {!isSheetOpen && (
+          <ScreenFooter>
+            <Button title="Ajouter à mes aventures" variant="primary" onPress={handleAdd} />
+          </ScreenFooter>
+        )}
 
         <JourneyDetailSheet
           ref={journeyDetailSheetRef}
           option={detailedPhase === 'outward' ? outwardJourney : returnJourney}
+          onClose={() => setIsJourneyDetailOpen(false)}
         />
 
         <SharedInvitationSheet
@@ -365,6 +385,7 @@ export default function SharedAdventureScreen() {
           dateLabel={formatFullDate(adventure.outwardDate)}
           onAccept={handleAdd}
           onDismiss={() => invitationSheetRef.current?.dismiss()}
+          onClose={() => setIsInvitationOpen(false)}
         />
       </View>
     </BottomSheetModalProvider>

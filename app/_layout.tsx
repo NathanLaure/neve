@@ -190,6 +190,12 @@ export default function RootLayout() {
                         animation: 'slide_from_bottom',
                       }}
                     />
+                    {/* Déclarée plutôt que laissée à la découverte automatique :
+                        l'écran pose bien `headerShown: false` lui-même, mais pas
+                        avant d'avoir résolu sa randonnée. Le temps d'aller la
+                        chercher, l'en-tête natif s'affichait avec « plan » écrit
+                        dessus. */}
+                    <Stack.Screen name="plan" options={{ headerShown: false }} />
                     <Stack.Screen
                       name="rando/[id]"
                       options={{

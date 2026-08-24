@@ -16,6 +16,8 @@ export interface SharedInvitationSheetProps {
   onAccept: () => void;
   /** Referme la feuille et rien d'autre — l'écran reste ouvert derrière. */
   onDismiss: () => void;
+  /** Appelé quelle que soit la façon dont la feuille s'est refermée. */
+  onClose?: () => void;
 }
 
 /**
@@ -32,9 +34,15 @@ export interface SharedInvitationSheetProps {
  * aurait fallu que le glissement vers le bas, lui aussi, ferme tout l'écran.
  *
  * La croix de l'écran reste la seule sortie : une chose, un geste.
+ *
+ * Les boutons vivent dans le corps et non dans `footer`. Le pied de page de
+ * `BaseBottomSheetModal` est une vue en position absolue, superposée au
+ * contenu et positionnée sur le fil UI : utile quand une liste défile en
+ * dessous, inutile ici où trois lignes tiennent à l'écran, et une pièce mobile
+ * de plus dans une feuille qui se mesure déjà elle-même.
  */
 const SharedInvitationSheet = forwardRef<BaseBottomSheetModalRef, SharedInvitationSheetProps>(
-  ({ title, dateLabel, onAccept, onDismiss }, ref) => {
+  ({ title, dateLabel, onAccept, onDismiss, onClose }, ref) => {
     const colorScheme = useColorScheme() ?? 'light';
     const theme = Colors[colorScheme];
 
@@ -44,15 +52,10 @@ const SharedInvitationSheet = forwardRef<BaseBottomSheetModalRef, SharedInvitati
         title={title}
         enableDynamicSizing
         snapPoints={[]}
+        onClose={onClose}
         /* Pas de croix : « Voir l'aventure » est la sortie, et la poignée garde
            le glissement vers le bas, qui vaut la même chose. */
-        showCloseButton={false}
-        footer={
-          <View style={styles.footerColumn}>
-            <Button title="Accepter et enregistrer" variant="primary" onPress={onAccept} />
-            <Button title="Voir l’aventure" variant="secondary" onPress={onDismiss} />
-          </View>
-        }>
+        showCloseButton={false}>
         <View style={styles.content}>
           <View style={[styles.iconBadge, { backgroundColor: theme.orangeBadge }]}>
             <Footprints size={28} color={theme.tint} />
@@ -63,6 +66,11 @@ const SharedInvitationSheet = forwardRef<BaseBottomSheetModalRef, SharedInvitati
           <Text style={[styles.message, { color: theme.textMuted }]}>
             Prépare tes chaussures, le départ approche !
           </Text>
+        </View>
+
+        <View style={styles.actions}>
+          <Button title="Accepter et enregistrer" variant="primary" onPress={onAccept} />
+          <Button title="Voir l’aventure" variant="secondary" onPress={onDismiss} />
         </View>
       </BaseBottomSheetModal>
     );
@@ -101,7 +109,8 @@ const styles = StyleSheet.create({
   },
   /* Empilés et non côte à côte : « Accepter et enregistrer » ne tient pas sur
      une demi-largeur, et les deux issues n'ont pas le même poids. */
-  footerColumn: {
+  actions: {
     gap: 12,
+    marginTop: 16,
   },
 });

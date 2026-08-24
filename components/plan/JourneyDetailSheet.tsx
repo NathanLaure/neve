@@ -27,6 +27,8 @@ export interface JourneyDetailSheetProps {
    */
   primaryLabel?: string;
   onConfirm?: () => void;
+  /** Appelé quelle que soit la façon dont la feuille s'est refermée. */
+  onClose?: () => void;
 }
 
 /**
@@ -43,6 +45,7 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
       showNavigoBadge = false,
       primaryLabel,
       onConfirm,
+      onClose,
     },
     ref
   ) => {
@@ -68,6 +71,7 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
         ref={ref}
         snapPoints={['100%']}
         stackBehavior="push"
+        onClose={onClose}
         scrollableBody
         footerShadow={hasMore}
         inlineCloseButton
