@@ -56,7 +56,8 @@ export const Button = forwardRef<View, ButtonProps>(
 
     const getIconColor = () => {
       if (disabled) return theme.buttonTextDisabled || '#7C7C7C';
-      if (variant === 'primary' || variant === 'tertiary') return theme.buttonTextOnBrand || '#FFFFFF';
+      if (variant === 'tertiary') return theme.buttonTertiaryText || theme.buttonTextOnBrand;
+      if (variant === 'primary') return theme.buttonTextOnBrand || '#FFFFFF';
       if (variant === 'secondary') return theme.buttonSecondaryText || '#111111';
       return theme.text;
     };
@@ -212,7 +213,11 @@ const getButtonStyles = (
           paddingHorizontal: size === 'small' ? 12 : 16,
         },
         text: {
-          color: theme.buttonTextOnBrand || '#FFFFFF',
+          /* `buttonTertiaryText` et non `buttonTextOnBrand` : depuis que le
+             fond tertiaire suit la teinte de marque, il s'inverse d'un thème à
+             l'autre — sombre en clair, clair en sombre. Un texte fixé au blanc
+             disparaissait donc en thème sombre. */
+          color: theme.buttonTertiaryText || theme.buttonTextOnBrand || '#FFFFFF',
           fontFamily: 'Satoshi-Bold',
           fontSize: 14,
           includeFontPadding: false,
