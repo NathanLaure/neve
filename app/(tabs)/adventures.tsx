@@ -14,6 +14,14 @@ import { Clock, Compass } from 'lucide-react-native';
 import { useRouter, usePathname } from 'expo-router';
 
 import Colors from '@/constants/Colors';
+import Reanimated, {
+  Extrapolation,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure, PlannedAdventure } from '@/context/AdventureContext';
 import { MOCK_RANDOS, RandoData } from '@/constants/RandosData';
@@ -37,52 +45,41 @@ export default function MyAdventuresScreen() {
   const isFocused = pathname === '/adventures';
 
   const [fadeAnim] = useState(() => new Animated.Value(0));
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Title font size & line height interpolation driven by scroll (identique à la page favoris)
-  const titleFontSize = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [32, 22],
-    extrapolate: 'clamp',
+  /*
+   * Même en-tête au défilement que Favoris, et pour la même raison : cet écran
+   * interpolait `fontSize`, `lineHeight`, `height` et les marges avec
+   * `useNativeDriver: false`. Chaque image traversait le pont vers JavaScript et
+   * déclenchait une mise en page — animer `fontSize` fait re-mesurer chaque
+   * glyphe soixante fois par seconde.
+   *
+   * Le grand titre défile désormais avec le contenu, un titre compact apparaît
+   * dans la barre fixe, et seules `opacity` et `translateY` bougent, sur le
+   * thread UI.
+   */
+  const scrollY = useSharedValue(0);
+  const titleBlockHeight = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
   });
 
-  const titleLineHeight = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [38, 26],
-    extrapolate: 'clamp',
+  /** 0 = titre entièrement visible, 1 = entièrement sorti par le haut. */
+  const collapse = useDerivedValue(() => {
+    if (titleBlockHeight.value <= 0) return 0;
+    return Math.min(1, Math.max(0, scrollY.value / titleBlockHeight.value));
   });
 
-  // Subtitle opacity and height collapse
-  const subOpacity = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  const bigTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0, 0.45], [1, 0], Extrapolation.CLAMP),
+  }));
 
-  const subHeight = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [22, 0],
-    extrapolate: 'clamp',
-  });
-
-  const subMarginTop = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [4, 0],
-    extrapolate: 'clamp',
-  });
-
-  // Header container padding
-  const headerPaddingTop = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [16, 8],
-    extrapolate: 'clamp',
-  });
-
-  const headerPaddingBottom = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [8, 4],
-    extrapolate: 'clamp',
-  });
+  const compactTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: 8 * (1 - collapse.value) }],
+  }));
 
   const {
     plannedAdventures,
@@ -279,38 +276,15 @@ export default function MyAdventuresScreen() {
         style={[styles.container, { backgroundColor: theme.background }]}>
         <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-        {/* Collapsible Animated Header (identique à la page Favoris) */}
-        <Animated.View
-          style={[
-            styles.header,
-            {
-              paddingTop: headerPaddingTop,
-              paddingBottom: headerPaddingBottom,
-            },
-          ]}>
-          <Animated.Text
-            style={[
-              styles.headerTitle,
-              {
-                color: theme.text,
-                fontSize: titleFontSize,
-                lineHeight: titleLineHeight,
-              },
-            ]}>
+        {/* Barre fixe et opaque : elle ne défile jamais, et c'est elle qui masque
+            le grand titre quand il remonte. */}
+        <View style={[styles.compactHeader, { backgroundColor: theme.background }]}>
+          <Reanimated.Text
+            numberOfLines={1}
+            style={[styles.compactTitle, { color: theme.text }, compactTitleStyle]}>
             Mes aventures
-          </Animated.Text>
-          <Animated.View
-            style={{
-              opacity: subOpacity,
-              height: subHeight,
-              marginTop: subMarginTop,
-              overflow: 'hidden',
-            }}>
-            <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-              {plannedAdventures.length} aventure{plannedAdventures.length > 1 ? 's' : ''} planifiée{plannedAdventures.length > 1 ? 's' : ''}
-            </Text>
-          </Animated.View>
-        </Animated.View>
+          </Reanimated.Text>
+        </View>
 
         {/* Adventures Content List */}
         {isLoadingAdventures && plannedAdventures.length === 0 ? (
@@ -320,11 +294,8 @@ export default function MyAdventuresScreen() {
             ))}
           </View>
         ) : (
-          <Animated.ScrollView
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: false }
-            )}
+          <Reanimated.ScrollView
+            onScroll={scrollHandler}
             scrollEventThrottle={16}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={[
@@ -340,6 +311,22 @@ export default function MyAdventuresScreen() {
                 colors={[theme.tint]}
               />
             }>
+            {/* Le grand titre défile avec le contenu au lieu de rétrécir. Sa
+                hauteur mesurée sert de course à l'animation : l'en-tête compact
+                arrive exactement quand celui-ci sort de l'écran. */}
+            <Reanimated.View
+              style={[styles.bigTitleBlock, bigTitleStyle]}
+              onLayout={(event) => {
+                const height = event.nativeEvent.layout.height;
+                if (height > 0) titleBlockHeight.value = height;
+              }}>
+              <Text style={[styles.headerTitle, { color: theme.text }]}>Mes aventures</Text>
+              <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+                {plannedAdventures.length} aventure{plannedAdventures.length > 1 ? 's' : ''}{' '}
+                planifiée{plannedAdventures.length > 1 ? 's' : ''}
+              </Text>
+            </Reanimated.View>
+
             {/* Horizontal Filter Chips Bar (exactement comme sur la page Favoris) */}
             <View style={styles.chipsBlock}>
               <ScrollView
@@ -510,7 +497,7 @@ export default function MyAdventuresScreen() {
                 )}
               </>
             )}
-          </Animated.ScrollView>
+          </Reanimated.ScrollView>
         )}
 
         {/* Actions contextuelles — ouvertes par appui long sur une card.
@@ -536,6 +523,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  /* Hauteur fixe : la barre ne doit pas se redimensionner au défilement, sinon
+     on retombe sur le passage de mise en page qu'on vient précisément de fuir. */
+  compactHeader: {
+    height: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  compactTitle: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  bigTitleBlock: {
+    gap: 4,
+    paddingHorizontal: 20,
+    paddingTop: 8,
+    paddingBottom: 16,
   },
   headerTitle: {
     fontFamily: 'BricolageGrotesque',

@@ -21,7 +21,17 @@ import { useColorScheme } from '@/components/useColorScheme';
 import { useAdventure } from '@/context/AdventureContext';
 import RandoCard from '@/components/RandoCard';
 import Chip from '@/components/Chip';
-import Reanimated, { FadeIn, FadeOut, LinearTransition } from 'react-native-reanimated';
+import Reanimated, {
+  Extrapolation,
+  FadeIn,
+  FadeOut,
+  LinearTransition,
+  interpolate,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useDerivedValue,
+  useSharedValue,
+} from 'react-native-reanimated';
 import { Input } from '@/components/Input';
 import ItemButton from '@/components/ItemButton';
 import BaseBottomSheetModal, { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
@@ -33,6 +43,11 @@ import {
   SortCriteria,
   SORT_OPTIONS,
 } from '@/components/FavoritesFilterSheets';
+
+/* Liste animée par Reanimated : c'est ce qui permet à `useAnimatedScrollHandler`
+   de recevoir les événements sur le thread UI, et non par le pont. Une `FlatList`
+   ordinaire renverrait chaque image vers JavaScript. */
+const AnimatedFlatList = Reanimated.createAnimatedComponent(FlatList<RandoData>);
 
 const formatHikeDuration = (hours: number) => {
   const h = Math.floor(hours);
@@ -48,52 +63,49 @@ export default function FavoritesScreen() {
   const pathname = usePathname();
   const isFocused = pathname === '/favorites';
   const [fadeAnim] = useState(() => new Animated.Value(0));
-  const scrollY = useRef(new Animated.Value(0)).current;
 
-  // Title font size & line height interpolation driven by scroll
-  const titleFontSize = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [32, 22],
-    extrapolate: 'clamp',
+  /*
+   * En-tête au défilement, sur le patron du récapitulatif.
+   *
+   * Cet écran interpolait auparavant `fontSize`, `lineHeight`, `height` et les
+   * marges du titre, avec `useNativeDriver: false`. Trois défauts cumulés :
+   * chaque image traversait le pont vers JavaScript, y recalculait les
+   * interpolations, puis déclenchait un passage de mise en page — et animer
+   * `fontSize` fait re-mesurer chaque glyphe soixante fois par seconde. Le
+   * moindre travail JS concurrent faisait donc sauter l'en-tête.
+   *
+   * Le pilote natif ne sait animer que `transform` et `opacity` : c'est pour
+   * cela que le drapeau était à `false`, il ne pouvait pas en être autrement.
+   *
+   * Ici le grand titre défile avec la liste et s'efface, un titre compact
+   * apparaît dans la barre fixe. Seules `opacity` et `translateY` bougent, sur
+   * le thread UI, hors d'atteinte d'un JavaScript occupé.
+   */
+  const scrollY = useSharedValue(0);
+  const titleBlockHeight = useSharedValue(0);
+
+  const scrollHandler = useAnimatedScrollHandler({
+    onScroll: (event) => {
+      scrollY.value = event.contentOffset.y;
+    },
   });
 
-  const titleLineHeight = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [38, 26],
-    extrapolate: 'clamp',
+  /** 0 = titre entièrement visible, 1 = entièrement sorti par le haut. */
+  const collapse = useDerivedValue(() => {
+    if (titleBlockHeight.value <= 0) return 0;
+    return Math.min(1, Math.max(0, scrollY.value / titleBlockHeight.value));
   });
 
-  // Subtitle opacity and height collapse
-  const subOpacity = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
+  // Relais et non fondu croisé : sinon deux titres à demi transparents se
+  // superposent à mi-course.
+  const bigTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0, 0.45], [1, 0], Extrapolation.CLAMP),
+  }));
 
-  const subHeight = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [22, 0],
-    extrapolate: 'clamp',
-  });
-
-  const subMarginTop = scrollY.interpolate({
-    inputRange: [0, 40],
-    outputRange: [4, 0],
-    extrapolate: 'clamp',
-  });
-
-  // Header container padding
-  const headerPaddingTop = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [16, 8],
-    extrapolate: 'clamp',
-  });
-
-  const headerPaddingBottom = scrollY.interpolate({
-    inputRange: [0, 60],
-    outputRange: [8, 4],
-    extrapolate: 'clamp',
-  });
+  const compactTitleStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(collapse.value, [0.55, 1], [0, 1], Extrapolation.CLAMP),
+    transform: [{ translateY: 8 * (1 - collapse.value) }],
+  }));
 
   const {
     hikes,
@@ -336,43 +348,15 @@ export default function FavoritesScreen() {
             est global : sans ce reset, on hérite d'icônes claires sur fond clair ici. */}
         <StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
 
-        <Animated.View
-          style={[
-            styles.header,
-            {
-              paddingTop: headerPaddingTop,
-              paddingBottom: headerPaddingBottom,
-            },
-          ]}>
-          <Animated.Text
-            style={[
-              styles.headerTitle,
-              {
-                color: theme.text,
-                fontSize: titleFontSize,
-                lineHeight: titleLineHeight,
-              },
-            ]}>
+        {/* Barre fixe et opaque : elle ne défile jamais, et c'est elle qui masque
+            le grand titre quand il remonte. */}
+        <View style={[styles.compactHeader, { backgroundColor: theme.background }]}>
+          <Reanimated.Text
+            numberOfLines={1}
+            style={[styles.compactTitle, { color: theme.text }, compactTitleStyle]}>
             Mes Favoris
-          </Animated.Text>
-          <Animated.View
-            style={{
-              opacity: subOpacity,
-              height: subHeight,
-              marginTop: subMarginTop,
-              overflow: 'hidden',
-            }}>
-            {favoriteHikes.length > 0 ? (
-              <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-                {favoriteHikes.length} itinéraire{favoriteHikes.length > 1 ? 's' : ''}
-              </Text>
-            ) : (
-              <Text style={[styles.headerSub, { color: theme.textMuted }]}>
-                Retrouvez les randonnées que vous avez aimées.
-              </Text>
-            )}
-          </Animated.View>
-        </Animated.View>
+          </Reanimated.Text>
+        </View>
 
         {showLoading ? (
           <View style={styles.emptyContainer}>
@@ -401,7 +385,7 @@ export default function FavoritesScreen() {
             </Pressable>
           </View>
         ) : (
-          <FlatList
+          <AnimatedFlatList
             data={visibleHikes}
             keyExtractor={(item) => `favorite-${item.id}`}
             renderItem={renderItem}
@@ -414,13 +398,27 @@ export default function FavoritesScreen() {
             ItemSeparatorComponent={() => <View style={{ height: 20 }} />}
             showsVerticalScrollIndicator={false}
             keyboardShouldPersistTaps="handled"
-            onScroll={Animated.event(
-              [{ nativeEvent: { contentOffset: { y: scrollY } } }],
-              { useNativeDriver: false }
-            )}
+            onScroll={scrollHandler}
             scrollEventThrottle={16}
             ListHeaderComponent={
               <View style={styles.searchHeaderBlock}>
+                {/* Le grand titre défile avec la liste au lieu de rétrécir. Sa
+                    hauteur mesurée sert de course à l'animation : l'en-tête
+                    compact arrive exactement quand celui-ci sort de l'écran. */}
+                <Reanimated.View
+                  style={[styles.bigTitleBlock, bigTitleStyle]}
+                  onLayout={(event) => {
+                    const height = event.nativeEvent.layout.height;
+                    if (height > 0) titleBlockHeight.value = height;
+                  }}>
+                  <Text style={[styles.headerTitle, { color: theme.text }]}>Mes Favoris</Text>
+                  <Text style={[styles.headerSub, { color: theme.textMuted }]}>
+                    {favoriteHikes.length > 0
+                      ? `${favoriteHikes.length} itinéraire${favoriteHikes.length > 1 ? 's' : ''}`
+                      : 'Retrouvez les randonnées que vous avez aimées.'}
+                  </Text>
+                </Reanimated.View>
+
                 {/* 1. Search Bar (Figma 670:40829) */}
                 <Input
                   placeholder="Rechercher par nom"
@@ -575,6 +573,22 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 16,
     paddingBottom: 8,
+  },
+  /* Hauteur fixe : la barre ne doit pas se redimensionner au défilement, sinon
+     on retombe sur le passage de mise en page qu'on vient précisément de fuir. */
+  compactHeader: {
+    height: 44,
+    justifyContent: 'center',
+    paddingHorizontal: 20,
+  },
+  compactTitle: {
+    fontFamily: 'Satoshi-Bold',
+    fontSize: 17,
+    lineHeight: 22,
+  },
+  bigTitleBlock: {
+    gap: 4,
+    paddingBottom: 16,
   },
   headerTitle: {
     fontFamily: 'BricolageGrotesque',
