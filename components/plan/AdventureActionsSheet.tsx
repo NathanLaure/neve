@@ -12,6 +12,7 @@ import {
   CalendarPlus,
   CalendarX2,
   Download,
+  MessageSquareWarning,
   Mountain,
   PencilLine,
   RotateCcw,
@@ -236,6 +237,26 @@ const AdventureActionsSheet = forwardRef<BaseBottomSheetModalRef, AdventureActio
       });
     }, [adventure, toggleOffline]);
 
+    /*
+     * Le formulaire s'ouvre réglé sur cette aventure. Sans son identifiant, un
+     * « ce train n'existe pas » ne dit ni quelle ligne, ni quel jour, ni quelle
+     * correspondance — c'est-à-dire rien d'exploitable.
+     */
+    const handleReportJourney = useCallback(() => {
+      sheetRef.current?.dismiss();
+      if (!adventure) return;
+
+      router.push({
+        pathname: '/settings/support',
+        params: {
+          intent: 'data',
+          subjectKind: 'journey',
+          subjectId: adventure.id,
+          from: 'aventure',
+        },
+      });
+    }, [adventure, router]);
+
     const handleAskCancel = useCallback(() => {
       if (!adventure) return;
       setPendingCancel({ id: adventure.id, title, isPast });
@@ -332,6 +353,15 @@ const AdventureActionsSheet = forwardRef<BaseBottomSheetModalRef, AdventureActio
               }
               label={isOffline ? 'Supprimer la sauvegarde locale' : 'Télécharger hors connexion'}
               onPress={handleToggleOffline}
+            />
+
+            {/* Sujet « trajet » et non « randonnée » : depuis une aventure, ce
+                qu'on vient corriger est un horaire ou une correspondance, pas
+                la description du sentier. */}
+            <ItemButton
+              icon={<MessageSquareWarning size={20} color={theme.text} />}
+              label="Signaler un horaire faux"
+              onPress={handleReportJourney}
             />
 
             <ItemButton

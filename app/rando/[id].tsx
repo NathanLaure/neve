@@ -905,12 +905,20 @@ export default function RandoDetailScreen() {
             icon={<MessageSquareWarning size={20} color="#E0633B" />}
             label="Signaler une anomalie"
             color="#E0633B"
+            /* Le formulaire s'ouvre déjà réglé sur cette randonnée : sans son
+               identifiant, un « le départ n'est pas à cette gare » ne désigne
+               rien et ne peut pas être corrigé. */
             onPress={() => {
               actionsSheetRef.current?.dismiss();
-              Alert.alert(
-                'Signaler une anomalie',
-                'Merci de nous aider à maintenir les informations de randonnées à jour.'
-              );
+              router.push({
+                pathname: '/settings/support',
+                params: {
+                  intent: 'data',
+                  subjectKind: 'hike',
+                  subjectId: String(id),
+                  from: 'rando',
+                },
+              });
             }}
           />
         </View>

@@ -83,14 +83,22 @@ export default function SupportSettingsScreen() {
   const { user } = useAuth();
 
   /* Ouvert depuis une fiche ou une aventure, le formulaire sait de quoi on
-     parle : le sujet est prérempli et son identifiant part avec le message. */
-  const { subjectId, subjectKind, from } = useLocalSearchParams<{
+     parle : la phrase arrive déjà réglée et l'identifiant du sujet part avec le
+     message. C'est là que le signalement de donnée fausse devient exploitable —
+     « ce train n'existe pas » sans savoir lequel ne mène nulle part. */
+  const {
+    intent: initialIntent,
+    subjectId,
+    subjectKind,
+    from,
+  } = useLocalSearchParams<{
+    intent?: FeedbackIntent;
     subjectId?: string;
     subjectKind?: FeedbackSubjectKind;
     from?: string;
   }>();
 
-  const [intent, setIntent] = useState<FeedbackIntent>('problem');
+  const [intent, setIntent] = useState<FeedbackIntent>(initialIntent ?? 'problem');
   const [subject, setSubject] = useState<FeedbackSubjectKind>(subjectKind ?? 'hike');
   const [message, setMessage] = useState('');
   const [screenshot, setScreenshot] = useState<string | null>(null);
