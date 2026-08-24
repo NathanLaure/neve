@@ -108,7 +108,7 @@ export const JourneyDetailSheet = forwardRef<BaseBottomSheetModalRef, JourneyDet
               {onConfirm ? (
                 <Button
                   title={primaryLabel}
-                  variant="primary"
+                  variant="secondary"
                   onPress={onConfirm}
                   style={styles.footerButton}
                 />

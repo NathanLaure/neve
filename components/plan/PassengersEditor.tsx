@@ -299,7 +299,7 @@ export default function PassengersEditor({
 
       {draftBracket !== null ? (
         <Animated.View key="draft-actions" layout={REFLOW} entering={ENTER} exiting={EXIT} style={styles.actions}>
-          <Button title="Ajouter ce randonneur" variant="primary" onPress={confirmDraft} />
+          <Button title="Ajouter ce randonneur" variant="secondary" onPress={confirmDraft} />
           <Button title="Annuler" variant="transparent" onPress={() => setDraftBracket(null)} />
         </Animated.View>
       ) : (
@@ -310,7 +310,7 @@ export default function PassengersEditor({
             entering={ENTER}
             exiting={EXIT}
             style={styles.actions}>
-            <Button title={validateLabel} variant="primary" onPress={onValidate} />
+            <Button title={validateLabel} variant="secondary" onPress={onValidate} />
           </Animated.View>
         )
       )}

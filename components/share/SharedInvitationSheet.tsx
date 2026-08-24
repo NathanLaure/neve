@@ -70,7 +70,7 @@ const SharedInvitationSheet = forwardRef<BaseBottomSheetModalRef, SharedInvitati
 
         <View style={styles.actions}>
           <Button title="Accepter et enregistrer" variant="primary" onPress={onAccept} />
-          <Button title="Voir l’aventure" variant="secondary" onPress={onDismiss} />
+          <Button title="Voir l’aventure" variant="transparent" onPress={onDismiss} />
         </View>
       </BaseBottomSheetModal>
     );

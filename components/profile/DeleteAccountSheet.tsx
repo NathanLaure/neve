@@ -51,7 +51,7 @@ const DeleteAccountSheet = forwardRef<BaseBottomSheetModalRef, DeleteAccountShee
         footer={
           <View style={styles.footerRow}>
             <Button
-              variant="secondary"
+              variant="transparent"
               title="Annuler"
               onPress={onCancel}
               disabled={isDeleting}

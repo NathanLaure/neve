@@ -431,8 +431,10 @@ export default function PlanDatesScreen() {
             ]}>
             <View style={styles.timeRowLabel}>
               <Text style={[styles.timeRowText, { color: theme.text }]}>{isAddingReturn ? 'Retour à partir de' : 'Aller à partir de'}</Text>
-              <View style={[styles.timePill, { backgroundColor: theme.buttonSecondary }]}>
-                <Text style={[styles.timePillText, { color: theme.buttonSecondaryText }]}>
+              {/* Seule tache d'orange restante de l'écran, et voulue : l'heure
+                  est la valeur qu'on vient régler, pas un état sélectionné. */}
+              <View style={[styles.timePill, { backgroundColor: theme.tint }]}>
+                <Text style={[styles.timePillText, { color: theme.buttonTextOnBrand }]}>
                   {outwardTime}
                 </Text>
               </View>

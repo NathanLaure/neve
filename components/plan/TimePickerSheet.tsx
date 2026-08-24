@@ -97,8 +97,10 @@ export const TimePickerSheet = forwardRef<BaseBottomSheetModalRef, TimePickerShe
         ref={ref}
         title={label}
         titleAccessory={
-          <View style={[styles.valuePill, { backgroundColor: theme.buttonSecondary }]}>
-            <Text style={[styles.valuePillText, { color: theme.buttonSecondaryText }]}>
+          /* Même pilule que sur la ligne « Aller à partir de » de l'écran des
+             dates, donc même orange : c'est la valeur qu'on règle. */
+          <View style={[styles.valuePill, { backgroundColor: theme.tint }]}>
+            <Text style={[styles.valuePillText, { color: theme.buttonTextOnBrand }]}>
               {value}
             </Text>
           </View>
@@ -135,7 +137,7 @@ export const TimePickerSheet = forwardRef<BaseBottomSheetModalRef, TimePickerShe
 
               <Button
                 title="J'ai compris"
-                variant="primary"
+                variant="secondary"
                 onPress={() => {
                   (ref as any)?.current?.dismiss();
                 }}

@@ -165,11 +165,15 @@ const BaseBottomSheetModalRender: React.ForwardRefRenderFunction<
     footer,
     primaryButtonTitle,
     onPrimaryPress,
-    primaryButtonVariant = 'primary',
+    /* Une feuille valide ce qu'on vient d'y régler et se referme sur place :
+       elle ne fait pas avancer un parcours, elle le confirme. L'orange est
+       réservé à ce qui convertit — à repasser explicitement en `primary` sur la
+       rare feuille dont le bouton emmène vers un autre écran. */
+    primaryButtonVariant = 'secondary',
     primaryButtonDisabled = false,
     secondaryButtonTitle,
     onSecondaryPress,
-    secondaryButtonVariant = 'text',
+    secondaryButtonVariant = 'transparent',
     secondaryButtonDisabled = false,
     stackBehavior = 'replace',
     topInset = 0,

@@ -43,7 +43,7 @@ const SignOutSheet = forwardRef<BaseBottomSheetModalRef, SignOutSheetProps>(
         footer={
           <View style={styles.footerRow}>
             <Button
-              variant="secondary"
+              variant="transparent"
               title="Annuler"
               onPress={onCancel}
               style={styles.footerButton}

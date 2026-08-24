@@ -46,7 +46,7 @@ const CancelAdventureSheet = forwardRef<BaseBottomSheetModalRef, CancelAdventure
         footer={
           <View style={styles.footerRow}>
             <Button
-              variant="secondary"
+              variant="transparent"
               title="Garder"
               onPress={onCancel}
               style={styles.footerButton}

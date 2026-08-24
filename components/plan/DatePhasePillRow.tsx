@@ -37,12 +37,19 @@ export default function DatePhasePillRow({
   // Aller simple : une seule pilule, qui reprend donc les quatre coins arrondis.
   const isOneWay = returnLabel === null;
 
+  /*
+   * `buttonSecondary` est une surface inversée : sombre en thème clair, claire
+   * en thème sombre. Son ondulation est donc celle de l'autre thème — la teinte
+   * du thème courant y serait de la même couleur que le fond, donc invisible.
+   */
+  const rippleOnSecondary = Colors[colorScheme === 'dark' ? 'light' : 'dark'].ripple;
+
   return (
     <View style={styles.row}>
       <Pressable
         onPress={onPress}
         android_ripple={{
-          color: isOutwardActive ? theme.rippleOnBrand : theme.ripple,
+          color: isOutwardActive ? rippleOnSecondary : theme.ripple,
           borderless: false,
           foreground: true,
         }}
@@ -50,23 +57,23 @@ export default function DatePhasePillRow({
           styles.pill,
           isOneWay ? styles.pillSolo : styles.pillLeft,
           {
-            backgroundColor: isOutwardActive ? theme.brand : theme.card,
+            backgroundColor: isOutwardActive ? theme.buttonSecondary : theme.card,
             overflow: 'hidden' as const,
           },
         ]}>
         <View style={styles.content}>
-          {isOutwardActive && <ArrowRight size={16} color={theme.buttonTextOnBrand} />}
+          {isOutwardActive && <ArrowRight size={16} color={theme.buttonSecondaryText} />}
           <Text
             style={[
               styles.label,
-              { color: isOutwardActive ? theme.buttonTextOnBrand : theme.textMuted },
+              { color: isOutwardActive ? theme.buttonSecondaryText : theme.textMuted },
             ]}>
             Aller
           </Text>
           <Text
             style={[
               styles.date,
-              { color: isOutwardActive ? theme.buttonTextOnBrand : theme.text },
+              { color: isOutwardActive ? theme.buttonSecondaryText : theme.text },
             ]}>
             {outwardLabel}
           </Text>
@@ -77,7 +84,7 @@ export default function DatePhasePillRow({
         <Pressable
           onPress={onPress}
           android_ripple={{
-            color: !isOutwardActive ? theme.rippleOnBrand : theme.ripple,
+            color: !isOutwardActive ? rippleOnSecondary : theme.ripple,
             borderless: false,
             foreground: true,
           }}
@@ -85,23 +92,23 @@ export default function DatePhasePillRow({
             styles.pill,
             styles.pillRight,
             {
-              backgroundColor: !isOutwardActive ? theme.brand : theme.card,
+              backgroundColor: !isOutwardActive ? theme.buttonSecondary : theme.card,
               overflow: 'hidden' as const,
             },
           ]}>
           <View style={styles.content}>
-            {!isOutwardActive && <ArrowRight size={16} color={theme.buttonTextOnBrand} />}
+            {!isOutwardActive && <ArrowRight size={16} color={theme.buttonSecondaryText} />}
             <Text
               style={[
                 styles.label,
-                { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.textMuted },
+                { color: !isOutwardActive ? theme.buttonSecondaryText : theme.textMuted },
               ]}>
               Retour
             </Text>
             <Text
               style={[
                 styles.date,
-                { color: !isOutwardActive ? theme.buttonTextOnBrand : theme.text },
+                { color: !isOutwardActive ? theme.buttonSecondaryText : theme.text },
               ]}
               numberOfLines={1}>
               {returnLabel}
