@@ -21,6 +21,7 @@ import { BaseBottomSheetModalRef } from '@/components/BaseBottomSheetModal';
 import { useAdventure } from '@/context/AdventureContext';
 import { usePlanDraft } from '@/context/PlanDraftContext';
 import { buildAdventureEdit, buildAdventurePlanParams } from '@/services/adventureEditing';
+import { SHARE_BASE_URL } from '@/services/adventureSharing';
 import {
   formatAdventureRange,
   formatDayMonth,
@@ -281,7 +282,7 @@ export default function PlanSummaryScreen() {
     }
 
     const { shareToken } = saved;
-    const shareUrl = `https://neve-rando.fr/share/${shareToken}`;
+    const shareUrl = `${SHARE_BASE_URL}/${shareToken}`;
 
     const dateStr = formatAdventureRange(outwardDate, returnDate);
     const durationStr = rando.durationHours ? `${rando.durationHours}h` : '';

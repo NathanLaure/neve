@@ -27,6 +27,16 @@ function createShareToken(): string {
  * récapitulatif — et doivent envoyer le même message : c'est la même aventure,
  * elle ne peut pas se raconter différemment selon le bouton emprunté.
  */
+/**
+ * Racine des liens de partage, sur l'hôte canonique.
+ *
+ * `www` et non l'apex, qui répond 308 vers lui : Android ne suit pas les
+ * redirections pour aller lire `/.well-known/assetlinks.json`, l'apex ne peut
+ * donc pas être vérifié et un lien qui le porte ouvre le navigateur au lieu de
+ * l'application.
+ */
+export const SHARE_BASE_URL = 'https://www.neve-rando.fr/share';
+
 export function buildAdventureShare(
   adventure: PlannedAdventure,
   options: { hikeTitle: string; isPast?: boolean }
@@ -36,7 +46,7 @@ export function buildAdventureShare(
 
   const isNewToken = !adventure.shareToken;
   const shareToken = adventure.shareToken ?? createShareToken();
-  const url = `https://neve-rando.fr/share/${shareToken}`;
+  const url = `${SHARE_BASE_URL}/${shareToken}`;
 
   const dateStr = formatAdventureRange(
     adventure.outwardDate,
