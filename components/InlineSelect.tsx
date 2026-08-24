@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import Animated, { FadeIn } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Check, ChevronDown } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
@@ -65,17 +66,22 @@ export default function InlineSelect({
   } | null>(null);
 
   /*
-   * Origine de la modale dans la fenêtre.
+   * Décalage vertical de la modale.
    *
-   * Une modale Android ouvre sa propre fenêtre, dont le coin haut-gauche ne
-   * coïncide pas forcément avec celui que `measureInWindow` prend pour repère —
-   * l'écart valait ici une soixantaine de points, et le menu se posait sur la
-   * phrase au lieu de se poser dessous. Plutôt que de deviner cet écart à
-   * partir des encoches, on mesure la modale elle-même et on l'y soustrait :
-   * juste sur les deux plateformes, quel que soit le mode d'affichage.
+   * `measureInWindow` compte depuis le haut de la fenêtre de l'application, qui
+   * passe sous la barre d'état en affichage bord à bord. Une modale Android,
+   * elle, ouvre sa propre fenêtre posée SOUS cette barre : les deux repères
+   * diffèrent donc de la hauteur de l'encoche haute, et le menu se posait sur
+   * la phrase au lieu de se poser dessous.
+   *
+   * Mesurer la modale de l'intérieur ne sert à rien — `measureInWindow` y rend
+   * des coordonnées relatives à sa propre fenêtre, donc zéro. Il faut bien
+   * retrancher l'encoche.
+   *
+   * Horizontalement il n'y a rien à corriger : en portrait, les deux fenêtres
+   * partagent le même bord gauche.
    */
-  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
-  const modalRootRef = useRef<View>(null);
+  const insets = useSafeAreaInsets();
 
   const selected = options.find((option) => option.value === value) ?? options[0];
 
@@ -89,10 +95,7 @@ export default function InlineSelect({
     });
   }, []);
 
-  const close = useCallback(() => {
-    setAnchor(null);
-    setOrigin(null);
-  }, []);
+  const close = useCallback(() => setAnchor(null), []);
 
   const handleSelect = useCallback(
     (next: string) => {
@@ -114,7 +117,7 @@ export default function InlineSelect({
   const menuTop = anchor
     ? (opensDownward
         ? anchor.y + anchor.height + GAP
-        : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)) - (origin?.y ?? 0)
+        : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)) - insets.top
     : 0;
 
   /*
@@ -124,16 +127,11 @@ export default function InlineSelect({
    * garde-fou à la marge d'écran, où le menu se collait donc toujours.
    */
   const menuLeft = anchor
-    ? Math.max(
-        SCREEN_MARGIN,
-        Math.min(anchor.x, windowWidth - SCREEN_MARGIN - anchor.width)
-      ) - (origin?.x ?? 0)
+    ? Math.max(SCREEN_MARGIN, Math.min(anchor.x, windowWidth - SCREEN_MARGIN - anchor.width))
     : 0;
 
   /* Ce qui reste à droite du menu une fois posé, pour qu'il ne déborde jamais. */
-  const maxMenuWidth = anchor
-    ? windowWidth - SCREEN_MARGIN - (menuLeft + (origin?.x ?? 0))
-    : windowWidth;
+  const maxMenuWidth = anchor ? windowWidth - SCREEN_MARGIN - menuLeft : windowWidth;
 
   return (
     <>
@@ -156,17 +154,8 @@ export default function InlineSelect({
         onRequestClose={close}>
         {/* Appuyer à côté referme, sans voile sombre : le menu est un
             prolongement de la phrase, pas une couche par-dessus l'écran. */}
-        <Pressable
-          ref={modalRootRef}
-          style={styles.backdrop}
-          onPress={close}
-          /* Mesuré à la pose : c'est cette origine qu'on retranche aux
-             coordonnées de la pastille. Le menu n'est rendu qu'ensuite, sinon
-             il apparaîtrait une frame au mauvais endroit. */
-          onLayout={() =>
-            modalRootRef.current?.measureInWindow((x, y) => setOrigin({ x, y }))
-          }>
-          {anchor && origin && (
+        <Pressable style={styles.backdrop} onPress={close}>
+          {anchor && (
             <Animated.View
               entering={FadeIn.duration(120)}
               style={[

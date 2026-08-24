@@ -15,7 +15,7 @@ import { ArrowLeft } from 'lucide-react-native';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
 import { IconButton } from '@/components/IconButton';
-import { useScreenFooterPadding } from '@/components/ScreenFooter';
+import { useScreenFooterHeight } from '@/components/ScreenFooter';
 
 export interface SettingsPageProps {
   title: string;
@@ -48,9 +48,13 @@ export default function SettingsPage({
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'light';
   const theme = Colors[colorScheme];
-  // Le footer est en `position: absolute` : il ne prend aucune place dans le flux,
-  // c'est au corps de réserver la sienne.
-  const footerClearance = useScreenFooterPadding() + 64;
+  /* Le pied est en `position: absolute` : il ne prend aucune place dans le
+     flux, c'est au corps de réserver la sienne.
+
+     Hauteur réelle du pied, plus une respiration. Le calcul précédent partait
+     du seul rembourrage bas et ajoutait 64 : il tombait seize points sous la
+     hauteur du pied, et la fin du contenu passait dessous. */
+  const footerClearance = useScreenFooterHeight() + 24;
 
   /* `flex: 1` réservé au mode `fill` : dans une zone défilante, un enfant qui
      s'étire n'a aucune hauteur de référence et s'effondre à zéro. */
