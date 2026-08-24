@@ -81,7 +81,7 @@
         "backgroundColor": "#FFF7F2"
       },
       "package": "fr.neverando.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "permissions": [
         "android.permission.POST_NOTIFICATIONS"
       ],
