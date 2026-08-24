@@ -64,6 +64,19 @@ export default function InlineSelect({
     height: number;
   } | null>(null);
 
+  /*
+   * Origine de la modale dans la fenêtre.
+   *
+   * Une modale Android ouvre sa propre fenêtre, dont le coin haut-gauche ne
+   * coïncide pas forcément avec celui que `measureInWindow` prend pour repère —
+   * l'écart valait ici une soixantaine de points, et le menu se posait sur la
+   * phrase au lieu de se poser dessous. Plutôt que de deviner cet écart à
+   * partir des encoches, on mesure la modale elle-même et on l'y soustrait :
+   * juste sur les deux plateformes, quel que soit le mode d'affichage.
+   */
+  const [origin, setOrigin] = useState<{ x: number; y: number } | null>(null);
+  const modalRootRef = useRef<View>(null);
+
   const selected = options.find((option) => option.value === value) ?? options[0];
 
   /*
@@ -76,7 +89,10 @@ export default function InlineSelect({
     });
   }, []);
 
-  const close = useCallback(() => setAnchor(null), []);
+  const close = useCallback(() => {
+    setAnchor(null);
+    setOrigin(null);
+  }, []);
 
   const handleSelect = useCallback(
     (next: string) => {
@@ -96,16 +112,28 @@ export default function InlineSelect({
   const opensDownward = !anchor || menuHeight <= spaceBelow;
 
   const menuTop = anchor
-    ? opensDownward
-      ? anchor.y + anchor.height + GAP
-      : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)
+    ? (opensDownward
+        ? anchor.y + anchor.height + GAP
+        : Math.max(SCREEN_MARGIN, anchor.y - GAP - menuHeight)) - (origin?.y ?? 0)
     : 0;
 
-  /* Aligné sur le bord gauche de la pastille, ramené dans l'écran s'il déborde. */
-  const maxMenuWidth = windowWidth - SCREEN_MARGIN * 2;
+  /*
+   * Aligné sur le bord gauche de la pastille, ramené dans l'écran s'il déborde.
+   * La borne droite se calcule sur la largeur de la pastille — le menu fait au
+   * moins la sienne — et non sur la largeur maximale : celle-ci ramenait le
+   * garde-fou à la marge d'écran, où le menu se collait donc toujours.
+   */
   const menuLeft = anchor
-    ? Math.min(Math.max(SCREEN_MARGIN, anchor.x), windowWidth - SCREEN_MARGIN - maxMenuWidth)
+    ? Math.max(
+        SCREEN_MARGIN,
+        Math.min(anchor.x, windowWidth - SCREEN_MARGIN - anchor.width)
+      ) - (origin?.x ?? 0)
     : 0;
+
+  /* Ce qui reste à droite du menu une fois posé, pour qu'il ne déborde jamais. */
+  const maxMenuWidth = anchor
+    ? windowWidth - SCREEN_MARGIN - (menuLeft + (origin?.x ?? 0))
+    : windowWidth;
 
   return (
     <>
@@ -128,8 +156,17 @@ export default function InlineSelect({
         onRequestClose={close}>
         {/* Appuyer à côté referme, sans voile sombre : le menu est un
             prolongement de la phrase, pas une couche par-dessus l'écran. */}
-        <Pressable style={styles.backdrop} onPress={close}>
-          {anchor && (
+        <Pressable
+          ref={modalRootRef}
+          style={styles.backdrop}
+          onPress={close}
+          /* Mesuré à la pose : c'est cette origine qu'on retranche aux
+             coordonnées de la pastille. Le menu n'est rendu qu'ensuite, sinon
+             il apparaîtrait une frame au mauvais endroit. */
+          onLayout={() =>
+            modalRootRef.current?.measureInWindow((x, y) => setOrigin({ x, y }))
+          }>
+          {anchor && origin && (
             <Animated.View
               entering={FadeIn.duration(120)}
               style={[

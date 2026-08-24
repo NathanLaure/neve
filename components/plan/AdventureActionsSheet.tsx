@@ -27,6 +27,7 @@ import BaseBottomSheetModal, {
   BaseBottomSheetModalRef,
 } from '@/components/BaseBottomSheetModal';
 import ItemButton from '@/components/ItemButton';
+import { formatFullDate } from '@/components/plan/DateRangeCalendar';
 import CancelAdventureSheet from '@/components/plan/CancelAdventureSheet';
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -252,10 +253,13 @@ const AdventureActionsSheet = forwardRef<BaseBottomSheetModalRef, AdventureActio
           intent: 'data',
           subjectKind: 'journey',
           subjectId: adventure.id,
+          /* Le sentier et la date : c'est ainsi qu'on reconnaît son aventure,
+             pas à son identifiant. */
+          subjectLabel: `${title} · ${formatFullDate(adventure.outwardDate)}`,
           from: 'aventure',
         },
       });
-    }, [adventure, router]);
+    }, [adventure, router, title]);
 
     const handleAskCancel = useCallback(() => {
       if (!adventure) return;

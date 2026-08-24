@@ -92,7 +92,15 @@ export default function SettingsPage({
         ) : (
           <ScrollView
             style={styles.scroll}
-            contentContainerStyle={{ paddingBottom: footer ? footerClearance : 40 }}
+            /* `flexGrow` et non `flex` : le contenu garde sa hauteur naturelle
+               quand il dépasse, et remplit l'écran quand il est plus court —
+               ce qui permet à une page de coller un bloc en bas avec une marge
+               automatique. Sans lui, la zone défilante n'a pas de hauteur de
+               référence à donner à ses enfants. */
+            contentContainerStyle={{
+              paddingBottom: footer ? footerClearance : 40,
+              flexGrow: 1,
+            }}
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}>
             {body}

@@ -916,6 +916,7 @@ export default function RandoDetailScreen() {
                   intent: 'data',
                   subjectKind: 'hike',
                   subjectId: String(id),
+                  subjectLabel: rando.title,
                   from: 'rando',
                 },
               });

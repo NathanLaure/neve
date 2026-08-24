@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
-import { Check, ImagePlus, Navigation, X } from 'lucide-react-native';
+import { Check, ImagePlus, Mountain, Navigation, TrainFront, X } from 'lucide-react-native';
 
 import Colors from '@/constants/Colors';
 import { useColorScheme } from '@/components/useColorScheme';
@@ -56,13 +56,6 @@ const PROMPTS: Record<FeedbackIntent, string> = {
   help: 'Sur quoi bloques-tu ?',
 };
 
-/** La capture n'a de sens que là où il y a quelque chose à montrer. */
-const ACCEPTS_SCREENSHOT: Record<FeedbackIntent, boolean> = {
-  problem: true,
-  data: true,
-  idea: false,
-  help: true,
-};
 
 /**
  * « Suggestions et assistance ».
@@ -90,11 +83,14 @@ export default function SupportSettingsScreen() {
     intent: initialIntent,
     subjectId,
     subjectKind,
+    subjectLabel,
     from,
   } = useLocalSearchParams<{
     intent?: FeedbackIntent;
     subjectId?: string;
     subjectKind?: FeedbackSubjectKind;
+    /** Nom lisible du sujet, montré à l'utilisateur : « Boucle des Trois Pignons ». */
+    subjectLabel?: string;
     from?: string;
   }>();
 
@@ -107,11 +103,6 @@ export default function SupportSettingsScreen() {
 
   const canSend = message.trim().length > 0 && !isSending;
   const showsSubject = intent === 'data';
-  const showsScreenshot = ACCEPTS_SCREENSHOT[intent];
-
-  /* La capture reste attachée si l'on repasse sur une intention qui l'accepte :
-     changer d'avis deux fois ne doit pas coûter une seconde sélection. */
-  const attachedScreenshot = showsScreenshot ? screenshot : null;
 
   const prompt = useMemo(() => PROMPTS[intent], [intent]);
 
@@ -138,9 +129,12 @@ export default function SupportSettingsScreen() {
     const { error } = await submitFeedback(user.id, {
       intent,
       message,
-      subjectKind: showsSubject ? subject : null,
-      subjectId: showsSubject ? (subjectId ?? null) : null,
-      screenshotUri: attachedScreenshot,
+      /* Le sélecteur l'emporte quand il est affiché, sinon on garde le sujet
+         d'où l'on vient : une idée proposée depuis une fiche parle encore de
+         cette randonnée, même sans la ligne « sur … » à l'écran. */
+      subjectKind: showsSubject ? subject : (subjectKind ?? null),
+      subjectId: subjectId ?? null,
+      screenshotUri: screenshot,
       screen: from ?? null,
     });
     setIsSending(false);
@@ -160,9 +154,9 @@ export default function SupportSettingsScreen() {
           <View style={[styles.sentBadge, { backgroundColor: theme.orangeBadge }]}>
             <Check size={28} color={theme.tint} />
           </View>
-          <Text style={[styles.sentTitle, { color: theme.text }]}>Reçu !</Text>
+          <Text style={[styles.sentTitle, { color: theme.text }]}>Merci pour ton message !</Text>
           <Text style={[styles.sentBody, { color: theme.textMuted }]}>
-            Je lis tout, même si je ne réponds pas toujours.
+            Nous reviendrons très vite vers toi pour t’informer de la suite.
           </Text>
           <Button title="Fermer" variant="secondary" onPress={() => router.back()} />
         </View>
@@ -173,6 +167,8 @@ export default function SupportSettingsScreen() {
   return (
     <SettingsPage
       title="Suggestions et assistance"
+      /* Le corps s'étire pour que les deux notes puissent se coller en bas. */
+      contentContainerStyle={styles.body}
       footer={
         <ScreenFooter>
           <Button
@@ -217,6 +213,22 @@ export default function SupportSettingsScreen() {
             />
           </View>
         )}
+
+        {/* Référence de ce d'où l'on vient. Sans elle, on ne sait pas que le
+            contexte est déjà joint — et on le retape dans le message, ou pire,
+            on n'ose pas croire qu'il est pris en compte. */}
+        {subjectLabel && (
+          <View style={[styles.context, { backgroundColor: theme.card }]}>
+            {subjectKind === 'journey' ? (
+              <TrainFront size={16} color={theme.textMuted} />
+            ) : (
+              <Mountain size={16} color={theme.textMuted} />
+            )}
+            <Text numberOfLines={1} style={[styles.contextLabel, { color: theme.textMuted }]}>
+              {subjectLabel}
+            </Text>
+          </View>
+        )}
       </View>
 
       <View style={styles.block}>
@@ -233,36 +245,34 @@ export default function SupportSettingsScreen() {
         />
       </View>
 
-      {showsScreenshot && (
-        <View style={styles.block}>
-          <Text style={[styles.label, { color: theme.text }]}>Ajouter une capture d’écran</Text>
+      {/* Proposée sur les quatre intentions : une idée se montre parfois mieux
+          qu'elle ne se décrit, capture de l'écran à l'appui. */}
+      <View style={styles.block}>
+        <Text style={[styles.label, { color: theme.text }]}>Ajouter une capture d’écran</Text>
 
-          <Pressable
-            onPress={handlePickScreenshot}
-            disabled={isSending}
-            style={[styles.dropZone, { borderColor: theme.textTertiary }]}>
-            <ImagePlus size={24} color={theme.textMuted} />
-            <Text style={[styles.dropZoneLabel, { color: theme.textMuted }]}>
-              Choisir une image
-            </Text>
-          </Pressable>
+        <Pressable
+          onPress={handlePickScreenshot}
+          disabled={isSending}
+          style={[styles.dropZone, { borderColor: theme.textTertiary }]}>
+          <ImagePlus size={24} color={theme.textMuted} />
+          <Text style={[styles.dropZoneLabel, { color: theme.textMuted }]}>Choisir une image</Text>
+        </Pressable>
 
-          {/* La vignette et non le nom du fichier : le sélecteur rend des noms
-              comme `hufejoe786HBHJkh.jpg`, qui ne disent rien à personne. */}
-          {attachedScreenshot && (
-            <View style={[styles.thumbCard, { backgroundColor: theme.card }]}>
-              <Image source={{ uri: attachedScreenshot }} style={styles.thumb} />
-              <Pressable
-                onPress={() => setScreenshot(null)}
-                hitSlop={8}
-                accessibilityLabel="Retirer la capture"
-                style={[styles.thumbRemove, { backgroundColor: theme.card }]}>
-                <X size={12} color={theme.text} />
-              </Pressable>
-            </View>
-          )}
-        </View>
-      )}
+        {/* La vignette et non le nom du fichier : le sélecteur rend des noms
+            comme `hufejoe786HBHJkh.jpg`, qui ne disent rien à personne. */}
+        {screenshot && (
+          <View style={[styles.thumbCard, { backgroundColor: theme.card }]}>
+            <Image source={{ uri: screenshot }} style={styles.thumb} />
+            <Pressable
+              onPress={() => setScreenshot(null)}
+              hitSlop={8}
+              accessibilityLabel="Retirer la capture"
+              style={[styles.thumbRemove, { backgroundColor: theme.card }]}>
+              <X size={12} color={theme.text} />
+            </Pressable>
+          </View>
+        )}
+      </View>
 
       <View style={styles.notes}>
         <Text style={[styles.note, { color: theme.textMuted }]}>
@@ -283,8 +293,8 @@ export default function SupportSettingsScreen() {
 const styles = StyleSheet.create({
   intro: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 16,
+    lineHeight: 24,
   },
   sentence: {
     gap: 8,
@@ -304,6 +314,25 @@ const styles = StyleSheet.create({
   block: {
     gap: 8,
     marginTop: 36,
+  },
+  /* Discrète et sur une seule ligne : c'est un accusé de contexte, pas une
+     information à lire. */
+  context: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    alignSelf: 'flex-start',
+    marginTop: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 10,
+    maxWidth: '100%',
+  },
+  contextLabel: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 13,
+    lineHeight: 18,
+    flexShrink: 1,
   },
   label: {
     fontFamily: 'Satoshi-Bold',
@@ -354,14 +383,22 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  body: {
+    flexGrow: 1,
+  },
+  /* Poussées en bas de page par la marge automatique : ce sont des mentions,
+     elles n'ont pas à s'intercaler entre le formulaire et le bouton. Les deux
+     lignes se serrent l'une contre l'autre — elles disent la même chose, que
+     le message est bien pris en charge. */
   notes: {
-    gap: 12,
-    marginTop: 36,
+    gap: 4,
+    marginTop: 'auto',
+    paddingTop: 36,
     alignItems: 'center',
   },
   note: {
     fontFamily: 'Satoshi-Medium',
-    fontSize: 10,
+    fontSize: 12,
     lineHeight: 14,
     textAlign: 'center',
   },
