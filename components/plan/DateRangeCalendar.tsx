@@ -285,7 +285,10 @@ export default function DateRangeCalendar({
                         <View
                           style={[
                             styles.dayCircle,
-                            (isStart || isEnd) && { backgroundColor: theme.tint },
+                            /* Style du bouton secondaire : une borne de plage
+                               marque une sélection, elle n'appelle pas à agir.
+                               L'orange reste au bouton de validation. */
+                            (isStart || isEnd) && { backgroundColor: theme.buttonSecondary },
                             pressed && !isStart && !isEnd && { backgroundColor: theme.borderLight },
                             pressed && (isStart || isEnd) && { opacity: 0.8 },
                           ]}>
@@ -296,7 +299,7 @@ export default function DateRangeCalendar({
                                 color: isDisabled
                                   ? theme.textDisabled
                                   : isStart || isEnd
-                                    ? theme.buttonTextOnBrand
+                                    ? theme.buttonSecondaryText
                                     : theme.text,
                               },
                               isBeforeFloor && styles.dayStruck,
@@ -309,7 +312,7 @@ export default function DateRangeCalendar({
                                 styles.todayIndicator,
                                 {
                                   backgroundColor:
-                                    isStart || isEnd ? theme.buttonTextOnBrand : theme.text,
+                                    isStart || isEnd ? theme.buttonSecondaryText : theme.text,
                                 },
                               ]}
                             />

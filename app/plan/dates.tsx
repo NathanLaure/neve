@@ -62,11 +62,14 @@ function SegmentedItem({
     withTiming(isSelected ? 1 : 0, { duration: SEGMENTED_DURATION })
   );
 
+  /* Style du bouton secondaire, pas la teinte de marque : l'orange est réservé
+     à l'action qui fait avancer — ici « Valider ces dates », et rien d'autre.
+     Un segment sélectionné dit où l'on est, il ne demande rien. */
   const containerStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(progress.value, [0, 1], [theme.card, theme.tint]),
+    backgroundColor: interpolateColor(progress.value, [0, 1], [theme.card, theme.buttonSecondary]),
   }));
   const textStyle = useAnimatedStyle(() => ({
-    color: interpolateColor(progress.value, [0, 1], [theme.text, theme.buttonTextOnBrand]),
+    color: interpolateColor(progress.value, [0, 1], [theme.text, theme.buttonSecondaryText]),
   }));
   // La coche reste montée en permanence, seule son opacité varie : la monter/
   // démonter ajoutait un enfant au `row` et poussait le texte au moment même où
@@ -78,7 +81,7 @@ function SegmentedItem({
   return (
     <AnimatedPressable onPress={onPress} style={[styles.segmentedItem, containerStyle]}>
       <Animated.View style={[styles.segmentedCheckSlot, checkStyle]}>
-        <Check size={16} color={theme.buttonTextOnBrand} />
+        <Check size={16} color={theme.buttonSecondaryText} />
       </Animated.View>
       <Animated.Text style={[styles.segmentedText, textStyle]}>{label}</Animated.Text>
       {/* Espaceur invisible, de la même largeur que le logement de la coche : sans
@@ -428,8 +431,8 @@ export default function PlanDatesScreen() {
             ]}>
             <View style={styles.timeRowLabel}>
               <Text style={[styles.timeRowText, { color: theme.text }]}>{isAddingReturn ? 'Retour à partir de' : 'Aller à partir de'}</Text>
-              <View style={[styles.timePill, { backgroundColor: theme.tint }]}>
-                <Text style={[styles.timePillText, { color: theme.buttonTextOnBrand }]}>
+              <View style={[styles.timePill, { backgroundColor: theme.buttonSecondary }]}>
+                <Text style={[styles.timePillText, { color: theme.buttonSecondaryText }]}>
                   {outwardTime}
                 </Text>
               </View>

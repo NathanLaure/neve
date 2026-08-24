@@ -97,8 +97,8 @@ export const TimePickerSheet = forwardRef<BaseBottomSheetModalRef, TimePickerShe
         ref={ref}
         title={label}
         titleAccessory={
-          <View style={[styles.valuePill, { backgroundColor: theme.tint }]}>
-            <Text style={[styles.valuePillText, { color: theme.buttonTextOnBrand }]}>
+          <View style={[styles.valuePill, { backgroundColor: theme.buttonSecondary }]}>
+            <Text style={[styles.valuePillText, { color: theme.buttonSecondaryText }]}>
               {value}
             </Text>
           </View>
