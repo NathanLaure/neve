@@ -583,8 +583,7 @@ const styles = StyleSheet.create({
   },
   compactTitle: {
     fontFamily: 'Satoshi-Bold',
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: 18,
   },
   bigTitleBlock: {
     gap: 4,
