@@ -102,13 +102,13 @@ export function AuthEntryStep({
         <Text style={[styles.legalText, { color: theme.textMuted }]}>
           En continuant, vous acceptez nos{' '}
           <Text
-            onPress={() => Linking.openURL('https://neve-rando.fr/terms')}
+            onPress={() => Linking.openURL('https://www.neve-rando.fr/terms')}
             style={[styles.legalLink, { color: theme.text }]}>
             Conditions d’utilisation
           </Text>{' '}
           et nous considérons que vous avez lu et accepté notre{' '}
           <Text
-            onPress={() => Linking.openURL('https://neve-rando.fr/privacy')}
+            onPress={() => Linking.openURL('https://www.neve-rando.fr/privacy')}
             style={[styles.legalLink, { color: theme.text }]}>
             Politique de confidentialité
           </Text>

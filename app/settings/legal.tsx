@@ -8,9 +8,11 @@ import { useColorScheme } from '@/components/useColorScheme';
 import SettingsPage from '@/components/profile/SettingsPage';
 import ProfileMenuRow from '@/components/profile/ProfileMenuRow';
 
-const TERMS_URL = 'https://neve-rando.fr/terms';
-const PRIVACY_URL = 'https://neve-rando.fr/privacy';
-const LEGAL_NOTICE_URL = 'https://neve-rando.fr/legal';
+const TERMS_URL = 'https://www.neve-rando.fr/terms';
+const PRIVACY_URL = 'https://www.neve-rando.fr/privacy';
+/* `/legal` n'a jamais existé : le lien ouvrait une page introuvable. La page
+   s'appelle `/mentions-legales`, comme le chemin que le site annonce. */
+const LEGAL_NOTICE_URL = 'https://www.neve-rando.fr/mentions-legales';
 
 /**
  * « Juridique » — les textes qui engagent Névé.
