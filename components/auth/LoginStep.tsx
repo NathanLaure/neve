@@ -6,6 +6,7 @@ import { Input } from '@/components/Input';
 import { Button } from '@/components/Button';
 import { showToast } from '@/utils/toast';
 import { SocialIcon } from '@/components/SocialIcon';
+import { isProviderEnabled } from '@/constants/AuthProviders';
 
 interface LoginStepProps {
   email: string;
@@ -83,7 +84,7 @@ export function LoginStep({
 
             {/* Social Auth Buttons */}
             <View style={styles.socialButtonsGroup}>
-              {Platform.OS === 'ios' ? (
+              {Platform.OS === 'ios' && isProviderEnabled('apple') ? (
                 <Button
                   title="Continuer avec Apple"
                   variant="social"
