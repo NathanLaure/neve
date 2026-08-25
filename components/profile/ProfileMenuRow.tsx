@@ -16,6 +16,10 @@ export type ProfileMenuRowVariant = 'default' | 'plain' | 'flush';
 
 export interface ProfileMenuRowProps {
   label: string;
+  /** Texte explicatif secondaire sous le libellé principal. */
+  subtitle?: string;
+  /** Valeur ou statut textuel affiché à droite avant l'icône de fin. */
+  value?: string;
   /**
    * Pictogramme lucide, colorié par la ligne selon sa tonalité.
    *
@@ -52,6 +56,8 @@ export interface ProfileMenuRowProps {
  */
 export default function ProfileMenuRow({
   label,
+  subtitle,
+  value,
   Icon,
   onPress,
   trailing = 'chevron',
@@ -77,7 +83,7 @@ export default function ProfileMenuRow({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={label}
+      accessibilityLabel={value ? `${label}, ${value}` : label}
       accessibilityHint={
         accessibilityHint ?? (trailing === 'external' ? "Ouvre le navigateur" : undefined)
       }
@@ -88,9 +94,21 @@ export default function ProfileMenuRow({
       }
       style={containerStyle}>
       {Icon ? <Icon size={20} color={contentColor} /> : null}
-      <Text style={[styles.label, { color: contentColor }]} numberOfLines={1}>
-        {label}
-      </Text>
+      <View style={styles.labelContainer}>
+        <Text style={[styles.label, { color: contentColor }]} numberOfLines={1}>
+          {label}
+        </Text>
+        {subtitle ? (
+          <Text style={[styles.subtitle, { color: theme.textMuted }]} numberOfLines={2}>
+            {subtitle}
+          </Text>
+        ) : null}
+      </View>
+      {value ? (
+        <Text style={[styles.value, { color: theme.textMuted }]}>
+          {value}
+        </Text>
+      ) : null}
       {trailing === 'none' ? null : (
         <View style={styles.trailing}>
           <TrailingIcon size={trailing === 'external' ? 18 : 20} color={theme.textMuted} />
@@ -119,12 +137,26 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
     paddingVertical: 18,
   },
+  labelContainer: {
+    flex: 1,
+    gap: 2,
+  },
   // Seul le libellé se comprime, les encarts latéraux gardent leur taille.
   label: {
-    flex: 1,
     fontFamily: 'Satoshi-Medium',
     fontSize: 16,
     lineHeight: 20,
+  },
+  subtitle: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 12,
+    lineHeight: 16,
+  },
+  value: {
+    fontFamily: 'Satoshi-Medium',
+    fontSize: 14,
+    lineHeight: 18,
+    flexShrink: 0,
   },
   trailing: {
     flexShrink: 0,
