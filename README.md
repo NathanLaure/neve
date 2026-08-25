@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-typo.svg" alt="Névé" width="180">
+  <img src="assets/logo-typo.svg" alt="Névé" width="180" color="#EB490B">
 </p>
 
 <p align="center">
