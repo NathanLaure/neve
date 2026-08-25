@@ -42,7 +42,7 @@ export default {
     card: Neutral.white,
 
     // Figma: bg.surface-secondary (Neutral/100 #F5F3EC) — Champs de recherche, entrées de texte
-    surfaceSecondary: Neutral[100],
+    surfaceSecondary: Neutral[300],
 
     // Figma: bg.canvas-bg-blur (Neutral/50 #FBFAF7) — Fond canvas flouté / en-têtes
     canvasBgBlur: Neutral[50],
@@ -105,13 +105,16 @@ export default {
     buttonPrimary: Primary[600],
 
     // Figma: buttons.secondary (Neutral/950 #12100C)
-    buttonSecondary: Neutral[950],
+    buttonSecondary: Primary[950],
 
     // Figma: buttons.text-on-black (Neutral/0 #FFFFFF)
     buttonSecondaryText: Neutral.white,
 
-    // Figma: buttons.tertiary (Primary/700 #C3350B)
-    buttonTertiary: Primary[700],
+    // Figma: buttons.tertiary
+    buttonTertiary: Primary[950],
+
+    // Figma: buttons.tertiary-text
+    buttonTertiaryText: Neutral.white,
 
     // Figma: buttons.disabled (Neutral/200 #EAE6DC)
     buttonDisabled: Neutral[200],
@@ -215,7 +218,7 @@ export default {
     card: Neutral[950],
 
     // Figma: bg.surface-secondary (Neutral/800 #29251E) — Champs de recherche, entrées de texte
-    surfaceSecondary: Neutral[800],
+    surfaceSecondary: Neutral[700],
 
     // Figma: bg.canvas-bg-blur (Neutral/900 #1C1914) — Fond canvas flouté / en-têtes
     canvasBgBlur: Neutral[900],
@@ -277,14 +280,17 @@ export default {
     // Figma: buttons.primary 
     buttonPrimary: Primary[600],
 
-    // Figma: buttons.secondary (Neutral/50 #FBFAF7)
-    buttonSecondary: Neutral[50],
+    // Figma: buttons.secondary (Primary/50 #FBFAF7)
+    buttonSecondary: Primary[50],
 
     // Figma: buttons.text-on-black (Neutral/950 #12100C)
     buttonSecondaryText: Neutral[950],
 
     // Figma: buttons.tertiary
-    buttonTertiary: Primary[700],
+    buttonTertiary: Primary[50],
+
+    // Figma: buttons.tertiary-text
+    buttonTertiaryText: Neutral[950],
 
     // Figma: buttons.disabled (Neutral/900 #1C1914)
     buttonDisabled: Neutral[800],
