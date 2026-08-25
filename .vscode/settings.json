@@ -1,1 +1,15 @@
-{}
+{
+  "java.project.resourceFilters": [
+    "node_modules",
+    ".expo",
+    ".git"
+  ],
+  "files.watcherExclude": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/**": true,
+    "**/.gradle/**": true,
+    "**/android/build/**": true,
+    "**/android/app/build/**": true
+  }
+}
