@@ -1,60 +1,68 @@
-# 🏔️ Névé | Éco-Aventures en train 🚆
+<p align="center">
+  <img src="assets/logo-typo.svg" alt="Névé" width="180">
+</p>
 
-> **Partenaire de vos randonnées écoresponsables.**
+<p align="center">
+  <strong>S'évader en randonnée, sans voiture.</strong><br>
+  Application mobile iOS et Android.
+</p>
 
-Névé est une application mobile haut de gamme développée avec **Expo (SDK 56) & React Native**. Elle permet aux amateurs de grand air d'explorer et de filtrer des itinéraires de randonnée d'exception accessibles directement et uniquement en transports en commun.
-
-
-## ⚙️ Guide d'Installation Rapide
-
-> [!IMPORTANT]
-> Ce projet utilise **Bun** pour une rapidité d'exécution optimale, mais reste compatible avec **npm** ou **yarn**.
-
-### 1. Cloner le projet
-```bash
-git clone https://github.com/NathanLaure/neve.git
-cd neve
-```
-
-### 2. Installer les dépendances
-```bash
-bun install
-```
-*(Ou `npm install` si vous préférez).*
-
-### 3. Lancer le serveur de développement
-```bash
-bun run start
-```
-
-> [!TIP]
-> En cas de mise à jour des constantes de couleur ou si le cache Metro est persistant, videz le cache avec :
-> ```bash
-> npx expo start --clear
-> ```
-
-### 4. Vérification qualité (Lint & Format)
-Le projet est configuré avec un linter strict (ESLint) et un formateur (Prettier) pour assurer la propreté du code :
-```bash
-# Vérifier la qualité et le style du code
-bun run lint
-
-# Appliquer le formatage automatique
-bun run format
-```
+<p align="center">
+  <a href="https://apps.apple.com/app/id6742337775">iOS</a> ·
+  <a href="https://play.google.com/store/apps/details?id=com.neve.app">Android</a> ·
+  <a href="https://www.neve-rando.fr">neve-rando.fr</a>
+</p>
 
 ---
 
-## 🛠️ Architecture du Projet
+## Le projet
 
-* **`app/`** : Routage basé sur les fichiers avec Expo Router.
-  * **`app/(drawer)/_layout.tsx`** : Barre latérale personnalisée (Safe-Area insets, filtre anti-interférence NativeWind, sélecteur de thème segmenté).
-  * **`app/(drawer)/index.tsx`** : Page principale de recherche et de liste des randonnées.
-* **`components/`** :
-  * **`RandoCard.tsx`** : Composant de carte de randonnée premium (ombres fines, badges SNCF et indicateurs météo).
-  * **`useColorScheme.ts`** : Hook de gestion globale de thème avec support de forçage manuel (Clair, Sombre, Système).
-* **`constants/Colors.ts`** : Palette chromatique haute fidélité inspirée de la nature (Vert forêt profond, Éco gris-vert).
+Planifier une sortie nature quand on n'a pas de voiture oblige à jongler entre
+quatre et huit applications : les horaires de train d'un côté, les tracés de
+randonnée de l'autre, la liaison entre la gare et le sentier, la météo, et la
+question de savoir si l'abonnement couvre le trajet.
+
+La plupart du temps, on renonce.
+
+Névé ne propose que des randonnées qui commencent et finissent à une gare, et
+met le tracé et les horaires sur le même écran. On choisit une sortie en deux
+minutes, on part le lendemain avec son abonnement de transport.
+
+## Ce que fait l'application
+
+**Chercher autrement.** On ne choisit pas une destination puis un moyen d'y
+aller. On dit « montre-moi tout ce qui est à moins d'une heure de train de chez
+moi », et la carte se filtre. Un réglage permet de ne garder que les itinéraires
+couverts par son abonnement, sans surcoût.
+
+**Planifier d'un bout à l'autre.** Le train aller, la marche, le train retour.
+Névé estime la durée de la randonnée à partir du dénivelé et de l'allure
+choisie, puis propose le retour qui correspond — pour ne pas avoir à faire le
+calcul soi-même au moment de partir.
+
+**Emporter la carte.** Le tracé, le fond topographique et les horaires se
+téléchargent avant le départ. En forêt, quand le réseau disparaît, tout reste
+lisible.
+
+**Partager une sortie.** Un lien envoyé à quelqu'un ouvre directement la fiche
+de la randonnée, dans l'application s'il l'a installée.
+
+## Les écrans
+
+| | |
+| --- | --- |
+| Accueil | Carte, recherche par temps de trajet, filtres |
+| Résultats | Liste ou carte, au choix |
+| Fiche de randonnée | Tracé, distance, dénivelé, gares, descriptif |
+| Planificateur | Aller, dates, retour, récapitulatif |
+| Aventures | Les sorties passées et à venir |
+| Favoris | Les randonnées mises de côté |
+| Hors-ligne | Les cartes déjà téléchargées |
+| Abonnements de transport | Navigo, cartes régionales, réductions |
+| Profil et réglages | Compte, apparence, notifications, confidentialité |
 
 ---
 
-Développé avec 🍃 par **Nathan (& gémini aussi, un peu ;)**
+<p align="center">
+  <sub>Névé — Nathan Laure · React Native, Expo, Supabase · données hébergées en Europe</sub>
+</p>
